@@ -1,0 +1,26 @@
+FROM python:3.12-slim
+WORKDIR /app
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    gcc \
+    libffi-dev \
+    libssl-dev \
+    libxml2-dev \
+    libxslt1-dev \
+    zlib1g-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN pip install uv
+
+COPY pyproject.toml .
+RUN uv sync --no-dev
+
+COPY archivum/ archivum/
+
+# Create required data directories
+RUN mkdir -p /data/wiki /data/raw /data/kuzu
+
+EXPOSE 8000
+EXPOSE 8001
+
+CMD ["uv", "run", "uvicorn", "archivum.main:app", "--host", "0.0.0.0", "--port", "8000"]

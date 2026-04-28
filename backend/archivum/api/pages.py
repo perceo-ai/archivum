@@ -1,0 +1,235 @@
+"""Pages routes: /api/pages/*"""
+
+from __future__ import annotations
+
+import json
+from datetime import UTC, datetime
+from pathlib import Path
+
+from fastapi import APIRouter, Depends, HTTPException, status
+from pydantic import BaseModel
+
+from archivum.auth import CurrentUser, get_current_user, require_writer
+from archivum.config import Settings, get_settings
+from archivum.db import sqlite, qdrant_client as qdrant, graph
+from archivum.ingest.agent import slugify
+
+router = APIRouter(prefix="/api/pages", tags=["pages"])
+
+
+# ── Schemas ───────────────────────────────────────────────────────────────────
+
+class PageSummary(BaseModel):
+    slug: str
+    title: str
+    tags: list[str]
+    created_at: str
+    updated_at: str
+    authored_by: str
+
+
+class PageDetail(PageSummary):
+    content: str
+    id: int
+
+
+class CreatePageRequest(BaseModel):
+    title: str
+    content: str = ""
+    tags: list[str] = []
+    slug: str | None = None
+
+
+class UpdatePageRequest(BaseModel):
+    title: str | None = None
+    content: str | None = None
+    tags: list[str] | None = None
+
+
+# ── Helpers ───────────────────────────────────────────────────────────────────
+
+def _deserialize_tags(tags_raw: str | list) -> list[str]:
+    if isinstance(tags_raw, list):
+        return tags_raw
+    try:
+        return json.loads(tags_raw)
+    except (json.JSONDecodeError, TypeError):
+        return []
+
+
+def _row_to_summary(row: dict) -> PageSummary:
+    return PageSummary(
+        slug=row["slug"],
+        title=row["title"],
+        tags=_deserialize_tags(row["tags"]),
+        created_at=row["created_at"],
+        updated_at=row["updated_at"],
+        authored_by=row["authored_by"],
+    )
+
+
+def _row_to_detail(row: dict) -> PageDetail:
+    return PageDetail(
+        id=row["id"],
+        slug=row["slug"],
+        title=row["title"],
+        content=row["content"],
+        tags=_deserialize_tags(row["tags"]),
+        created_at=row["created_at"],
+        updated_at=row["updated_at"],
+        authored_by=row["authored_by"],
+    )
+
+
+# ── Routes ────────────────────────────────────────────────────────────────────
+
+@router.get("", response_model=list[PageSummary])
+async def list_pages(
+    current_user: CurrentUser = Depends(get_current_user),
+) -> list[PageSummary]:
+    rows = await sqlite.list_pages(current_user.wiki_id)
+    return [_row_to_summary(r) for r in rows]
+
+
+@router.get("/{slug}", response_model=PageDetail)
+async def get_page(
+    slug: str,
+    current_user: CurrentUser = Depends(get_current_user),
+) -> PageDetail:
+    row = await sqlite.get_page(slug, current_user.wiki_id)
+    if not row:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"detail": f"Page '{slug}' not found", "code": "page_not_found"},
+        )
+    return _row_to_detail(row)
+
+
+@router.post("", response_model=PageDetail, status_code=status.HTTP_201_CREATED)
+async def create_page(
+    body: CreatePageRequest,
+    current_user: CurrentUser = Depends(require_writer),
+    settings: Settings = Depends(get_settings),
+) -> PageDetail:
+    # Derive slug
+    slug = body.slug or slugify(body.title)
+    if not slug:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={"detail": "Could not generate slug from title", "code": "invalid_title"},
+        )
+
+    # Ensure uniqueness
+    base_slug = slug
+    counter = 2
+    while await sqlite.get_page(slug, current_user.wiki_id):
+        slug = f"{base_slug}-{counter}"
+        counter += 1
+
+    # Write to disk
+    wiki_path = settings.wiki_dir / f"{slug}.md"
+    wiki_path.parent.mkdir(parents=True, exist_ok=True)
+    wiki_path.write_text(body.content, encoding="utf-8")
+
+    # SQLite
+    page_id, _ = await sqlite.upsert_page(
+        slug=slug,
+        title=body.title,
+        content=body.content,
+        tags=body.tags,
+        authored_by="user",
+        wiki_id=current_user.wiki_id,
+    )
+
+    # Qdrant
+    await qdrant.upsert_page(slug, body.title, body.content, current_user.wiki_id, settings)
+
+    # Kuzu
+    await graph.upsert_page(slug, body.title, current_user.wiki_id)
+
+    row = await sqlite.get_page(slug, current_user.wiki_id)
+    return _row_to_detail(row)  # type: ignore[arg-type]
+
+
+@router.put("/{slug}", response_model=PageDetail)
+async def update_page(
+    slug: str,
+    body: UpdatePageRequest,
+    current_user: CurrentUser = Depends(require_writer),
+    settings: Settings = Depends(get_settings),
+) -> PageDetail:
+    existing = await sqlite.get_page(slug, current_user.wiki_id)
+    if not existing:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"detail": f"Page '{slug}' not found", "code": "page_not_found"},
+        )
+
+    new_title = body.title if body.title is not None else existing["title"]
+    new_content = body.content if body.content is not None else existing["content"]
+    new_tags = body.tags if body.tags is not None else _deserialize_tags(existing["tags"])
+
+    # Write to disk
+    wiki_path = settings.wiki_dir / f"{slug}.md"
+    wiki_path.write_text(new_content, encoding="utf-8")
+
+    # SQLite
+    await sqlite.upsert_page(
+        slug=slug,
+        title=new_title,
+        content=new_content,
+        tags=new_tags,
+        authored_by="user",
+        wiki_id=current_user.wiki_id,
+    )
+
+    # Qdrant — re-index
+    await qdrant.upsert_page(slug, new_title, new_content, current_user.wiki_id, settings)
+
+    # Kuzu — update page node
+    await graph.upsert_page(slug, new_title, current_user.wiki_id)
+
+    row = await sqlite.get_page(slug, current_user.wiki_id)
+    return _row_to_detail(row)  # type: ignore[arg-type]
+
+
+@router.delete("/{slug}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_page(
+    slug: str,
+    current_user: CurrentUser = Depends(require_writer),
+    settings: Settings = Depends(get_settings),
+) -> None:
+    existing = await sqlite.get_page(slug, current_user.wiki_id)
+    if not existing:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"detail": f"Page '{slug}' not found", "code": "page_not_found"},
+        )
+
+    # Remove from disk
+    wiki_path = settings.wiki_dir / f"{slug}.md"
+    wiki_path.unlink(missing_ok=True)
+
+    # SQLite
+    await sqlite.delete_page(slug, current_user.wiki_id)
+
+    # Qdrant
+    await qdrant.delete_page(slug, current_user.wiki_id, settings)
+
+    # Kuzu
+    await graph.delete_page_node(slug)
+
+
+@router.get("/{slug}/backlinks", response_model=list[dict])
+async def get_backlinks(
+    slug: str,
+    current_user: CurrentUser = Depends(get_current_user),
+) -> list[dict]:
+    # Verify page exists
+    existing = await sqlite.get_page(slug, current_user.wiki_id)
+    if not existing:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"detail": f"Page '{slug}' not found", "code": "page_not_found"},
+        )
+    return await graph.get_backlinks(slug, current_user.wiki_id)

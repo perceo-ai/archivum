@@ -1,0 +1,102 @@
+services:
+  backend:
+    build: ./backend
+    container_name: archivum-backend
+    restart: unless-stopped
+    environment:
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - JWT_SECRET=${JWT_SECRET}
+      - OWNER_PASSWORD=${OWNER_PASSWORD}
+      - QDRANT_URL=http://qdrant:6333
+      - WIKI_DIR=/data/wiki
+      - RAW_DIR=/data/raw
+      - DB_PATH=/data/archivum.db
+      - KUZU_PATH=/data/kuzu
+    volumes:
+      - wiki_data:/data/wiki
+      - raw_data:/data/raw
+      - db_data:/data
+      - kuzu_data:/data/kuzu
+    networks:
+      - archivum-net
+    depends_on:
+      qdrant:
+        condition: service_healthy
+
+  frontend:
+    build: ./frontend
+    container_name: archivum-frontend
+    restart: unless-stopped
+    networks:
+      - archivum-net
+
+  mcp:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.mcp
+    container_name: archivum-mcp
+    restart: unless-stopped
+    environment:
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - JWT_SECRET=${JWT_SECRET}
+      - QDRANT_URL=http://qdrant:6333
+      - WIKI_DIR=/data/wiki
+      - RAW_DIR=/data/raw
+      - DB_PATH=/data/archivum.db
+      - KUZU_PATH=/data/kuzu
+      - MCP_API_KEY=${MCP_API_KEY}
+    ports:
+      - "8001:8001"
+    volumes:
+      - wiki_data:/data/wiki
+      - raw_data:/data/raw
+      - db_data:/data
+      - kuzu_data:/data/kuzu
+    networks:
+      - archivum-net
+    depends_on:
+      - backend
+
+  qdrant:
+    image: qdrant/qdrant:v1.12.0
+    container_name: archivum-qdrant
+    restart: unless-stopped
+    volumes:
+      - qdrant_data:/qdrant/storage
+    networks:
+      - archivum-net
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:6333/readyz || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  caddy:
+    image: caddy:2-alpine
+    container_name: archivum-caddy
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    networks:
+      - archivum-net
+    depends_on:
+      - backend
+      - frontend
+
+volumes:
+  wiki_data:
+  raw_data:
+  db_data:
+  kuzu_data:
+  qdrant_data:
+  caddy_data:
+  caddy_config:
+
+networks:
+  archivum-net:
+    driver: bridge
