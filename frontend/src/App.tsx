@@ -15,7 +15,7 @@ function ProtectedRoutes() {
   const { isAuthenticated, pages, pagesLoaded } = useAppState();
   const dispatch = useAppDispatch();
   const navigate = useNavigate();
-  const location = useLocation();
+  useLocation();
 
   useEffect(() => {
     listPages()
@@ -74,10 +74,8 @@ function ProtectedRoutes() {
   );
 }
 
-// Silence unused import warning while also using location for key effect
 function AppRoutes() {
-  const location = useLocation();
-  void location;
+  useLocation();
   return (
     <Routes>
       <Route path="/login" element={<LoginPage />} />

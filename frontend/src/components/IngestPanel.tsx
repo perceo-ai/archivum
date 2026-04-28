@@ -216,7 +216,7 @@ export default function IngestPanel() {
             </div>
             <div
               className="rounded-lg border divide-y overflow-hidden"
-              style={{ borderColor: '#3a3a4a', divideColor: '#3a3a4a' }}
+              style={{ borderColor: '#3a3a4a' }}
             >
               {fileStatuses.map((fs, i) => (
                 <FileStatusRow
@@ -241,10 +241,6 @@ function FileStatusRow({
   onNavigate: (slug: string) => void;
 }) {
   const { name, events, done, error } = status;
-  const lastEvent = events[events.length - 1];
-
-  const createdPages = events.filter((e) => e.type === 'page_created');
-  const updatedPages = events.filter((e) => e.type === 'page_updated');
 
   return (
     <div className="px-4 py-3" style={{ backgroundColor: '#252535' }}>

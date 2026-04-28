@@ -17,6 +17,9 @@ node_modules/
 frontend/dist/
 frontend/.vite/
 
+# Graphify
+graphify-out/cache/
+
 # Data (never commit wiki content or DBs)
 /data/
 *.db

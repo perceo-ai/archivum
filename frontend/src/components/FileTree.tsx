@@ -183,7 +183,6 @@ export default function FileTree() {
       {/* Drop hint */}
       <div
         className="px-3 py-2 border-t text-xs text-text-muted text-center shrink-0"
-        style={{ borderColor: '#3a3a4a' }}
         onClick={() => fileInputRef.current?.click()}
         role="button"
         style={{ borderColor: '#3a3a4a', cursor: 'pointer' }}

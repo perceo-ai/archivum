@@ -55,6 +55,7 @@ class Settings(BaseSettings):
 
     # ── MCP ────────────────────────────────────────────────────────────────
     mcp_port: int = 8001
+    mcp_api_key: str = ""
 
 
 @lru_cache(maxsize=1)
