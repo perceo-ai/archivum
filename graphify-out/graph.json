@@ -62,9 +62,9 @@
       "file_type": "rationale",
       "source_file": "backend/archivum/__init__.py",
       "source_location": "L1",
-      "id": "archivum_init_rationale_1",
       "community": 14,
-      "norm_label": "archivum \u2014 self-hosted ai-powered knowledge base."
+      "norm_label": "archivum \u2014 self-hosted ai-powered knowledge base.",
+      "id": "archivum_init_rationale_1"
     },
     {
       "label": "config.py",
@@ -107,9 +107,9 @@
       "file_type": "rationale",
       "source_file": "backend/archivum/config.py",
       "source_location": "L1",
-      "id": "archivum_config_rationale_1",
       "community": 7,
-      "norm_label": "application configuration via pydantic-settings (reads from .env)."
+      "norm_label": "application configuration via pydantic-settings (reads from .env).",
+      "id": "archivum_config_rationale_1"
     },
     {
       "label": "auth.py",
@@ -224,54 +224,54 @@
       "file_type": "rationale",
       "source_file": "backend/archivum/auth.py",
       "source_location": "L1",
-      "id": "archivum_auth_rationale_1",
       "community": 8,
-      "norm_label": "jwt creation/validation, password hashing, fastapi dependencies."
+      "norm_label": "jwt creation/validation, password hashing, fastapi dependencies.",
+      "id": "archivum_auth_rationale_1"
     },
     {
       "label": "Return bcrypt hash of *plaintext*.",
       "file_type": "rationale",
       "source_file": "backend/archivum/auth.py",
       "source_location": "L36",
-      "id": "archivum_auth_rationale_36",
       "community": 8,
-      "norm_label": "return bcrypt hash of *plaintext*."
+      "norm_label": "return bcrypt hash of *plaintext*.",
+      "id": "archivum_auth_rationale_36"
     },
     {
       "label": "Return True if *plaintext* matches *hashed*.",
       "file_type": "rationale",
       "source_file": "backend/archivum/auth.py",
       "source_location": "L41",
-      "id": "archivum_auth_rationale_41",
       "community": 8,
-      "norm_label": "return true if *plaintext* matches *hashed*."
+      "norm_label": "return true if *plaintext* matches *hashed*.",
+      "id": "archivum_auth_rationale_41"
     },
     {
       "label": "Return (raw_token, hashed_token) pair.",
       "file_type": "rationale",
       "source_file": "backend/archivum/auth.py",
       "source_location": "L67",
-      "id": "archivum_auth_rationale_67",
       "community": 0,
-      "norm_label": "return (raw_token, hashed_token) pair."
+      "norm_label": "return (raw_token, hashed_token) pair.",
+      "id": "archivum_auth_rationale_67"
     },
     {
       "label": "Decode and validate an access JWT. Raises HTTPException on failure.",
       "file_type": "rationale",
       "source_file": "backend/archivum/auth.py",
       "source_location": "L74",
-      "id": "archivum_auth_rationale_74",
       "community": 8,
-      "norm_label": "decode and validate an access jwt. raises httpexception on failure."
+      "norm_label": "decode and validate an access jwt. raises httpexception on failure.",
+      "id": "archivum_auth_rationale_74"
     },
     {
       "label": "Resolve the current user from:     1. httpOnly cookie `access_token`     2. Auth",
       "file_type": "rationale",
       "source_file": "backend/archivum/auth.py",
       "source_location": "L106",
-      "id": "archivum_auth_rationale_106",
       "community": 8,
-      "norm_label": "resolve the current user from:     1. httponly cookie `access_token`     2. auth"
+      "norm_label": "resolve the current user from:     1. httponly cookie `access_token`     2. auth",
+      "id": "archivum_auth_rationale_106"
     },
     {
       "label": "main.py",
@@ -314,9 +314,9 @@
       "file_type": "rationale",
       "source_file": "backend/archivum/db/__init__.py",
       "source_location": "L1",
-      "id": "db_init_rationale_1",
       "community": 15,
-      "norm_label": "database layer: sqlite, qdrant, kuzu."
+      "norm_label": "database layer: sqlite, qdrant, kuzu.",
+      "id": "db_init_rationale_1"
     },
     {
       "label": "sqlite.py",
@@ -530,36 +530,36 @@
       "file_type": "rationale",
       "source_file": "backend/archivum/db/sqlite.py",
       "source_location": "L1",
-      "id": "db_sqlite_rationale_1",
       "community": 0,
-      "norm_label": "aiosqlite wrapper \u2014 schema init and crud for all tables."
+      "norm_label": "aiosqlite wrapper \u2014 schema init and crud for all tables.",
+      "id": "db_sqlite_rationale_1"
     },
     {
       "label": "Create the owner account if it doesn't already exist.",
       "file_type": "rationale",
       "source_file": "backend/archivum/db/sqlite.py",
       "source_location": "L166",
-      "id": "db_sqlite_rationale_166",
       "community": 0,
-      "norm_label": "create the owner account if it doesn't already exist."
+      "norm_label": "create the owner account if it doesn't already exist.",
+      "id": "db_sqlite_rationale_166"
     },
     {
       "label": "Return (id, created) where created=True means a new row was inserted.",
       "file_type": "rationale",
       "source_file": "backend/archivum/db/sqlite.py",
       "source_location": "L212",
-      "id": "db_sqlite_rationale_212",
       "community": 0,
-      "norm_label": "return (id, created) where created=true means a new row was inserted."
+      "norm_label": "return (id, created) where created=true means a new row was inserted.",
+      "id": "db_sqlite_rationale_212"
     },
     {
       "label": "Full-text search using FTS5. Returns rows with a snippet.",
       "file_type": "rationale",
       "source_file": "backend/archivum/db/sqlite.py",
       "source_location": "L251",
-      "id": "db_sqlite_rationale_251",
       "community": 0,
-      "norm_label": "full-text search using fts5. returns rows with a snippet."
+      "norm_label": "full-text search using fts5. returns rows with a snippet.",
+      "id": "db_sqlite_rationale_251"
     },
     {
       "label": "qdrant_client.py",
@@ -656,72 +656,72 @@
       "file_type": "rationale",
       "source_file": "backend/archivum/db/qdrant_client.py",
       "source_location": "L1",
-      "id": "db_qdrant_client_rationale_1",
       "community": 7,
-      "norm_label": "qdrant wrapper: collection management, upsert, search, delete."
+      "norm_label": "qdrant wrapper: collection management, upsert, search, delete.",
+      "id": "db_qdrant_client_rationale_1"
     },
     {
       "label": "Split *text* into overlapping token-approximate chunks.      We approximate toke",
       "file_type": "rationale",
       "source_file": "backend/archivum/db/qdrant_client.py",
       "source_location": "L51",
-      "id": "db_qdrant_client_rationale_51",
       "community": 7,
-      "norm_label": "split *text* into overlapping token-approximate chunks.      we approximate toke"
+      "norm_label": "split *text* into overlapping token-approximate chunks.      we approximate toke",
+      "id": "db_qdrant_client_rationale_51"
     },
     {
       "label": "Embed *texts* using fastembed (sync, runs in executor).",
       "file_type": "rationale",
       "source_file": "backend/archivum/db/qdrant_client.py",
       "source_location": "L70",
-      "id": "db_qdrant_client_rationale_70",
       "community": 7,
-      "norm_label": "embed *texts* using fastembed (sync, runs in executor)."
+      "norm_label": "embed *texts* using fastembed (sync, runs in executor).",
+      "id": "db_qdrant_client_rationale_70"
     },
     {
       "label": "Create the Qdrant collection if it does not already exist.",
       "file_type": "rationale",
       "source_file": "backend/archivum/db/qdrant_client.py",
       "source_location": "L83",
-      "id": "db_qdrant_client_rationale_83",
       "community": 7,
-      "norm_label": "create the qdrant collection if it does not already exist."
+      "norm_label": "create the qdrant collection if it does not already exist.",
+      "id": "db_qdrant_client_rationale_83"
     },
     {
       "label": "Chunk *content*, embed all chunks, upsert to Qdrant. Returns chunk count.",
       "file_type": "rationale",
       "source_file": "backend/archivum/db/qdrant_client.py",
       "source_location": "L113",
-      "id": "db_qdrant_client_rationale_113",
       "community": 7,
-      "norm_label": "chunk *content*, embed all chunks, upsert to qdrant. returns chunk count."
+      "norm_label": "chunk *content*, embed all chunks, upsert to qdrant. returns chunk count.",
+      "id": "db_qdrant_client_rationale_113"
     },
     {
       "label": "Semantic search. Returns list of {slug, title, excerpt, score}.",
       "file_type": "rationale",
       "source_file": "backend/archivum/db/qdrant_client.py",
       "source_location": "L148",
-      "id": "db_qdrant_client_rationale_148",
       "community": 7,
-      "norm_label": "semantic search. returns list of {slug, title, excerpt, score}."
+      "norm_label": "semantic search. returns list of {slug, title, excerpt, score}.",
+      "id": "db_qdrant_client_rationale_148"
     },
     {
       "label": "Like search() but returns all individual chunk hits (for context building).",
       "file_type": "rationale",
       "source_file": "backend/archivum/db/qdrant_client.py",
       "source_location": "L187",
-      "id": "db_qdrant_client_rationale_187",
       "community": 7,
-      "norm_label": "like search() but returns all individual chunk hits (for context building)."
+      "norm_label": "like search() but returns all individual chunk hits (for context building).",
+      "id": "db_qdrant_client_rationale_187"
     },
     {
       "label": "Delete all vectors for the given slug + wiki_id.",
       "file_type": "rationale",
       "source_file": "backend/archivum/db/qdrant_client.py",
       "source_location": "L219",
-      "id": "db_qdrant_client_rationale_219",
       "community": 7,
-      "norm_label": "delete all vectors for the given slug + wiki_id."
+      "norm_label": "delete all vectors for the given slug + wiki_id.",
+      "id": "db_qdrant_client_rationale_219"
     },
     {
       "label": "graph.py",
@@ -854,63 +854,63 @@
       "file_type": "rationale",
       "source_file": "backend/archivum/db/graph.py",
       "source_location": "L1",
-      "id": "db_graph_rationale_1",
       "community": 4,
-      "norm_label": "kuzu embedded graph-db wrapper.  all kuzu calls are synchronous; they are wrappe"
+      "norm_label": "kuzu embedded graph-db wrapper.  all kuzu calls are synchronous; they are wrappe",
+      "id": "db_graph_rationale_1"
     },
     {
       "label": "Create node/rel tables if they don't exist.",
       "file_type": "rationale",
       "source_file": "backend/archivum/db/graph.py",
       "source_location": "L39",
-      "id": "db_graph_rationale_39",
       "community": 4,
-      "norm_label": "create node/rel tables if they don't exist."
+      "norm_label": "create node/rel tables if they don't exist.",
+      "id": "db_graph_rationale_39"
     },
     {
       "label": "Initialize the Kuzu database and schema (call at startup).",
       "file_type": "rationale",
       "source_file": "backend/archivum/db/graph.py",
       "source_location": "L78",
-      "id": "db_graph_rationale_78",
       "community": 4,
-      "norm_label": "initialize the kuzu database and schema (call at startup)."
+      "norm_label": "initialize the kuzu database and schema (call at startup).",
+      "id": "db_graph_rationale_78"
     },
     {
       "label": "Return nodes + edges 1 hop from *node_id* (works for both Page and Entity).",
       "file_type": "rationale",
       "source_file": "backend/archivum/db/graph.py",
       "source_location": "L149",
-      "id": "db_graph_rationale_149",
       "community": 4,
-      "norm_label": "return nodes + edges 1 hop from *node_id* (works for both page and entity)."
+      "norm_label": "return nodes + edges 1 hop from *node_id* (works for both page and entity).",
+      "id": "db_graph_rationale_149"
     },
     {
       "label": "Return all Page nodes that have a REFERENCES edge pointing to *slug*.",
       "file_type": "rationale",
       "source_file": "backend/archivum/db/graph.py",
       "source_location": "L225",
-      "id": "db_graph_rationale_225",
       "community": 4,
-      "norm_label": "return all page nodes that have a references edge pointing to *slug*."
+      "norm_label": "return all page nodes that have a references edge pointing to *slug*.",
+      "id": "db_graph_rationale_225"
     },
     {
       "label": "Return all nodes + edges for vis.js full-graph rendering.",
       "file_type": "rationale",
       "source_file": "backend/archivum/db/graph.py",
       "source_location": "L246",
-      "id": "db_graph_rationale_246",
       "community": 4,
-      "norm_label": "return all nodes + edges for vis.js full-graph rendering."
+      "norm_label": "return all nodes + edges for vis.js full-graph rendering.",
+      "id": "db_graph_rationale_246"
     },
     {
       "label": "Remove a Page node and all its edges from the graph.",
       "file_type": "rationale",
       "source_file": "backend/archivum/db/graph.py",
       "source_location": "L323",
-      "id": "db_graph_rationale_323",
       "community": 4,
-      "norm_label": "remove a page node and all its edges from the graph."
+      "norm_label": "remove a page node and all its edges from the graph.",
+      "id": "db_graph_rationale_323"
     },
     {
       "label": "__init__.py",
@@ -926,9 +926,9 @@
       "file_type": "rationale",
       "source_file": "backend/archivum/ingest/__init__.py",
       "source_location": "L1",
-      "id": "ingest_init_rationale_1",
       "community": 16,
-      "norm_label": "ingest layer: parsers, llm agent, orchestration pipeline."
+      "norm_label": "ingest layer: parsers, llm agent, orchestration pipeline.",
+      "id": "ingest_init_rationale_1"
     },
     {
       "label": "parsers.py",
@@ -1016,63 +1016,63 @@
       "file_type": "rationale",
       "source_file": "backend/archivum/ingest/parsers.py",
       "source_location": "L1",
-      "id": "ingest_parsers_rationale_1",
       "community": 1,
-      "norm_label": "file/url parsers. each returns a parseddoc dataclass."
+      "norm_label": "file/url parsers. each returns a parseddoc dataclass.",
+      "id": "ingest_parsers_rationale_1"
     },
     {
       "label": "Raised when the file extension is not handled.",
       "file_type": "rationale",
       "source_file": "backend/archivum/ingest/parsers.py",
       "source_location": "L31",
-      "id": "ingest_parsers_rationale_31",
       "community": 1,
-      "norm_label": "raised when the file extension is not handled."
+      "norm_label": "raised when the file extension is not handled.",
+      "id": "ingest_parsers_rationale_31"
     },
     {
       "label": "Remove RST directives (.. foo:: ) and field lists.",
       "file_type": "rationale",
       "source_file": "backend/archivum/ingest/parsers.py",
       "source_location": "L37",
-      "id": "ingest_parsers_rationale_37",
       "community": 1,
-      "norm_label": "remove rst directives (.. foo:: ) and field lists."
+      "norm_label": "remove rst directives (.. foo:: ) and field lists.",
+      "id": "ingest_parsers_rationale_37"
     },
     {
       "label": "Extract readable text from HTML, preferring main content.",
       "file_type": "rationale",
       "source_file": "backend/archivum/ingest/parsers.py",
       "source_location": "L44",
-      "id": "ingest_parsers_rationale_44",
       "community": 1,
-      "norm_label": "extract readable text from html, preferring main content."
+      "norm_label": "extract readable text from html, preferring main content.",
+      "id": "ingest_parsers_rationale_44"
     },
     {
       "label": "Synchronous file parser. Call from executor for async contexts.",
       "file_type": "rationale",
       "source_file": "backend/archivum/ingest/parsers.py",
       "source_location": "L64",
-      "id": "ingest_parsers_rationale_64",
       "community": 1,
-      "norm_label": "synchronous file parser. call from executor for async contexts."
+      "norm_label": "synchronous file parser. call from executor for async contexts.",
+      "id": "ingest_parsers_rationale_64"
     },
     {
       "label": "Async URL parser \u2014 fetches HTML and extracts main content.",
       "file_type": "rationale",
       "source_file": "backend/archivum/ingest/parsers.py",
       "source_location": "L326",
-      "id": "ingest_parsers_rationale_326",
       "community": 1,
-      "norm_label": "async url parser \u2014 fetches html and extracts main content."
+      "norm_label": "async url parser \u2014 fetches html and extracts main content.",
+      "id": "ingest_parsers_rationale_326"
     },
     {
       "label": "Top-level dispatcher: handles Path objects and URL strings.",
       "file_type": "rationale",
       "source_file": "backend/archivum/ingest/parsers.py",
       "source_location": "L374",
-      "id": "ingest_parsers_rationale_374",
       "community": 1,
-      "norm_label": "top-level dispatcher: handles path objects and url strings."
+      "norm_label": "top-level dispatcher: handles path objects and url strings.",
+      "id": "ingest_parsers_rationale_374"
     },
     {
       "label": "agent.py",
@@ -1178,36 +1178,36 @@
       "file_type": "rationale",
       "source_file": "backend/archivum/ingest/agent.py",
       "source_location": "L1",
-      "id": "ingest_agent_rationale_1",
       "community": 1,
-      "norm_label": "llm wiki agent: extract entities, generate wiki pages, build graph structure.  u"
+      "norm_label": "llm wiki agent: extract entities, generate wiki pages, build graph structure.  u",
+      "id": "ingest_agent_rationale_1"
     },
     {
       "label": "Convert a title to a kebab-case slug.",
       "file_type": "rationale",
       "source_file": "backend/archivum/ingest/agent.py",
       "source_location": "L83",
-      "id": "ingest_agent_rationale_83",
       "community": 1,
-      "norm_label": "convert a title to a kebab-case slug."
+      "norm_label": "convert a title to a kebab-case slug.",
+      "id": "ingest_agent_rationale_83"
     },
     {
       "label": "Extract structured wiki data from a ParsedDoc.          Uses prompt caching on t",
       "file_type": "rationale",
       "source_file": "backend/archivum/ingest/agent.py",
       "source_location": "L99",
-      "id": "ingest_agent_rationale_99",
       "community": 1,
-      "norm_label": "extract structured wiki data from a parseddoc.          uses prompt caching on t"
+      "norm_label": "extract structured wiki data from a parseddoc.          uses prompt caching on t",
+      "id": "ingest_agent_rationale_99"
     },
     {
       "label": "Generate a minimal page when the LLM call fails or produces no pages.",
       "file_type": "rationale",
       "source_file": "backend/archivum/ingest/agent.py",
       "source_location": "L194",
-      "id": "ingest_agent_rationale_194",
       "community": 1,
-      "norm_label": "generate a minimal page when the llm call fails or produces no pages."
+      "norm_label": "generate a minimal page when the llm call fails or produces no pages.",
+      "id": "ingest_agent_rationale_194"
     },
     {
       "label": "pipeline.py",
@@ -1259,45 +1259,45 @@
       "file_type": "rationale",
       "source_file": "backend/archivum/ingest/pipeline.py",
       "source_location": "L1",
-      "id": "ingest_pipeline_rationale_1",
       "community": 1,
-      "norm_label": "ingest pipeline: orchestrates parser \u2192 agent \u2192 qdrant \u2192 kuzu \u2192 sqlite."
+      "norm_label": "ingest pipeline: orchestrates parser \u2192 agent \u2192 qdrant \u2192 kuzu \u2192 sqlite.",
+      "id": "ingest_pipeline_rationale_1"
     },
     {
       "label": "Ensure the slug is unique in SQLite by appending -2, -3 etc.",
       "file_type": "rationale",
       "source_file": "backend/archivum/ingest/pipeline.py",
       "source_location": "L25",
-      "id": "ingest_pipeline_rationale_25",
       "community": 1,
-      "norm_label": "ensure the slug is unique in sqlite by appending -2, -3 etc."
+      "norm_label": "ensure the slug is unique in sqlite by appending -2, -3 etc.",
+      "id": "ingest_pipeline_rationale_25"
     },
     {
       "label": "Extract all [[wikilink]] targets from markdown content.",
       "file_type": "rationale",
       "source_file": "backend/archivum/ingest/pipeline.py",
       "source_location": "L39",
-      "id": "ingest_pipeline_rationale_39",
       "community": 1,
-      "norm_label": "extract all [[wikilink]] targets from markdown content."
+      "norm_label": "extract all [[wikilink]] targets from markdown content.",
+      "id": "ingest_pipeline_rationale_39"
     },
     {
       "label": "Full ingest pipeline for a single source (file path or URL).      Returns a summ",
       "file_type": "rationale",
       "source_file": "backend/archivum/ingest/pipeline.py",
       "source_location": "L51",
-      "id": "ingest_pipeline_rationale_51",
       "community": 1,
-      "norm_label": "full ingest pipeline for a single source (file path or url).      returns a summ"
+      "norm_label": "full ingest pipeline for a single source (file path or url).      returns a summ",
+      "id": "ingest_pipeline_rationale_51"
     },
     {
       "label": "Ingest multiple sources sequentially, streaming progress.",
       "file_type": "rationale",
       "source_file": "backend/archivum/ingest/pipeline.py",
       "source_location": "L204",
-      "id": "ingest_pipeline_rationale_204",
       "community": 1,
-      "norm_label": "ingest multiple sources sequentially, streaming progress."
+      "norm_label": "ingest multiple sources sequentially, streaming progress.",
+      "id": "ingest_pipeline_rationale_204"
     },
     {
       "label": "__init__.py",
@@ -1412,9 +1412,9 @@
       "file_type": "rationale",
       "source_file": "backend/archivum/api/auth.py",
       "source_location": "L1",
-      "id": "api_auth_rationale_1",
       "community": 0,
-      "norm_label": "authentication routes: /api/auth/*"
+      "norm_label": "authentication routes: /api/auth/*",
+      "id": "api_auth_rationale_1"
     },
     {
       "label": "ingest.py",
@@ -1484,54 +1484,54 @@
       "file_type": "rationale",
       "source_file": "backend/archivum/api/ingest.py",
       "source_location": "L1",
-      "id": "api_ingest_rationale_1",
       "community": 3,
-      "norm_label": "ingest routes: /api/ingest/*  supports file upload, url ingest, and batch upload"
+      "norm_label": "ingest routes: /api/ingest/*  supports file upload, url ingest, and batch upload",
+      "id": "api_ingest_rationale_1"
     },
     {
       "label": "Run ingest and yield SSE-compatible dicts.",
       "file_type": "rationale",
       "source_file": "backend/archivum/api/ingest.py",
       "source_location": "L40",
-      "id": "api_ingest_rationale_40",
       "community": 3,
-      "norm_label": "run ingest and yield sse-compatible dicts."
+      "norm_label": "run ingest and yield sse-compatible dicts.",
+      "id": "api_ingest_rationale_40"
     },
     {
       "label": "Upload a single file and stream ingest progress via SSE.",
       "file_type": "rationale",
       "source_file": "backend/archivum/api/ingest.py",
       "source_location": "L75",
-      "id": "api_ingest_rationale_75",
       "community": 3,
-      "norm_label": "upload a single file and stream ingest progress via sse."
+      "norm_label": "upload a single file and stream ingest progress via sse.",
+      "id": "api_ingest_rationale_75"
     },
     {
       "label": "Ingest a URL and stream progress via SSE.",
       "file_type": "rationale",
       "source_file": "backend/archivum/api/ingest.py",
       "source_location": "L108",
-      "id": "api_ingest_rationale_108",
       "community": 3,
-      "norm_label": "ingest a url and stream progress via sse."
+      "norm_label": "ingest a url and stream progress via sse.",
+      "id": "api_ingest_rationale_108"
     },
     {
       "label": "Upload up to 20 files and stream batch progress via SSE.",
       "file_type": "rationale",
       "source_file": "backend/archivum/api/ingest.py",
       "source_location": "L130",
-      "id": "api_ingest_rationale_130",
       "community": 3,
-      "norm_label": "upload up to 20 files and stream batch progress via sse."
+      "norm_label": "upload up to 20 files and stream batch progress via sse.",
+      "id": "api_ingest_rationale_130"
     },
     {
       "label": "Return the ingest log for the current wiki.",
       "file_type": "rationale",
       "source_file": "backend/archivum/api/ingest.py",
       "source_location": "L185",
-      "id": "api_ingest_rationale_185",
       "community": 3,
-      "norm_label": "return the ingest log for the current wiki."
+      "norm_label": "return the ingest log for the current wiki.",
+      "id": "api_ingest_rationale_185"
     },
     {
       "label": "pages.py",
@@ -1664,9 +1664,9 @@
       "file_type": "rationale",
       "source_file": "backend/archivum/api/pages.py",
       "source_location": "L1",
-      "id": "api_pages_rationale_1",
       "community": 3,
-      "norm_label": "pages routes: /api/pages/*"
+      "norm_label": "pages routes: /api/pages/*",
+      "id": "api_pages_rationale_1"
     },
     {
       "label": "search.py",
@@ -1691,9 +1691,9 @@
       "file_type": "rationale",
       "source_file": "backend/archivum/api/search.py",
       "source_location": "L20",
-      "id": "api_search_rationale_20",
       "community": 0,
-      "norm_label": "semantic search via qdrant (primary) with keyword fts fallback.      returns [{s"
+      "norm_label": "semantic search via qdrant (primary) with keyword fts fallback.      returns [{s",
+      "id": "api_search_rationale_20"
     },
     {
       "label": "graph.py",
@@ -1799,9 +1799,9 @@
       "file_type": "rationale",
       "source_file": "backend/archivum/mcp/__init__.py",
       "source_location": "L1",
-      "id": "mcp_init_rationale_1",
       "community": 17,
-      "norm_label": "mcp server for archivum (stdio + sse)."
+      "norm_label": "mcp server for archivum (stdio + sse).",
+      "id": "mcp_init_rationale_1"
     },
     {
       "label": "server.py",
@@ -1916,72 +1916,72 @@
       "file_type": "rationale",
       "source_file": "backend/archivum/mcp/server.py",
       "source_location": "L45",
-      "id": "mcp_server_rationale_45",
       "community": 6,
-      "norm_label": "process a file path or url into the wiki."
+      "norm_label": "process a file path or url into the wiki.",
+      "id": "mcp_server_rationale_45"
     },
     {
       "label": "Semantic search; returns top-k with excerpts.",
       "file_type": "rationale",
       "source_file": "backend/archivum/mcp/server.py",
       "source_location": "L59",
-      "id": "mcp_server_rationale_59",
       "community": 6,
-      "norm_label": "semantic search; returns top-k with excerpts."
+      "norm_label": "semantic search; returns top-k with excerpts.",
+      "id": "mcp_server_rationale_59"
     },
     {
       "label": "List pages for a wiki.",
       "file_type": "rationale",
       "source_file": "backend/archivum/mcp/server.py",
       "source_location": "L66",
-      "id": "mcp_server_rationale_66",
       "community": 6,
-      "norm_label": "list pages for a wiki."
+      "norm_label": "list pages for a wiki.",
+      "id": "mcp_server_rationale_66"
     },
     {
       "label": "Retrieve full markdown content by slug.",
       "file_type": "rationale",
       "source_file": "backend/archivum/mcp/server.py",
       "source_location": "L84",
-      "id": "mcp_server_rationale_84",
       "community": 6,
-      "norm_label": "retrieve full markdown content by slug."
+      "norm_label": "retrieve full markdown content by slug.",
+      "id": "mcp_server_rationale_84"
     },
     {
       "label": "Create or update a page and re-index.",
       "file_type": "rationale",
       "source_file": "backend/archivum/mcp/server.py",
       "source_location": "L108",
-      "id": "mcp_server_rationale_108",
       "community": 6,
-      "norm_label": "create or update a page and re-index."
+      "norm_label": "create or update a page and re-index.",
+      "id": "mcp_server_rationale_108"
     },
     {
       "label": "Return Kuzu neighbors of a page/entity.",
       "file_type": "rationale",
       "source_file": "backend/archivum/mcp/server.py",
       "source_location": "L131",
-      "id": "mcp_server_rationale_131",
       "community": 6,
-      "norm_label": "return kuzu neighbors of a page/entity."
+      "norm_label": "return kuzu neighbors of a page/entity.",
+      "id": "mcp_server_rationale_131"
     },
     {
       "label": "Health check: broken wikilinks + orphan pages (v1).",
       "file_type": "rationale",
       "source_file": "backend/archivum/mcp/server.py",
       "source_location": "L140",
-      "id": "mcp_server_rationale_140",
       "community": 6,
-      "norm_label": "health check: broken wikilinks + orphan pages (v1)."
+      "norm_label": "health check: broken wikilinks + orphan pages (v1).",
+      "id": "mcp_server_rationale_140"
     },
     {
       "label": "Ask a question; returns synthesised answer with citations.",
       "file_type": "rationale",
       "source_file": "backend/archivum/mcp/server.py",
       "source_location": "L167",
-      "id": "mcp_server_rationale_167",
       "community": 6,
-      "norm_label": "ask a question; returns synthesised answer with citations."
+      "norm_label": "ask a question; returns synthesised answer with citations.",
+      "id": "mcp_server_rationale_167"
     },
     {
       "label": "vite.config.ts",
@@ -3460,11 +3460,11 @@
       "source_file": "backend/archivum/auth.py",
       "source_location": "L15",
       "weight": 0.8,
-      "_src": "archivum_auth_tokenpayload",
-      "_tgt": "archivum_config_settings",
+      "_src": "archivum_config_settings",
+      "_tgt": "archivum_auth_tokenpayload",
+      "confidence_score": 0.5,
       "source": "archivum_config_settings",
-      "target": "archivum_auth_tokenpayload",
-      "confidence_score": 0.5
+      "target": "archivum_auth_tokenpayload"
     },
     {
       "relation": "uses",
@@ -3472,11 +3472,11 @@
       "source_file": "backend/archivum/auth.py",
       "source_location": "L15",
       "weight": 0.8,
-      "_src": "archivum_auth_currentuser",
-      "_tgt": "archivum_config_settings",
+      "_src": "archivum_config_settings",
+      "_tgt": "archivum_auth_currentuser",
+      "confidence_score": 0.5,
       "source": "archivum_config_settings",
-      "target": "archivum_auth_currentuser",
-      "confidence_score": 0.5
+      "target": "archivum_auth_currentuser"
     },
     {
       "relation": "uses",
@@ -3484,11 +3484,11 @@
       "source_file": "backend/archivum/auth.py",
       "source_location": "L15",
       "weight": 0.8,
-      "_src": "archivum_auth_rationale_1",
-      "_tgt": "archivum_config_settings",
+      "_src": "archivum_config_settings",
+      "_tgt": "archivum_auth_rationale_1",
+      "confidence_score": 0.5,
       "source": "archivum_config_settings",
-      "target": "archivum_auth_rationale_1",
-      "confidence_score": 0.5
+      "target": "archivum_auth_rationale_1"
     },
     {
       "relation": "uses",
@@ -3496,11 +3496,11 @@
       "source_file": "backend/archivum/auth.py",
       "source_location": "L15",
       "weight": 0.8,
-      "_src": "archivum_auth_rationale_36",
-      "_tgt": "archivum_config_settings",
+      "_src": "archivum_config_settings",
+      "_tgt": "archivum_auth_rationale_36",
+      "confidence_score": 0.5,
       "source": "archivum_config_settings",
-      "target": "archivum_auth_rationale_36",
-      "confidence_score": 0.5
+      "target": "archivum_auth_rationale_36"
     },
     {
       "relation": "uses",
@@ -3508,11 +3508,11 @@
       "source_file": "backend/archivum/auth.py",
       "source_location": "L15",
       "weight": 0.8,
-      "_src": "archivum_auth_rationale_41",
-      "_tgt": "archivum_config_settings",
+      "_src": "archivum_config_settings",
+      "_tgt": "archivum_auth_rationale_41",
+      "confidence_score": 0.5,
       "source": "archivum_config_settings",
-      "target": "archivum_auth_rationale_41",
-      "confidence_score": 0.5
+      "target": "archivum_auth_rationale_41"
     },
     {
       "relation": "uses",
@@ -3520,11 +3520,11 @@
       "source_file": "backend/archivum/auth.py",
       "source_location": "L15",
       "weight": 0.8,
-      "_src": "archivum_auth_rationale_67",
-      "_tgt": "archivum_config_settings",
+      "_src": "archivum_config_settings",
+      "_tgt": "archivum_auth_rationale_67",
+      "confidence_score": 0.5,
       "source": "archivum_config_settings",
-      "target": "archivum_auth_rationale_67",
-      "confidence_score": 0.5
+      "target": "archivum_auth_rationale_67"
     },
     {
       "relation": "uses",
@@ -3532,11 +3532,11 @@
       "source_file": "backend/archivum/auth.py",
       "source_location": "L15",
       "weight": 0.8,
-      "_src": "archivum_auth_rationale_74",
-      "_tgt": "archivum_config_settings",
+      "_src": "archivum_config_settings",
+      "_tgt": "archivum_auth_rationale_74",
+      "confidence_score": 0.5,
       "source": "archivum_config_settings",
-      "target": "archivum_auth_rationale_74",
-      "confidence_score": 0.5
+      "target": "archivum_auth_rationale_74"
     },
     {
       "relation": "uses",
@@ -3544,11 +3544,11 @@
       "source_file": "backend/archivum/auth.py",
       "source_location": "L15",
       "weight": 0.8,
-      "_src": "archivum_auth_rationale_106",
-      "_tgt": "archivum_config_settings",
+      "_src": "archivum_config_settings",
+      "_tgt": "archivum_auth_rationale_106",
+      "confidence_score": 0.5,
       "source": "archivum_config_settings",
-      "target": "archivum_auth_rationale_106",
-      "confidence_score": 0.5
+      "target": "archivum_auth_rationale_106"
     },
     {
       "relation": "uses",
@@ -3556,11 +3556,11 @@
       "source_file": "backend/archivum/db/sqlite.py",
       "source_location": "L13",
       "weight": 0.8,
-      "_src": "db_sqlite_rationale_1",
-      "_tgt": "archivum_config_settings",
+      "_src": "archivum_config_settings",
+      "_tgt": "db_sqlite_rationale_1",
+      "confidence_score": 0.5,
       "source": "archivum_config_settings",
-      "target": "db_sqlite_rationale_1",
-      "confidence_score": 0.5
+      "target": "db_sqlite_rationale_1"
     },
     {
       "relation": "uses",
@@ -3568,11 +3568,11 @@
       "source_file": "backend/archivum/db/sqlite.py",
       "source_location": "L13",
       "weight": 0.8,
-      "_src": "db_sqlite_rationale_166",
-      "_tgt": "archivum_config_settings",
+      "_src": "archivum_config_settings",
+      "_tgt": "db_sqlite_rationale_166",
+      "confidence_score": 0.5,
       "source": "archivum_config_settings",
-      "target": "db_sqlite_rationale_166",
-      "confidence_score": 0.5
+      "target": "db_sqlite_rationale_166"
     },
     {
       "relation": "uses",
@@ -3580,11 +3580,11 @@
       "source_file": "backend/archivum/db/sqlite.py",
       "source_location": "L13",
       "weight": 0.8,
-      "_src": "db_sqlite_rationale_212",
-      "_tgt": "archivum_config_settings",
+      "_src": "archivum_config_settings",
+      "_tgt": "db_sqlite_rationale_212",
+      "confidence_score": 0.5,
       "source": "archivum_config_settings",
-      "target": "db_sqlite_rationale_212",
-      "confidence_score": 0.5
+      "target": "db_sqlite_rationale_212"
     },
     {
       "relation": "uses",
@@ -3592,11 +3592,11 @@
       "source_file": "backend/archivum/db/sqlite.py",
       "source_location": "L13",
       "weight": 0.8,
-      "_src": "db_sqlite_rationale_251",
-      "_tgt": "archivum_config_settings",
+      "_src": "archivum_config_settings",
+      "_tgt": "db_sqlite_rationale_251",
+      "confidence_score": 0.5,
       "source": "archivum_config_settings",
-      "target": "db_sqlite_rationale_251",
-      "confidence_score": 0.5
+      "target": "db_sqlite_rationale_251"
     },
     {
       "relation": "uses",
@@ -3604,11 +3604,11 @@
       "source_file": "backend/archivum/db/qdrant_client.py",
       "source_location": "L22",
       "weight": 0.8,
-      "_src": "db_qdrant_client_rationale_1",
-      "_tgt": "archivum_config_settings",
+      "_src": "archivum_config_settings",
+      "_tgt": "db_qdrant_client_rationale_1",
+      "confidence_score": 0.5,
       "source": "archivum_config_settings",
-      "target": "db_qdrant_client_rationale_1",
-      "confidence_score": 0.5
+      "target": "db_qdrant_client_rationale_1"
     },
     {
       "relation": "uses",
@@ -3616,11 +3616,11 @@
       "source_file": "backend/archivum/db/qdrant_client.py",
       "source_location": "L22",
       "weight": 0.8,
-      "_src": "db_qdrant_client_rationale_51",
-      "_tgt": "archivum_config_settings",
+      "_src": "archivum_config_settings",
+      "_tgt": "db_qdrant_client_rationale_51",
+      "confidence_score": 0.5,
       "source": "archivum_config_settings",
-      "target": "db_qdrant_client_rationale_51",
-      "confidence_score": 0.5
+      "target": "db_qdrant_client_rationale_51"
     },
     {
       "relation": "uses",
@@ -3628,11 +3628,11 @@
       "source_file": "backend/archivum/db/qdrant_client.py",
       "source_location": "L22",
       "weight": 0.8,
-      "_src": "db_qdrant_client_rationale_70",
-      "_tgt": "archivum_config_settings",
+      "_src": "archivum_config_settings",
+      "_tgt": "db_qdrant_client_rationale_70",
+      "confidence_score": 0.5,
       "source": "archivum_config_settings",
-      "target": "db_qdrant_client_rationale_70",
-      "confidence_score": 0.5
+      "target": "db_qdrant_client_rationale_70"
     },
     {
       "relation": "uses",
@@ -3640,11 +3640,11 @@
       "source_file": "backend/archivum/db/qdrant_client.py",
       "source_location": "L22",
       "weight": 0.8,
-      "_src": "db_qdrant_client_rationale_83",
-      "_tgt": "archivum_config_settings",
+      "_src": "archivum_config_settings",
+      "_tgt": "db_qdrant_client_rationale_83",
+      "confidence_score": 0.5,
       "source": "archivum_config_settings",
-      "target": "db_qdrant_client_rationale_83",
-      "confidence_score": 0.5
+      "target": "db_qdrant_client_rationale_83"
     },
     {
       "relation": "uses",
@@ -3652,11 +3652,11 @@
       "source_file": "backend/archivum/db/qdrant_client.py",
       "source_location": "L22",
       "weight": 0.8,
-      "_src": "db_qdrant_client_rationale_113",
-      "_tgt": "archivum_config_settings",
+      "_src": "archivum_config_settings",
+      "_tgt": "db_qdrant_client_rationale_113",
+      "confidence_score": 0.5,
       "source": "archivum_config_settings",
-      "target": "db_qdrant_client_rationale_113",
-      "confidence_score": 0.5
+      "target": "db_qdrant_client_rationale_113"
     },
     {
       "relation": "uses",
@@ -3664,11 +3664,11 @@
       "source_file": "backend/archivum/db/qdrant_client.py",
       "source_location": "L22",
       "weight": 0.8,
-      "_src": "db_qdrant_client_rationale_148",
-      "_tgt": "archivum_config_settings",
+      "_src": "archivum_config_settings",
+      "_tgt": "db_qdrant_client_rationale_148",
+      "confidence_score": 0.5,
       "source": "archivum_config_settings",
-      "target": "db_qdrant_client_rationale_148",
-      "confidence_score": 0.5
+      "target": "db_qdrant_client_rationale_148"
     },
     {
       "relation": "uses",
@@ -3676,11 +3676,11 @@
       "source_file": "backend/archivum/db/qdrant_client.py",
       "source_location": "L22",
       "weight": 0.8,
-      "_src": "db_qdrant_client_rationale_187",
-      "_tgt": "archivum_config_settings",
+      "_src": "archivum_config_settings",
+      "_tgt": "db_qdrant_client_rationale_187",
+      "confidence_score": 0.5,
       "source": "archivum_config_settings",
-      "target": "db_qdrant_client_rationale_187",
-      "confidence_score": 0.5
+      "target": "db_qdrant_client_rationale_187"
     },
     {
       "relation": "uses",
@@ -3688,11 +3688,11 @@
       "source_file": "backend/archivum/db/qdrant_client.py",
       "source_location": "L22",
       "weight": 0.8,
-      "_src": "db_qdrant_client_rationale_219",
-      "_tgt": "archivum_config_settings",
+      "_src": "archivum_config_settings",
+      "_tgt": "db_qdrant_client_rationale_219",
+      "confidence_score": 0.5,
       "source": "archivum_config_settings",
-      "target": "db_qdrant_client_rationale_219",
-      "confidence_score": 0.5
+      "target": "db_qdrant_client_rationale_219"
     },
     {
       "relation": "uses",
@@ -3700,11 +3700,11 @@
       "source_file": "backend/archivum/db/graph.py",
       "source_location": "L16",
       "weight": 0.8,
-      "_src": "db_graph_rationale_1",
-      "_tgt": "archivum_config_settings",
+      "_src": "archivum_config_settings",
+      "_tgt": "db_graph_rationale_1",
+      "confidence_score": 0.5,
       "source": "archivum_config_settings",
-      "target": "db_graph_rationale_1",
-      "confidence_score": 0.5
+      "target": "db_graph_rationale_1"
     },
     {
       "relation": "uses",
@@ -3712,11 +3712,11 @@
       "source_file": "backend/archivum/db/graph.py",
       "source_location": "L16",
       "weight": 0.8,
-      "_src": "db_graph_rationale_39",
-      "_tgt": "archivum_config_settings",
+      "_src": "archivum_config_settings",
+      "_tgt": "db_graph_rationale_39",
+      "confidence_score": 0.5,
       "source": "archivum_config_settings",
-      "target": "db_graph_rationale_39",
-      "confidence_score": 0.5
+      "target": "db_graph_rationale_39"
     },
     {
       "relation": "uses",
@@ -3724,11 +3724,11 @@
       "source_file": "backend/archivum/db/graph.py",
       "source_location": "L16",
       "weight": 0.8,
-      "_src": "db_graph_rationale_78",
-      "_tgt": "archivum_config_settings",
+      "_src": "archivum_config_settings",
+      "_tgt": "db_graph_rationale_78",
+      "confidence_score": 0.5,
       "source": "archivum_config_settings",
-      "target": "db_graph_rationale_78",
-      "confidence_score": 0.5
+      "target": "db_graph_rationale_78"
     },
     {
       "relation": "uses",
@@ -3736,11 +3736,11 @@
       "source_file": "backend/archivum/db/graph.py",
       "source_location": "L16",
       "weight": 0.8,
-      "_src": "db_graph_rationale_149",
-      "_tgt": "archivum_config_settings",
+      "_src": "archivum_config_settings",
+      "_tgt": "db_graph_rationale_149",
+      "confidence_score": 0.5,
       "source": "archivum_config_settings",
-      "target": "db_graph_rationale_149",
-      "confidence_score": 0.5
+      "target": "db_graph_rationale_149"
     },
     {
       "relation": "uses",
@@ -3748,11 +3748,11 @@
       "source_file": "backend/archivum/db/graph.py",
       "source_location": "L16",
       "weight": 0.8,
-      "_src": "db_graph_rationale_225",
-      "_tgt": "archivum_config_settings",
+      "_src": "archivum_config_settings",
+      "_tgt": "db_graph_rationale_225",
+      "confidence_score": 0.5,
       "source": "archivum_config_settings",
-      "target": "db_graph_rationale_225",
-      "confidence_score": 0.5
+      "target": "db_graph_rationale_225"
     },
     {
       "relation": "uses",
@@ -3760,11 +3760,11 @@
       "source_file": "backend/archivum/db/graph.py",
       "source_location": "L16",
       "weight": 0.8,
-      "_src": "db_graph_rationale_246",
-      "_tgt": "archivum_config_settings",
+      "_src": "archivum_config_settings",
+      "_tgt": "db_graph_rationale_246",
+      "confidence_score": 0.5,
       "source": "archivum_config_settings",
-      "target": "db_graph_rationale_246",
-      "confidence_score": 0.5
+      "target": "db_graph_rationale_246"
     },
     {
       "relation": "uses",
@@ -3772,11 +3772,11 @@
       "source_file": "backend/archivum/db/graph.py",
       "source_location": "L16",
       "weight": 0.8,
-      "_src": "db_graph_rationale_323",
-      "_tgt": "archivum_config_settings",
+      "_src": "archivum_config_settings",
+      "_tgt": "db_graph_rationale_323",
+      "confidence_score": 0.5,
       "source": "archivum_config_settings",
-      "target": "db_graph_rationale_323",
-      "confidence_score": 0.5
+      "target": "db_graph_rationale_323"
     },
     {
       "relation": "uses",
@@ -3784,11 +3784,11 @@
       "source_file": "backend/archivum/ingest/agent.py",
       "source_location": "L16",
       "weight": 0.8,
-      "_src": "ingest_agent_wikipage",
-      "_tgt": "archivum_config_settings",
+      "_src": "archivum_config_settings",
+      "_tgt": "ingest_agent_wikipage",
+      "confidence_score": 0.5,
       "source": "archivum_config_settings",
-      "target": "ingest_agent_wikipage",
-      "confidence_score": 0.5
+      "target": "ingest_agent_wikipage"
     },
     {
       "relation": "uses",
@@ -3796,11 +3796,11 @@
       "source_file": "backend/archivum/ingest/agent.py",
       "source_location": "L16",
       "weight": 0.8,
-      "_src": "ingest_agent_extractionresult",
-      "_tgt": "archivum_config_settings",
+      "_src": "archivum_config_settings",
+      "_tgt": "ingest_agent_extractionresult",
+      "confidence_score": 0.5,
       "source": "archivum_config_settings",
-      "target": "ingest_agent_extractionresult",
-      "confidence_score": 0.5
+      "target": "ingest_agent_extractionresult"
     },
     {
       "relation": "uses",
@@ -3808,11 +3808,11 @@
       "source_file": "backend/archivum/ingest/agent.py",
       "source_location": "L16",
       "weight": 0.8,
-      "_src": "ingest_agent_wikiagent",
-      "_tgt": "archivum_config_settings",
+      "_src": "archivum_config_settings",
+      "_tgt": "ingest_agent_wikiagent",
+      "confidence_score": 0.5,
       "source": "archivum_config_settings",
-      "target": "ingest_agent_wikiagent",
-      "confidence_score": 0.5
+      "target": "ingest_agent_wikiagent"
     },
     {
       "relation": "uses",
@@ -3820,11 +3820,11 @@
       "source_file": "backend/archivum/ingest/agent.py",
       "source_location": "L16",
       "weight": 0.8,
-      "_src": "ingest_agent_rationale_1",
-      "_tgt": "archivum_config_settings",
+      "_src": "archivum_config_settings",
+      "_tgt": "ingest_agent_rationale_1",
+      "confidence_score": 0.5,
       "source": "archivum_config_settings",
-      "target": "ingest_agent_rationale_1",
-      "confidence_score": 0.5
+      "target": "ingest_agent_rationale_1"
     },
     {
       "relation": "uses",
@@ -3832,11 +3832,11 @@
       "source_file": "backend/archivum/ingest/agent.py",
       "source_location": "L16",
       "weight": 0.8,
-      "_src": "ingest_agent_rationale_83",
-      "_tgt": "archivum_config_settings",
+      "_src": "archivum_config_settings",
+      "_tgt": "ingest_agent_rationale_83",
+      "confidence_score": 0.5,
       "source": "archivum_config_settings",
-      "target": "ingest_agent_rationale_83",
-      "confidence_score": 0.5
+      "target": "ingest_agent_rationale_83"
     },
     {
       "relation": "uses",
@@ -3844,11 +3844,11 @@
       "source_file": "backend/archivum/ingest/agent.py",
       "source_location": "L16",
       "weight": 0.8,
-      "_src": "ingest_agent_rationale_99",
-      "_tgt": "archivum_config_settings",
+      "_src": "archivum_config_settings",
+      "_tgt": "ingest_agent_rationale_99",
+      "confidence_score": 0.5,
       "source": "archivum_config_settings",
-      "target": "ingest_agent_rationale_99",
-      "confidence_score": 0.5
+      "target": "ingest_agent_rationale_99"
     },
     {
       "relation": "uses",
@@ -3856,11 +3856,11 @@
       "source_file": "backend/archivum/ingest/agent.py",
       "source_location": "L16",
       "weight": 0.8,
-      "_src": "ingest_agent_rationale_194",
-      "_tgt": "archivum_config_settings",
+      "_src": "archivum_config_settings",
+      "_tgt": "ingest_agent_rationale_194",
+      "confidence_score": 0.5,
       "source": "archivum_config_settings",
-      "target": "ingest_agent_rationale_194",
-      "confidence_score": 0.5
+      "target": "ingest_agent_rationale_194"
     },
     {
       "relation": "uses",
@@ -3868,11 +3868,11 @@
       "source_file": "backend/archivum/ingest/pipeline.py",
       "source_location": "L11",
       "weight": 0.8,
-      "_src": "ingest_pipeline_rationale_1",
-      "_tgt": "archivum_config_settings",
+      "_src": "archivum_config_settings",
+      "_tgt": "ingest_pipeline_rationale_1",
+      "confidence_score": 0.5,
       "source": "archivum_config_settings",
-      "target": "ingest_pipeline_rationale_1",
-      "confidence_score": 0.5
+      "target": "ingest_pipeline_rationale_1"
     },
     {
       "relation": "uses",
@@ -3880,11 +3880,11 @@
       "source_file": "backend/archivum/ingest/pipeline.py",
       "source_location": "L11",
       "weight": 0.8,
-      "_src": "ingest_pipeline_rationale_25",
-      "_tgt": "archivum_config_settings",
+      "_src": "archivum_config_settings",
+      "_tgt": "ingest_pipeline_rationale_25",
+      "confidence_score": 0.5,
       "source": "archivum_config_settings",
-      "target": "ingest_pipeline_rationale_25",
-      "confidence_score": 0.5
+      "target": "ingest_pipeline_rationale_25"
     },
     {
       "relation": "uses",
@@ -3892,11 +3892,11 @@
       "source_file": "backend/archivum/ingest/pipeline.py",
       "source_location": "L11",
       "weight": 0.8,
-      "_src": "ingest_pipeline_rationale_39",
-      "_tgt": "archivum_config_settings",
+      "_src": "archivum_config_settings",
+      "_tgt": "ingest_pipeline_rationale_39",
+      "confidence_score": 0.5,
       "source": "archivum_config_settings",
-      "target": "ingest_pipeline_rationale_39",
-      "confidence_score": 0.5
+      "target": "ingest_pipeline_rationale_39"
     },
     {
       "relation": "uses",
@@ -3904,11 +3904,11 @@
       "source_file": "backend/archivum/ingest/pipeline.py",
       "source_location": "L11",
       "weight": 0.8,
-      "_src": "ingest_pipeline_rationale_51",
-      "_tgt": "archivum_config_settings",
+      "_src": "archivum_config_settings",
+      "_tgt": "ingest_pipeline_rationale_51",
+      "confidence_score": 0.5,
       "source": "archivum_config_settings",
-      "target": "ingest_pipeline_rationale_51",
-      "confidence_score": 0.5
+      "target": "ingest_pipeline_rationale_51"
     },
     {
       "relation": "uses",
@@ -3916,11 +3916,11 @@
       "source_file": "backend/archivum/ingest/pipeline.py",
       "source_location": "L11",
       "weight": 0.8,
-      "_src": "ingest_pipeline_rationale_204",
-      "_tgt": "archivum_config_settings",
+      "_src": "archivum_config_settings",
+      "_tgt": "ingest_pipeline_rationale_204",
+      "confidence_score": 0.5,
       "source": "archivum_config_settings",
-      "target": "ingest_pipeline_rationale_204",
-      "confidence_score": 0.5
+      "target": "ingest_pipeline_rationale_204"
     },
     {
       "relation": "uses",
@@ -3928,11 +3928,11 @@
       "source_file": "backend/archivum/api/auth.py",
       "source_location": "L19",
       "weight": 0.8,
-      "_src": "api_auth_loginrequest",
-      "_tgt": "archivum_config_settings",
+      "_src": "archivum_config_settings",
+      "_tgt": "api_auth_loginrequest",
+      "confidence_score": 0.5,
       "source": "archivum_config_settings",
-      "target": "api_auth_loginrequest",
-      "confidence_score": 0.5
+      "target": "api_auth_loginrequest"
     },
     {
       "relation": "uses",
@@ -3940,11 +3940,11 @@
       "source_file": "backend/archivum/api/auth.py",
       "source_location": "L19",
       "weight": 0.8,
-      "_src": "api_auth_registerrequest",
-      "_tgt": "archivum_config_settings",
+      "_src": "archivum_config_settings",
+      "_tgt": "api_auth_registerrequest",
+      "confidence_score": 0.5,
       "source": "archivum_config_settings",
-      "target": "api_auth_registerrequest",
-      "confidence_score": 0.5
+      "target": "api_auth_registerrequest"
     },
     {
       "relation": "uses",
@@ -3952,11 +3952,11 @@
       "source_file": "backend/archivum/api/auth.py",
       "source_location": "L19",
       "weight": 0.8,
-      "_src": "api_auth_authresponse",
-      "_tgt": "archivum_config_settings",
+      "_src": "archivum_config_settings",
+      "_tgt": "api_auth_authresponse",
+      "confidence_score": 0.5,
       "source": "archivum_config_settings",
-      "target": "api_auth_authresponse",
-      "confidence_score": 0.5
+      "target": "api_auth_authresponse"
     },
     {
       "relation": "uses",
@@ -3964,11 +3964,11 @@
       "source_file": "backend/archivum/api/auth.py",
       "source_location": "L19",
       "weight": 0.8,
-      "_src": "api_auth_rationale_1",
-      "_tgt": "archivum_config_settings",
+      "_src": "archivum_config_settings",
+      "_tgt": "api_auth_rationale_1",
+      "confidence_score": 0.5,
       "source": "archivum_config_settings",
-      "target": "api_auth_rationale_1",
-      "confidence_score": 0.5
+      "target": "api_auth_rationale_1"
     },
     {
       "relation": "uses",
@@ -3976,11 +3976,11 @@
       "source_file": "backend/archivum/api/ingest.py",
       "source_location": "L21",
       "weight": 0.8,
-      "_src": "api_ingest_urlingestrequest",
-      "_tgt": "archivum_config_settings",
+      "_src": "archivum_config_settings",
+      "_tgt": "api_ingest_urlingestrequest",
+      "confidence_score": 0.5,
       "source": "archivum_config_settings",
-      "target": "api_ingest_urlingestrequest",
-      "confidence_score": 0.5
+      "target": "api_ingest_urlingestrequest"
     },
     {
       "relation": "uses",
@@ -3988,11 +3988,11 @@
       "source_file": "backend/archivum/api/ingest.py",
       "source_location": "L21",
       "weight": 0.8,
-      "_src": "api_ingest_rationale_1",
-      "_tgt": "archivum_config_settings",
+      "_src": "archivum_config_settings",
+      "_tgt": "api_ingest_rationale_1",
+      "confidence_score": 0.5,
       "source": "archivum_config_settings",
-      "target": "api_ingest_rationale_1",
-      "confidence_score": 0.5
+      "target": "api_ingest_rationale_1"
     },
     {
       "relation": "uses",
@@ -4000,11 +4000,11 @@
       "source_file": "backend/archivum/api/ingest.py",
       "source_location": "L21",
       "weight": 0.8,
-      "_src": "api_ingest_rationale_40",
-      "_tgt": "archivum_config_settings",
+      "_src": "archivum_config_settings",
+      "_tgt": "api_ingest_rationale_40",
+      "confidence_score": 0.5,
       "source": "archivum_config_settings",
-      "target": "api_ingest_rationale_40",
-      "confidence_score": 0.5
+      "target": "api_ingest_rationale_40"
     },
     {
       "relation": "uses",
@@ -4012,11 +4012,11 @@
       "source_file": "backend/archivum/api/ingest.py",
       "source_location": "L21",
       "weight": 0.8,
-      "_src": "api_ingest_rationale_75",
-      "_tgt": "archivum_config_settings",
+      "_src": "archivum_config_settings",
+      "_tgt": "api_ingest_rationale_75",
+      "confidence_score": 0.5,
       "source": "archivum_config_settings",
-      "target": "api_ingest_rationale_75",
-      "confidence_score": 0.5
+      "target": "api_ingest_rationale_75"
     },
     {
       "relation": "uses",
@@ -4024,11 +4024,11 @@
       "source_file": "backend/archivum/api/ingest.py",
       "source_location": "L21",
       "weight": 0.8,
-      "_src": "api_ingest_rationale_108",
-      "_tgt": "archivum_config_settings",
+      "_src": "archivum_config_settings",
+      "_tgt": "api_ingest_rationale_108",
+      "confidence_score": 0.5,
       "source": "archivum_config_settings",
-      "target": "api_ingest_rationale_108",
-      "confidence_score": 0.5
+      "target": "api_ingest_rationale_108"
     },
     {
       "relation": "uses",
@@ -4036,11 +4036,11 @@
       "source_file": "backend/archivum/api/ingest.py",
       "source_location": "L21",
       "weight": 0.8,
-      "_src": "api_ingest_rationale_130",
-      "_tgt": "archivum_config_settings",
+      "_src": "archivum_config_settings",
+      "_tgt": "api_ingest_rationale_130",
+      "confidence_score": 0.5,
       "source": "archivum_config_settings",
-      "target": "api_ingest_rationale_130",
-      "confidence_score": 0.5
+      "target": "api_ingest_rationale_130"
     },
     {
       "relation": "uses",
@@ -4048,11 +4048,11 @@
       "source_file": "backend/archivum/api/ingest.py",
       "source_location": "L21",
       "weight": 0.8,
-      "_src": "api_ingest_rationale_185",
-      "_tgt": "archivum_config_settings",
+      "_src": "archivum_config_settings",
+      "_tgt": "api_ingest_rationale_185",
+      "confidence_score": 0.5,
       "source": "archivum_config_settings",
-      "target": "api_ingest_rationale_185",
-      "confidence_score": 0.5
+      "target": "api_ingest_rationale_185"
     },
     {
       "relation": "uses",
@@ -4060,11 +4060,11 @@
       "source_file": "backend/archivum/api/pages.py",
       "source_location": "L13",
       "weight": 0.8,
-      "_src": "api_pages_pagesummary",
-      "_tgt": "archivum_config_settings",
+      "_src": "archivum_config_settings",
+      "_tgt": "api_pages_pagesummary",
+      "confidence_score": 0.5,
       "source": "archivum_config_settings",
-      "target": "api_pages_pagesummary",
-      "confidence_score": 0.5
+      "target": "api_pages_pagesummary"
     },
     {
       "relation": "uses",
@@ -4072,11 +4072,11 @@
       "source_file": "backend/archivum/api/pages.py",
       "source_location": "L13",
       "weight": 0.8,
-      "_src": "api_pages_pagedetail",
-      "_tgt": "archivum_config_settings",
+      "_src": "archivum_config_settings",
+      "_tgt": "api_pages_pagedetail",
+      "confidence_score": 0.5,
       "source": "archivum_config_settings",
-      "target": "api_pages_pagedetail",
-      "confidence_score": 0.5
+      "target": "api_pages_pagedetail"
     },
     {
       "relation": "uses",
@@ -4084,11 +4084,11 @@
       "source_file": "backend/archivum/api/pages.py",
       "source_location": "L13",
       "weight": 0.8,
-      "_src": "api_pages_createpagerequest",
-      "_tgt": "archivum_config_settings",
+      "_src": "archivum_config_settings",
+      "_tgt": "api_pages_createpagerequest",
+      "confidence_score": 0.5,
       "source": "archivum_config_settings",
-      "target": "api_pages_createpagerequest",
-      "confidence_score": 0.5
+      "target": "api_pages_createpagerequest"
     },
     {
       "relation": "uses",
@@ -4096,11 +4096,11 @@
       "source_file": "backend/archivum/api/pages.py",
       "source_location": "L13",
       "weight": 0.8,
-      "_src": "api_pages_updatepagerequest",
-      "_tgt": "archivum_config_settings",
+      "_src": "archivum_config_settings",
+      "_tgt": "api_pages_updatepagerequest",
+      "confidence_score": 0.5,
       "source": "archivum_config_settings",
-      "target": "api_pages_updatepagerequest",
-      "confidence_score": 0.5
+      "target": "api_pages_updatepagerequest"
     },
     {
       "relation": "uses",
@@ -4108,11 +4108,11 @@
       "source_file": "backend/archivum/api/pages.py",
       "source_location": "L13",
       "weight": 0.8,
-      "_src": "api_pages_rationale_1",
-      "_tgt": "archivum_config_settings",
+      "_src": "archivum_config_settings",
+      "_tgt": "api_pages_rationale_1",
+      "confidence_score": 0.5,
       "source": "archivum_config_settings",
-      "target": "api_pages_rationale_1",
-      "confidence_score": 0.5
+      "target": "api_pages_rationale_1"
     },
     {
       "relation": "uses",
@@ -4120,11 +4120,11 @@
       "source_file": "backend/archivum/api/search.py",
       "source_location": "L6",
       "weight": 0.8,
-      "_src": "api_search_rationale_20",
-      "_tgt": "archivum_config_settings",
+      "_src": "archivum_config_settings",
+      "_tgt": "api_search_rationale_20",
+      "confidence_score": 0.5,
       "source": "archivum_config_settings",
-      "target": "api_search_rationale_20",
-      "confidence_score": 0.5
+      "target": "api_search_rationale_20"
     },
     {
       "relation": "uses",
@@ -4132,11 +4132,11 @@
       "source_file": "backend/archivum/api/query.py",
       "source_location": "L14",
       "weight": 0.8,
-      "_src": "api_query_queryrequest",
-      "_tgt": "archivum_config_settings",
+      "_src": "archivum_config_settings",
+      "_tgt": "api_query_queryrequest",
+      "confidence_score": 0.5,
       "source": "archivum_config_settings",
-      "target": "api_query_queryrequest",
-      "confidence_score": 0.5
+      "target": "api_query_queryrequest"
     },
     {
       "relation": "uses",
@@ -4144,11 +4144,11 @@
       "source_file": "backend/archivum/mcp/server.py",
       "source_location": "L14",
       "weight": 0.8,
-      "_src": "mcp_server_toolcontext",
-      "_tgt": "archivum_config_settings",
+      "_src": "archivum_config_settings",
+      "_tgt": "mcp_server_toolcontext",
+      "confidence_score": 0.5,
       "source": "archivum_config_settings",
-      "target": "mcp_server_toolcontext",
-      "confidence_score": 0.5
+      "target": "mcp_server_toolcontext"
     },
     {
       "relation": "uses",
@@ -4156,11 +4156,11 @@
       "source_file": "backend/archivum/mcp/server.py",
       "source_location": "L14",
       "weight": 0.8,
-      "_src": "mcp_server_rationale_45",
-      "_tgt": "archivum_config_settings",
+      "_src": "archivum_config_settings",
+      "_tgt": "mcp_server_rationale_45",
+      "confidence_score": 0.5,
       "source": "archivum_config_settings",
-      "target": "mcp_server_rationale_45",
-      "confidence_score": 0.5
+      "target": "mcp_server_rationale_45"
     },
     {
       "relation": "uses",
@@ -4168,11 +4168,11 @@
       "source_file": "backend/archivum/mcp/server.py",
       "source_location": "L14",
       "weight": 0.8,
-      "_src": "mcp_server_rationale_59",
-      "_tgt": "archivum_config_settings",
+      "_src": "archivum_config_settings",
+      "_tgt": "mcp_server_rationale_59",
+      "confidence_score": 0.5,
       "source": "archivum_config_settings",
-      "target": "mcp_server_rationale_59",
-      "confidence_score": 0.5
+      "target": "mcp_server_rationale_59"
     },
     {
       "relation": "uses",
@@ -4180,11 +4180,11 @@
       "source_file": "backend/archivum/mcp/server.py",
       "source_location": "L14",
       "weight": 0.8,
-      "_src": "mcp_server_rationale_66",
-      "_tgt": "archivum_config_settings",
+      "_src": "archivum_config_settings",
+      "_tgt": "mcp_server_rationale_66",
+      "confidence_score": 0.5,
       "source": "archivum_config_settings",
-      "target": "mcp_server_rationale_66",
-      "confidence_score": 0.5
+      "target": "mcp_server_rationale_66"
     },
     {
       "relation": "uses",
@@ -4192,11 +4192,11 @@
       "source_file": "backend/archivum/mcp/server.py",
       "source_location": "L14",
       "weight": 0.8,
-      "_src": "mcp_server_rationale_84",
-      "_tgt": "archivum_config_settings",
+      "_src": "archivum_config_settings",
+      "_tgt": "mcp_server_rationale_84",
+      "confidence_score": 0.5,
       "source": "archivum_config_settings",
-      "target": "mcp_server_rationale_84",
-      "confidence_score": 0.5
+      "target": "mcp_server_rationale_84"
     },
     {
       "relation": "uses",
@@ -4204,11 +4204,11 @@
       "source_file": "backend/archivum/mcp/server.py",
       "source_location": "L14",
       "weight": 0.8,
-      "_src": "mcp_server_rationale_108",
-      "_tgt": "archivum_config_settings",
+      "_src": "archivum_config_settings",
+      "_tgt": "mcp_server_rationale_108",
+      "confidence_score": 0.5,
       "source": "archivum_config_settings",
-      "target": "mcp_server_rationale_108",
-      "confidence_score": 0.5
+      "target": "mcp_server_rationale_108"
     },
     {
       "relation": "uses",
@@ -4216,11 +4216,11 @@
       "source_file": "backend/archivum/mcp/server.py",
       "source_location": "L14",
       "weight": 0.8,
-      "_src": "mcp_server_rationale_131",
-      "_tgt": "archivum_config_settings",
+      "_src": "archivum_config_settings",
+      "_tgt": "mcp_server_rationale_131",
+      "confidence_score": 0.5,
       "source": "archivum_config_settings",
-      "target": "mcp_server_rationale_131",
-      "confidence_score": 0.5
+      "target": "mcp_server_rationale_131"
     },
     {
       "relation": "uses",
@@ -4228,11 +4228,11 @@
       "source_file": "backend/archivum/mcp/server.py",
       "source_location": "L14",
       "weight": 0.8,
-      "_src": "mcp_server_rationale_140",
-      "_tgt": "archivum_config_settings",
+      "_src": "archivum_config_settings",
+      "_tgt": "mcp_server_rationale_140",
+      "confidence_score": 0.5,
       "source": "archivum_config_settings",
-      "target": "mcp_server_rationale_140",
-      "confidence_score": 0.5
+      "target": "mcp_server_rationale_140"
     },
     {
       "relation": "uses",
@@ -4240,11 +4240,11 @@
       "source_file": "backend/archivum/mcp/server.py",
       "source_location": "L14",
       "weight": 0.8,
-      "_src": "mcp_server_rationale_167",
-      "_tgt": "archivum_config_settings",
+      "_src": "archivum_config_settings",
+      "_tgt": "mcp_server_rationale_167",
+      "confidence_score": 0.5,
       "source": "archivum_config_settings",
-      "target": "mcp_server_rationale_167",
-      "confidence_score": 0.5
+      "target": "mcp_server_rationale_167"
     },
     {
       "relation": "calls",
@@ -4253,8 +4253,8 @@
       "source_file": "backend/archivum/main.py",
       "source_location": "L28",
       "weight": 1.0,
-      "_src": "archivum_main_lifespan",
-      "_tgt": "archivum_config_get_settings",
+      "_src": "archivum_config_get_settings",
+      "_tgt": "archivum_main_lifespan",
       "source": "archivum_config_get_settings",
       "target": "archivum_main_lifespan"
     },
@@ -4265,8 +4265,8 @@
       "source_file": "backend/archivum/main.py",
       "source_location": "L49",
       "weight": 1.0,
-      "_src": "archivum_main_create_app",
-      "_tgt": "archivum_config_get_settings",
+      "_src": "archivum_config_get_settings",
+      "_tgt": "archivum_main_create_app",
       "source": "archivum_config_get_settings",
       "target": "archivum_main_create_app"
     },
@@ -4277,8 +4277,8 @@
       "source_file": "backend/archivum/db/sqlite.py",
       "source_location": "L122",
       "weight": 1.0,
-      "_src": "db_sqlite_get_db",
-      "_tgt": "archivum_config_get_settings",
+      "_src": "archivum_config_get_settings",
+      "_tgt": "db_sqlite_get_db",
       "source": "archivum_config_get_settings",
       "target": "db_sqlite_get_db"
     },
@@ -4289,8 +4289,8 @@
       "source_file": "backend/archivum/db/qdrant_client.py",
       "source_location": "L35",
       "weight": 1.0,
-      "_src": "db_qdrant_client_get_embedder",
-      "_tgt": "archivum_config_get_settings",
+      "_src": "archivum_config_get_settings",
+      "_tgt": "db_qdrant_client_get_embedder",
       "source": "archivum_config_get_settings",
       "target": "db_qdrant_client_get_embedder"
     },
@@ -4301,8 +4301,8 @@
       "source_file": "backend/archivum/db/qdrant_client.py",
       "source_location": "L43",
       "weight": 1.0,
-      "_src": "db_qdrant_client_get_client",
-      "_tgt": "archivum_config_get_settings",
+      "_src": "archivum_config_get_settings",
+      "_tgt": "db_qdrant_client_get_client",
       "source": "archivum_config_get_settings",
       "target": "db_qdrant_client_get_client"
     },
@@ -4313,8 +4313,8 @@
       "source_file": "backend/archivum/db/qdrant_client.py",
       "source_location": "L84",
       "weight": 1.0,
-      "_src": "db_qdrant_client_init_collection",
-      "_tgt": "archivum_config_get_settings",
+      "_src": "archivum_config_get_settings",
+      "_tgt": "db_qdrant_client_init_collection",
       "source": "archivum_config_get_settings",
       "target": "db_qdrant_client_init_collection"
     },
@@ -4325,8 +4325,8 @@
       "source_file": "backend/archivum/db/qdrant_client.py",
       "source_location": "L114",
       "weight": 1.0,
-      "_src": "db_qdrant_client_upsert_page",
-      "_tgt": "archivum_config_get_settings",
+      "_src": "archivum_config_get_settings",
+      "_tgt": "db_qdrant_client_upsert_page",
       "source": "archivum_config_get_settings",
       "target": "db_qdrant_client_upsert_page"
     },
@@ -4337,8 +4337,8 @@
       "source_file": "backend/archivum/db/qdrant_client.py",
       "source_location": "L149",
       "weight": 1.0,
-      "_src": "db_qdrant_client_search",
-      "_tgt": "archivum_config_get_settings",
+      "_src": "archivum_config_get_settings",
+      "_tgt": "db_qdrant_client_search",
       "source": "archivum_config_get_settings",
       "target": "db_qdrant_client_search"
     },
@@ -4349,8 +4349,8 @@
       "source_file": "backend/archivum/db/qdrant_client.py",
       "source_location": "L188",
       "weight": 1.0,
-      "_src": "db_qdrant_client_search_raw",
-      "_tgt": "archivum_config_get_settings",
+      "_src": "archivum_config_get_settings",
+      "_tgt": "db_qdrant_client_search_raw",
       "source": "archivum_config_get_settings",
       "target": "db_qdrant_client_search_raw"
     },
@@ -4361,8 +4361,8 @@
       "source_file": "backend/archivum/db/qdrant_client.py",
       "source_location": "L220",
       "weight": 1.0,
-      "_src": "db_qdrant_client_delete_page",
-      "_tgt": "archivum_config_get_settings",
+      "_src": "archivum_config_get_settings",
+      "_tgt": "db_qdrant_client_delete_page",
       "source": "archivum_config_get_settings",
       "target": "db_qdrant_client_delete_page"
     },
@@ -4373,8 +4373,8 @@
       "source_file": "backend/archivum/db/graph.py",
       "source_location": "L29",
       "weight": 1.0,
-      "_src": "db_graph_get_conn",
-      "_tgt": "archivum_config_get_settings",
+      "_src": "archivum_config_get_settings",
+      "_tgt": "db_graph_get_conn",
       "source": "archivum_config_get_settings",
       "target": "db_graph_get_conn"
     },
@@ -4385,8 +4385,8 @@
       "source_file": "backend/archivum/ingest/agent.py",
       "source_location": "L95",
       "weight": 1.0,
-      "_src": "ingest_agent_wikiagent_init",
-      "_tgt": "archivum_config_get_settings",
+      "_src": "archivum_config_get_settings",
+      "_tgt": "ingest_agent_wikiagent_init",
       "source": "archivum_config_get_settings",
       "target": "ingest_agent_wikiagent_init"
     },
@@ -4397,8 +4397,8 @@
       "source_file": "backend/archivum/ingest/pipeline.py",
       "source_location": "L57",
       "weight": 1.0,
-      "_src": "ingest_pipeline_ingest",
-      "_tgt": "archivum_config_get_settings",
+      "_src": "archivum_config_get_settings",
+      "_tgt": "ingest_pipeline_ingest",
       "source": "archivum_config_get_settings",
       "target": "ingest_pipeline_ingest"
     },
@@ -4684,11 +4684,11 @@
       "source_file": "backend/archivum/api/auth.py",
       "source_location": "L11",
       "weight": 0.8,
-      "_src": "api_auth_loginrequest",
-      "_tgt": "archivum_auth_currentuser",
+      "_src": "archivum_auth_currentuser",
+      "_tgt": "api_auth_loginrequest",
+      "confidence_score": 0.5,
       "source": "archivum_auth_currentuser",
-      "target": "api_auth_loginrequest",
-      "confidence_score": 0.5
+      "target": "api_auth_loginrequest"
     },
     {
       "relation": "uses",
@@ -4696,11 +4696,11 @@
       "source_file": "backend/archivum/api/auth.py",
       "source_location": "L11",
       "weight": 0.8,
-      "_src": "api_auth_registerrequest",
-      "_tgt": "archivum_auth_currentuser",
+      "_src": "archivum_auth_currentuser",
+      "_tgt": "api_auth_registerrequest",
+      "confidence_score": 0.5,
       "source": "archivum_auth_currentuser",
-      "target": "api_auth_registerrequest",
-      "confidence_score": 0.5
+      "target": "api_auth_registerrequest"
     },
     {
       "relation": "uses",
@@ -4708,11 +4708,11 @@
       "source_file": "backend/archivum/api/auth.py",
       "source_location": "L11",
       "weight": 0.8,
-      "_src": "api_auth_authresponse",
-      "_tgt": "archivum_auth_currentuser",
+      "_src": "archivum_auth_currentuser",
+      "_tgt": "api_auth_authresponse",
+      "confidence_score": 0.5,
       "source": "archivum_auth_currentuser",
-      "target": "api_auth_authresponse",
-      "confidence_score": 0.5
+      "target": "api_auth_authresponse"
     },
     {
       "relation": "uses",
@@ -4720,11 +4720,11 @@
       "source_file": "backend/archivum/api/auth.py",
       "source_location": "L11",
       "weight": 0.8,
-      "_src": "api_auth_rationale_1",
-      "_tgt": "archivum_auth_currentuser",
+      "_src": "archivum_auth_currentuser",
+      "_tgt": "api_auth_rationale_1",
+      "confidence_score": 0.5,
       "source": "archivum_auth_currentuser",
-      "target": "api_auth_rationale_1",
-      "confidence_score": 0.5
+      "target": "api_auth_rationale_1"
     },
     {
       "relation": "uses",
@@ -4732,11 +4732,11 @@
       "source_file": "backend/archivum/api/ingest.py",
       "source_location": "L20",
       "weight": 0.8,
-      "_src": "api_ingest_urlingestrequest",
-      "_tgt": "archivum_auth_currentuser",
+      "_src": "archivum_auth_currentuser",
+      "_tgt": "api_ingest_urlingestrequest",
+      "confidence_score": 0.5,
       "source": "archivum_auth_currentuser",
-      "target": "api_ingest_urlingestrequest",
-      "confidence_score": 0.5
+      "target": "api_ingest_urlingestrequest"
     },
     {
       "relation": "uses",
@@ -4744,11 +4744,11 @@
       "source_file": "backend/archivum/api/ingest.py",
       "source_location": "L20",
       "weight": 0.8,
-      "_src": "api_ingest_rationale_1",
-      "_tgt": "archivum_auth_currentuser",
+      "_src": "archivum_auth_currentuser",
+      "_tgt": "api_ingest_rationale_1",
+      "confidence_score": 0.5,
       "source": "archivum_auth_currentuser",
-      "target": "api_ingest_rationale_1",
-      "confidence_score": 0.5
+      "target": "api_ingest_rationale_1"
     },
     {
       "relation": "uses",
@@ -4756,11 +4756,11 @@
       "source_file": "backend/archivum/api/ingest.py",
       "source_location": "L20",
       "weight": 0.8,
-      "_src": "api_ingest_rationale_40",
-      "_tgt": "archivum_auth_currentuser",
+      "_src": "archivum_auth_currentuser",
+      "_tgt": "api_ingest_rationale_40",
+      "confidence_score": 0.5,
       "source": "archivum_auth_currentuser",
-      "target": "api_ingest_rationale_40",
-      "confidence_score": 0.5
+      "target": "api_ingest_rationale_40"
     },
     {
       "relation": "uses",
@@ -4768,11 +4768,11 @@
       "source_file": "backend/archivum/api/ingest.py",
       "source_location": "L20",
       "weight": 0.8,
-      "_src": "api_ingest_rationale_75",
-      "_tgt": "archivum_auth_currentuser",
+      "_src": "archivum_auth_currentuser",
+      "_tgt": "api_ingest_rationale_75",
+      "confidence_score": 0.5,
       "source": "archivum_auth_currentuser",
-      "target": "api_ingest_rationale_75",
-      "confidence_score": 0.5
+      "target": "api_ingest_rationale_75"
     },
     {
       "relation": "uses",
@@ -4780,11 +4780,11 @@
       "source_file": "backend/archivum/api/ingest.py",
       "source_location": "L20",
       "weight": 0.8,
-      "_src": "api_ingest_rationale_108",
-      "_tgt": "archivum_auth_currentuser",
+      "_src": "archivum_auth_currentuser",
+      "_tgt": "api_ingest_rationale_108",
+      "confidence_score": 0.5,
       "source": "archivum_auth_currentuser",
-      "target": "api_ingest_rationale_108",
-      "confidence_score": 0.5
+      "target": "api_ingest_rationale_108"
     },
     {
       "relation": "uses",
@@ -4792,11 +4792,11 @@
       "source_file": "backend/archivum/api/ingest.py",
       "source_location": "L20",
       "weight": 0.8,
-      "_src": "api_ingest_rationale_130",
-      "_tgt": "archivum_auth_currentuser",
+      "_src": "archivum_auth_currentuser",
+      "_tgt": "api_ingest_rationale_130",
+      "confidence_score": 0.5,
       "source": "archivum_auth_currentuser",
-      "target": "api_ingest_rationale_130",
-      "confidence_score": 0.5
+      "target": "api_ingest_rationale_130"
     },
     {
       "relation": "uses",
@@ -4804,11 +4804,11 @@
       "source_file": "backend/archivum/api/ingest.py",
       "source_location": "L20",
       "weight": 0.8,
-      "_src": "api_ingest_rationale_185",
-      "_tgt": "archivum_auth_currentuser",
+      "_src": "archivum_auth_currentuser",
+      "_tgt": "api_ingest_rationale_185",
+      "confidence_score": 0.5,
       "source": "archivum_auth_currentuser",
-      "target": "api_ingest_rationale_185",
-      "confidence_score": 0.5
+      "target": "api_ingest_rationale_185"
     },
     {
       "relation": "uses",
@@ -4816,11 +4816,11 @@
       "source_file": "backend/archivum/api/pages.py",
       "source_location": "L12",
       "weight": 0.8,
-      "_src": "api_pages_pagesummary",
-      "_tgt": "archivum_auth_currentuser",
+      "_src": "archivum_auth_currentuser",
+      "_tgt": "api_pages_pagesummary",
+      "confidence_score": 0.5,
       "source": "archivum_auth_currentuser",
-      "target": "api_pages_pagesummary",
-      "confidence_score": 0.5
+      "target": "api_pages_pagesummary"
     },
     {
       "relation": "uses",
@@ -4828,11 +4828,11 @@
       "source_file": "backend/archivum/api/pages.py",
       "source_location": "L12",
       "weight": 0.8,
-      "_src": "api_pages_pagedetail",
-      "_tgt": "archivum_auth_currentuser",
+      "_src": "archivum_auth_currentuser",
+      "_tgt": "api_pages_pagedetail",
+      "confidence_score": 0.5,
       "source": "archivum_auth_currentuser",
-      "target": "api_pages_pagedetail",
-      "confidence_score": 0.5
+      "target": "api_pages_pagedetail"
     },
     {
       "relation": "uses",
@@ -4840,11 +4840,11 @@
       "source_file": "backend/archivum/api/pages.py",
       "source_location": "L12",
       "weight": 0.8,
-      "_src": "api_pages_createpagerequest",
-      "_tgt": "archivum_auth_currentuser",
+      "_src": "archivum_auth_currentuser",
+      "_tgt": "api_pages_createpagerequest",
+      "confidence_score": 0.5,
       "source": "archivum_auth_currentuser",
-      "target": "api_pages_createpagerequest",
-      "confidence_score": 0.5
+      "target": "api_pages_createpagerequest"
     },
     {
       "relation": "uses",
@@ -4852,11 +4852,11 @@
       "source_file": "backend/archivum/api/pages.py",
       "source_location": "L12",
       "weight": 0.8,
-      "_src": "api_pages_updatepagerequest",
-      "_tgt": "archivum_auth_currentuser",
+      "_src": "archivum_auth_currentuser",
+      "_tgt": "api_pages_updatepagerequest",
+      "confidence_score": 0.5,
       "source": "archivum_auth_currentuser",
-      "target": "api_pages_updatepagerequest",
-      "confidence_score": 0.5
+      "target": "api_pages_updatepagerequest"
     },
     {
       "relation": "uses",
@@ -4864,11 +4864,11 @@
       "source_file": "backend/archivum/api/pages.py",
       "source_location": "L12",
       "weight": 0.8,
-      "_src": "api_pages_rationale_1",
-      "_tgt": "archivum_auth_currentuser",
+      "_src": "archivum_auth_currentuser",
+      "_tgt": "api_pages_rationale_1",
+      "confidence_score": 0.5,
       "source": "archivum_auth_currentuser",
-      "target": "api_pages_rationale_1",
-      "confidence_score": 0.5
+      "target": "api_pages_rationale_1"
     },
     {
       "relation": "uses",
@@ -4876,11 +4876,11 @@
       "source_file": "backend/archivum/api/search.py",
       "source_location": "L5",
       "weight": 0.8,
-      "_src": "api_search_rationale_20",
-      "_tgt": "archivum_auth_currentuser",
+      "_src": "archivum_auth_currentuser",
+      "_tgt": "api_search_rationale_20",
+      "confidence_score": 0.5,
       "source": "archivum_auth_currentuser",
-      "target": "api_search_rationale_20",
-      "confidence_score": 0.5
+      "target": "api_search_rationale_20"
     },
     {
       "relation": "uses",
@@ -4888,11 +4888,11 @@
       "source_file": "backend/archivum/api/query.py",
       "source_location": "L13",
       "weight": 0.8,
-      "_src": "api_query_queryrequest",
-      "_tgt": "archivum_auth_currentuser",
+      "_src": "archivum_auth_currentuser",
+      "_tgt": "api_query_queryrequest",
+      "confidence_score": 0.5,
       "source": "archivum_auth_currentuser",
-      "target": "api_query_queryrequest",
-      "confidence_score": 0.5
+      "target": "api_query_queryrequest"
     },
     {
       "relation": "rationale_for",
@@ -4913,8 +4913,8 @@
       "source_file": "backend/archivum/main.py",
       "source_location": "L43",
       "weight": 1.0,
-      "_src": "archivum_main_lifespan",
-      "_tgt": "archivum_auth_hash_password",
+      "_src": "archivum_auth_hash_password",
+      "_tgt": "archivum_main_lifespan",
       "source": "archivum_auth_hash_password",
       "target": "archivum_main_lifespan"
     },
@@ -4925,8 +4925,8 @@
       "source_file": "backend/archivum/api/auth.py",
       "source_location": "L161",
       "weight": 1.0,
-      "_src": "api_auth_register",
-      "_tgt": "archivum_auth_hash_password",
+      "_src": "archivum_auth_hash_password",
+      "_tgt": "api_auth_register",
       "source": "archivum_auth_hash_password",
       "target": "api_auth_register"
     },
@@ -4949,8 +4949,8 @@
       "source_file": "backend/archivum/api/auth.py",
       "source_location": "L75",
       "weight": 1.0,
-      "_src": "api_auth_login",
-      "_tgt": "archivum_auth_verify_password",
+      "_src": "archivum_auth_verify_password",
+      "_tgt": "api_auth_login",
       "source": "archivum_auth_verify_password",
       "target": "api_auth_login"
     },
@@ -4961,8 +4961,8 @@
       "source_file": "backend/archivum/api/auth.py",
       "source_location": "L82",
       "weight": 1.0,
-      "_src": "api_auth_login",
-      "_tgt": "archivum_auth_create_access_token",
+      "_src": "archivum_auth_create_access_token",
+      "_tgt": "api_auth_login",
       "source": "archivum_auth_create_access_token",
       "target": "api_auth_login"
     },
@@ -4973,8 +4973,8 @@
       "source_file": "backend/archivum/api/auth.py",
       "source_location": "L133",
       "weight": 1.0,
-      "_src": "api_auth_refresh",
-      "_tgt": "archivum_auth_create_access_token",
+      "_src": "archivum_auth_create_access_token",
+      "_tgt": "api_auth_refresh",
       "source": "archivum_auth_create_access_token",
       "target": "api_auth_refresh"
     },
@@ -4997,8 +4997,8 @@
       "source_file": "backend/archivum/api/auth.py",
       "source_location": "L89",
       "weight": 1.0,
-      "_src": "api_auth_login",
-      "_tgt": "archivum_auth_create_refresh_token",
+      "_src": "archivum_auth_create_refresh_token",
+      "_tgt": "api_auth_login",
       "source": "archivum_auth_create_refresh_token",
       "target": "api_auth_login"
     },
@@ -5009,8 +5009,8 @@
       "source_file": "backend/archivum/api/auth.py",
       "source_location": "L129",
       "weight": 1.0,
-      "_src": "api_auth_refresh",
-      "_tgt": "archivum_auth_create_refresh_token",
+      "_src": "archivum_auth_create_refresh_token",
+      "_tgt": "api_auth_refresh",
       "source": "archivum_auth_create_refresh_token",
       "target": "api_auth_refresh"
     },
@@ -5669,8 +5669,8 @@
       "source_file": "backend/archivum/api/auth.py",
       "source_location": "L74",
       "weight": 1.0,
-      "_src": "api_auth_login",
-      "_tgt": "db_sqlite_get_user_by_username",
+      "_src": "db_sqlite_get_user_by_username",
+      "_tgt": "api_auth_login",
       "source": "db_sqlite_get_user_by_username",
       "target": "api_auth_login"
     },
@@ -5681,8 +5681,8 @@
       "source_file": "backend/archivum/api/auth.py",
       "source_location": "L154",
       "weight": 1.0,
-      "_src": "api_auth_register",
-      "_tgt": "db_sqlite_get_user_by_username",
+      "_src": "db_sqlite_get_user_by_username",
+      "_tgt": "api_auth_register",
       "source": "db_sqlite_get_user_by_username",
       "target": "api_auth_register"
     },
@@ -5693,8 +5693,8 @@
       "source_file": "backend/archivum/api/auth.py",
       "source_location": "L162",
       "weight": 1.0,
-      "_src": "api_auth_register",
-      "_tgt": "db_sqlite_create_user",
+      "_src": "db_sqlite_create_user",
+      "_tgt": "api_auth_register",
       "source": "db_sqlite_create_user",
       "target": "api_auth_register"
     },
@@ -5741,8 +5741,8 @@
       "source_file": "backend/archivum/api/search.py",
       "source_location": "L36",
       "weight": 1.0,
-      "_src": "api_search_search",
-      "_tgt": "db_sqlite_search_pages_fts",
+      "_src": "db_sqlite_search_pages_fts",
+      "_tgt": "api_search_search",
       "source": "db_sqlite_search_pages_fts",
       "target": "api_search_search"
     },
@@ -5753,8 +5753,8 @@
       "source_file": "backend/archivum/ingest/pipeline.py",
       "source_location": "L71",
       "weight": 1.0,
-      "_src": "ingest_pipeline_ingest",
-      "_tgt": "db_sqlite_create_ingest_log",
+      "_src": "db_sqlite_create_ingest_log",
+      "_tgt": "ingest_pipeline_ingest",
       "source": "db_sqlite_create_ingest_log",
       "target": "ingest_pipeline_ingest"
     },
@@ -5765,8 +5765,8 @@
       "source_file": "backend/archivum/ingest/pipeline.py",
       "source_location": "L165",
       "weight": 1.0,
-      "_src": "ingest_pipeline_ingest",
-      "_tgt": "db_sqlite_update_ingest_log",
+      "_src": "db_sqlite_update_ingest_log",
+      "_tgt": "ingest_pipeline_ingest",
       "source": "db_sqlite_update_ingest_log",
       "target": "ingest_pipeline_ingest"
     },
@@ -5777,8 +5777,8 @@
       "source_file": "backend/archivum/api/ingest.py",
       "source_location": "L186",
       "weight": 1.0,
-      "_src": "api_ingest_ingest_history",
-      "_tgt": "db_sqlite_list_ingest_logs",
+      "_src": "db_sqlite_list_ingest_logs",
+      "_tgt": "api_ingest_ingest_history",
       "source": "db_sqlite_list_ingest_logs",
       "target": "api_ingest_ingest_history"
     },
@@ -5789,8 +5789,8 @@
       "source_file": "backend/archivum/api/auth.py",
       "source_location": "L91",
       "weight": 1.0,
-      "_src": "api_auth_login",
-      "_tgt": "db_sqlite_store_refresh_token",
+      "_src": "db_sqlite_store_refresh_token",
+      "_tgt": "api_auth_login",
       "source": "db_sqlite_store_refresh_token",
       "target": "api_auth_login"
     },
@@ -5801,8 +5801,8 @@
       "source_file": "backend/archivum/api/auth.py",
       "source_location": "L131",
       "weight": 1.0,
-      "_src": "api_auth_refresh",
-      "_tgt": "db_sqlite_store_refresh_token",
+      "_src": "db_sqlite_store_refresh_token",
+      "_tgt": "api_auth_refresh",
       "source": "db_sqlite_store_refresh_token",
       "target": "api_auth_refresh"
     },
@@ -5813,8 +5813,8 @@
       "source_file": "backend/archivum/api/auth.py",
       "source_location": "L117",
       "weight": 1.0,
-      "_src": "api_auth_refresh",
-      "_tgt": "db_sqlite_get_refresh_token",
+      "_src": "db_sqlite_get_refresh_token",
+      "_tgt": "api_auth_refresh",
       "source": "db_sqlite_get_refresh_token",
       "target": "api_auth_refresh"
     },
@@ -5825,8 +5825,8 @@
       "source_file": "backend/archivum/api/auth.py",
       "source_location": "L128",
       "weight": 1.0,
-      "_src": "api_auth_refresh",
-      "_tgt": "db_sqlite_revoke_refresh_token",
+      "_src": "db_sqlite_revoke_refresh_token",
+      "_tgt": "api_auth_refresh",
       "source": "db_sqlite_revoke_refresh_token",
       "target": "api_auth_refresh"
     },
@@ -6113,8 +6113,8 @@
       "source_file": "backend/archivum/api/system.py",
       "source_location": "L26",
       "weight": 1.0,
-      "_src": "api_system_rebuild_indexes",
-      "_tgt": "db_qdrant_client_init_collection",
+      "_src": "db_qdrant_client_init_collection",
+      "_tgt": "api_system_rebuild_indexes",
       "source": "db_qdrant_client_init_collection",
       "target": "api_system_rebuild_indexes"
     },
@@ -6185,8 +6185,8 @@
       "source_file": "backend/archivum/api/query.py",
       "source_location": "L68",
       "weight": 1.0,
-      "_src": "api_query_query",
-      "_tgt": "db_qdrant_client_search_raw",
+      "_src": "db_qdrant_client_search_raw",
+      "_tgt": "api_query_query",
       "source": "db_qdrant_client_search_raw",
       "target": "api_query_query"
     },
@@ -6197,8 +6197,8 @@
       "source_file": "backend/archivum/mcp/server.py",
       "source_location": "L172",
       "weight": 1.0,
-      "_src": "mcp_server_query",
-      "_tgt": "db_qdrant_client_search_raw",
+      "_src": "db_qdrant_client_search_raw",
+      "_tgt": "mcp_server_query",
       "source": "db_qdrant_client_search_raw",
       "target": "mcp_server_query"
     },
@@ -6545,8 +6545,8 @@
       "source_file": "backend/archivum/api/system.py",
       "source_location": "L27",
       "weight": 1.0,
-      "_src": "api_system_rebuild_indexes",
-      "_tgt": "db_graph_init_graph",
+      "_src": "db_graph_init_graph",
+      "_tgt": "api_system_rebuild_indexes",
       "source": "db_graph_init_graph",
       "target": "api_system_rebuild_indexes"
     },
@@ -6557,8 +6557,8 @@
       "source_file": "backend/archivum/ingest/pipeline.py",
       "source_location": "L97",
       "weight": 1.0,
-      "_src": "ingest_pipeline_ingest",
-      "_tgt": "db_graph_upsert_page",
+      "_src": "db_graph_upsert_page",
+      "_tgt": "ingest_pipeline_ingest",
       "source": "db_graph_upsert_page",
       "target": "ingest_pipeline_ingest"
     },
@@ -6569,8 +6569,8 @@
       "source_file": "backend/archivum/api/pages.py",
       "source_location": "L135",
       "weight": 1.0,
-      "_src": "api_pages_create_page",
-      "_tgt": "db_graph_upsert_page",
+      "_src": "db_graph_upsert_page",
+      "_tgt": "api_pages_create_page",
       "source": "db_graph_upsert_page",
       "target": "api_pages_create_page"
     },
@@ -6581,8 +6581,8 @@
       "source_file": "backend/archivum/api/pages.py",
       "source_location": "L177",
       "weight": 1.0,
-      "_src": "api_pages_update_page",
-      "_tgt": "db_graph_upsert_page",
+      "_src": "db_graph_upsert_page",
+      "_tgt": "api_pages_update_page",
       "source": "db_graph_upsert_page",
       "target": "api_pages_update_page"
     },
@@ -6593,8 +6593,8 @@
       "source_file": "backend/archivum/api/system.py",
       "source_location": "L30",
       "weight": 1.0,
-      "_src": "api_system_rebuild_indexes",
-      "_tgt": "db_graph_upsert_page",
+      "_src": "db_graph_upsert_page",
+      "_tgt": "api_system_rebuild_indexes",
       "source": "db_graph_upsert_page",
       "target": "api_system_rebuild_indexes"
     },
@@ -6605,8 +6605,8 @@
       "source_file": "backend/archivum/mcp/server.py",
       "source_location": "L115",
       "weight": 1.0,
-      "_src": "mcp_server_write_page",
-      "_tgt": "db_graph_upsert_page",
+      "_src": "db_graph_upsert_page",
+      "_tgt": "mcp_server_write_page",
       "source": "db_graph_upsert_page",
       "target": "mcp_server_write_page"
     },
@@ -6617,8 +6617,8 @@
       "source_file": "backend/archivum/ingest/pipeline.py",
       "source_location": "L139",
       "weight": 1.0,
-      "_src": "ingest_pipeline_ingest",
-      "_tgt": "db_graph_upsert_entity",
+      "_src": "db_graph_upsert_entity",
+      "_tgt": "ingest_pipeline_ingest",
       "source": "db_graph_upsert_entity",
       "target": "ingest_pipeline_ingest"
     },
@@ -6629,8 +6629,8 @@
       "source_file": "backend/archivum/ingest/pipeline.py",
       "source_location": "L157",
       "weight": 1.0,
-      "_src": "ingest_pipeline_ingest",
-      "_tgt": "db_graph_add_reference",
+      "_src": "db_graph_add_reference",
+      "_tgt": "ingest_pipeline_ingest",
       "source": "db_graph_add_reference",
       "target": "ingest_pipeline_ingest"
     },
@@ -6641,8 +6641,8 @@
       "source_file": "backend/archivum/api/system.py",
       "source_location": "L41",
       "weight": 1.0,
-      "_src": "api_system_rebuild_indexes",
-      "_tgt": "db_graph_add_reference",
+      "_src": "db_graph_add_reference",
+      "_tgt": "api_system_rebuild_indexes",
       "source": "db_graph_add_reference",
       "target": "api_system_rebuild_indexes"
     },
@@ -6653,8 +6653,8 @@
       "source_file": "backend/archivum/ingest/pipeline.py",
       "source_location": "L162",
       "weight": 1.0,
-      "_src": "ingest_pipeline_ingest",
-      "_tgt": "db_graph_add_mention",
+      "_src": "db_graph_add_mention",
+      "_tgt": "ingest_pipeline_ingest",
       "source": "db_graph_add_mention",
       "target": "ingest_pipeline_ingest"
     },
@@ -6665,8 +6665,8 @@
       "source_file": "backend/archivum/ingest/pipeline.py",
       "source_location": "L145",
       "weight": 1.0,
-      "_src": "ingest_pipeline_ingest",
-      "_tgt": "db_graph_add_entity_relation",
+      "_src": "db_graph_add_entity_relation",
+      "_tgt": "ingest_pipeline_ingest",
       "source": "db_graph_add_entity_relation",
       "target": "ingest_pipeline_ingest"
     },
@@ -6689,8 +6689,8 @@
       "source_file": "backend/archivum/api/graph.py",
       "source_location": "L28",
       "weight": 1.0,
-      "_src": "api_graph_graph_neighbors",
-      "_tgt": "db_graph_get_neighbors",
+      "_src": "db_graph_get_neighbors",
+      "_tgt": "api_graph_graph_neighbors",
       "source": "db_graph_get_neighbors",
       "target": "api_graph_graph_neighbors"
     },
@@ -6701,8 +6701,8 @@
       "source_file": "backend/archivum/mcp/server.py",
       "source_location": "L133",
       "weight": 1.0,
-      "_src": "mcp_server_graph_neighbors",
-      "_tgt": "db_graph_get_neighbors",
+      "_src": "db_graph_get_neighbors",
+      "_tgt": "mcp_server_graph_neighbors",
       "source": "db_graph_get_neighbors",
       "target": "mcp_server_graph_neighbors"
     },
@@ -6737,8 +6737,8 @@
       "source_file": "backend/archivum/api/graph.py",
       "source_location": "L13",
       "weight": 1.0,
-      "_src": "api_graph_get_graph",
-      "_tgt": "db_graph_get_all_nodes_edges",
+      "_src": "db_graph_get_all_nodes_edges",
+      "_tgt": "api_graph_get_graph",
       "source": "db_graph_get_all_nodes_edges",
       "target": "api_graph_get_graph"
     },
@@ -6761,8 +6761,8 @@
       "source_file": "backend/archivum/api/pages.py",
       "source_location": "L220",
       "weight": 1.0,
-      "_src": "api_pages_delete_page",
-      "_tgt": "db_graph_delete_page_node",
+      "_src": "db_graph_delete_page_node",
+      "_tgt": "api_pages_delete_page",
       "source": "db_graph_delete_page_node",
       "target": "api_pages_delete_page"
     },
@@ -6904,11 +6904,11 @@
       "source_file": "backend/archivum/ingest/agent.py",
       "source_location": "L17",
       "weight": 0.8,
-      "_src": "ingest_agent_wikipage",
-      "_tgt": "ingest_parsers_parseddoc",
+      "_src": "ingest_parsers_parseddoc",
+      "_tgt": "ingest_agent_wikipage",
+      "confidence_score": 0.5,
       "source": "ingest_parsers_parseddoc",
-      "target": "ingest_agent_wikipage",
-      "confidence_score": 0.5
+      "target": "ingest_agent_wikipage"
     },
     {
       "relation": "uses",
@@ -6916,11 +6916,11 @@
       "source_file": "backend/archivum/ingest/agent.py",
       "source_location": "L17",
       "weight": 0.8,
-      "_src": "ingest_agent_extractionresult",
-      "_tgt": "ingest_parsers_parseddoc",
+      "_src": "ingest_parsers_parseddoc",
+      "_tgt": "ingest_agent_extractionresult",
+      "confidence_score": 0.5,
       "source": "ingest_parsers_parseddoc",
-      "target": "ingest_agent_extractionresult",
-      "confidence_score": 0.5
+      "target": "ingest_agent_extractionresult"
     },
     {
       "relation": "uses",
@@ -6928,11 +6928,11 @@
       "source_file": "backend/archivum/ingest/agent.py",
       "source_location": "L17",
       "weight": 0.8,
-      "_src": "ingest_agent_wikiagent",
-      "_tgt": "ingest_parsers_parseddoc",
+      "_src": "ingest_parsers_parseddoc",
+      "_tgt": "ingest_agent_wikiagent",
+      "confidence_score": 0.5,
       "source": "ingest_parsers_parseddoc",
-      "target": "ingest_agent_wikiagent",
-      "confidence_score": 0.5
+      "target": "ingest_agent_wikiagent"
     },
     {
       "relation": "uses",
@@ -6940,11 +6940,11 @@
       "source_file": "backend/archivum/ingest/agent.py",
       "source_location": "L17",
       "weight": 0.8,
-      "_src": "ingest_agent_rationale_1",
-      "_tgt": "ingest_parsers_parseddoc",
+      "_src": "ingest_parsers_parseddoc",
+      "_tgt": "ingest_agent_rationale_1",
+      "confidence_score": 0.5,
       "source": "ingest_parsers_parseddoc",
-      "target": "ingest_agent_rationale_1",
-      "confidence_score": 0.5
+      "target": "ingest_agent_rationale_1"
     },
     {
       "relation": "uses",
@@ -6952,11 +6952,11 @@
       "source_file": "backend/archivum/ingest/agent.py",
       "source_location": "L17",
       "weight": 0.8,
-      "_src": "ingest_agent_rationale_83",
-      "_tgt": "ingest_parsers_parseddoc",
+      "_src": "ingest_parsers_parseddoc",
+      "_tgt": "ingest_agent_rationale_83",
+      "confidence_score": 0.5,
       "source": "ingest_parsers_parseddoc",
-      "target": "ingest_agent_rationale_83",
-      "confidence_score": 0.5
+      "target": "ingest_agent_rationale_83"
     },
     {
       "relation": "uses",
@@ -6964,11 +6964,11 @@
       "source_file": "backend/archivum/ingest/agent.py",
       "source_location": "L17",
       "weight": 0.8,
-      "_src": "ingest_agent_rationale_99",
-      "_tgt": "ingest_parsers_parseddoc",
+      "_src": "ingest_parsers_parseddoc",
+      "_tgt": "ingest_agent_rationale_99",
+      "confidence_score": 0.5,
       "source": "ingest_parsers_parseddoc",
-      "target": "ingest_agent_rationale_99",
-      "confidence_score": 0.5
+      "target": "ingest_agent_rationale_99"
     },
     {
       "relation": "uses",
@@ -6976,11 +6976,11 @@
       "source_file": "backend/archivum/ingest/agent.py",
       "source_location": "L17",
       "weight": 0.8,
-      "_src": "ingest_agent_rationale_194",
-      "_tgt": "ingest_parsers_parseddoc",
+      "_src": "ingest_parsers_parseddoc",
+      "_tgt": "ingest_agent_rationale_194",
+      "confidence_score": 0.5,
       "source": "ingest_parsers_parseddoc",
-      "target": "ingest_agent_rationale_194",
-      "confidence_score": 0.5
+      "target": "ingest_agent_rationale_194"
     },
     {
       "relation": "uses",
@@ -6988,11 +6988,11 @@
       "source_file": "backend/archivum/ingest/pipeline.py",
       "source_location": "L13",
       "weight": 0.8,
-      "_src": "ingest_pipeline_rationale_1",
-      "_tgt": "ingest_parsers_parseddoc",
+      "_src": "ingest_parsers_parseddoc",
+      "_tgt": "ingest_pipeline_rationale_1",
+      "confidence_score": 0.5,
       "source": "ingest_parsers_parseddoc",
-      "target": "ingest_pipeline_rationale_1",
-      "confidence_score": 0.5
+      "target": "ingest_pipeline_rationale_1"
     },
     {
       "relation": "uses",
@@ -7000,11 +7000,11 @@
       "source_file": "backend/archivum/ingest/pipeline.py",
       "source_location": "L13",
       "weight": 0.8,
-      "_src": "ingest_pipeline_rationale_25",
-      "_tgt": "ingest_parsers_parseddoc",
+      "_src": "ingest_parsers_parseddoc",
+      "_tgt": "ingest_pipeline_rationale_25",
+      "confidence_score": 0.5,
       "source": "ingest_parsers_parseddoc",
-      "target": "ingest_pipeline_rationale_25",
-      "confidence_score": 0.5
+      "target": "ingest_pipeline_rationale_25"
     },
     {
       "relation": "uses",
@@ -7012,11 +7012,11 @@
       "source_file": "backend/archivum/ingest/pipeline.py",
       "source_location": "L13",
       "weight": 0.8,
-      "_src": "ingest_pipeline_rationale_39",
-      "_tgt": "ingest_parsers_parseddoc",
+      "_src": "ingest_parsers_parseddoc",
+      "_tgt": "ingest_pipeline_rationale_39",
+      "confidence_score": 0.5,
       "source": "ingest_parsers_parseddoc",
-      "target": "ingest_pipeline_rationale_39",
-      "confidence_score": 0.5
+      "target": "ingest_pipeline_rationale_39"
     },
     {
       "relation": "uses",
@@ -7024,11 +7024,11 @@
       "source_file": "backend/archivum/ingest/pipeline.py",
       "source_location": "L13",
       "weight": 0.8,
-      "_src": "ingest_pipeline_rationale_51",
-      "_tgt": "ingest_parsers_parseddoc",
+      "_src": "ingest_parsers_parseddoc",
+      "_tgt": "ingest_pipeline_rationale_51",
+      "confidence_score": 0.5,
       "source": "ingest_parsers_parseddoc",
-      "target": "ingest_pipeline_rationale_51",
-      "confidence_score": 0.5
+      "target": "ingest_pipeline_rationale_51"
     },
     {
       "relation": "uses",
@@ -7036,11 +7036,11 @@
       "source_file": "backend/archivum/ingest/pipeline.py",
       "source_location": "L13",
       "weight": 0.8,
-      "_src": "ingest_pipeline_rationale_204",
-      "_tgt": "ingest_parsers_parseddoc",
+      "_src": "ingest_parsers_parseddoc",
+      "_tgt": "ingest_pipeline_rationale_204",
+      "confidence_score": 0.5,
       "source": "ingest_parsers_parseddoc",
-      "target": "ingest_pipeline_rationale_204",
-      "confidence_score": 0.5
+      "target": "ingest_pipeline_rationale_204"
     },
     {
       "relation": "inherits",
@@ -7084,11 +7084,11 @@
       "source_file": "backend/archivum/ingest/pipeline.py",
       "source_location": "L13",
       "weight": 0.8,
-      "_src": "ingest_pipeline_rationale_1",
-      "_tgt": "ingest_parsers_unsupportedfiletypeerror",
+      "_src": "ingest_parsers_unsupportedfiletypeerror",
+      "_tgt": "ingest_pipeline_rationale_1",
+      "confidence_score": 0.5,
       "source": "ingest_parsers_unsupportedfiletypeerror",
-      "target": "ingest_pipeline_rationale_1",
-      "confidence_score": 0.5
+      "target": "ingest_pipeline_rationale_1"
     },
     {
       "relation": "uses",
@@ -7096,11 +7096,11 @@
       "source_file": "backend/archivum/ingest/pipeline.py",
       "source_location": "L13",
       "weight": 0.8,
-      "_src": "ingest_pipeline_rationale_25",
-      "_tgt": "ingest_parsers_unsupportedfiletypeerror",
+      "_src": "ingest_parsers_unsupportedfiletypeerror",
+      "_tgt": "ingest_pipeline_rationale_25",
+      "confidence_score": 0.5,
       "source": "ingest_parsers_unsupportedfiletypeerror",
-      "target": "ingest_pipeline_rationale_25",
-      "confidence_score": 0.5
+      "target": "ingest_pipeline_rationale_25"
     },
     {
       "relation": "uses",
@@ -7108,11 +7108,11 @@
       "source_file": "backend/archivum/ingest/pipeline.py",
       "source_location": "L13",
       "weight": 0.8,
-      "_src": "ingest_pipeline_rationale_39",
-      "_tgt": "ingest_parsers_unsupportedfiletypeerror",
+      "_src": "ingest_parsers_unsupportedfiletypeerror",
+      "_tgt": "ingest_pipeline_rationale_39",
+      "confidence_score": 0.5,
       "source": "ingest_parsers_unsupportedfiletypeerror",
-      "target": "ingest_pipeline_rationale_39",
-      "confidence_score": 0.5
+      "target": "ingest_pipeline_rationale_39"
     },
     {
       "relation": "uses",
@@ -7120,11 +7120,11 @@
       "source_file": "backend/archivum/ingest/pipeline.py",
       "source_location": "L13",
       "weight": 0.8,
-      "_src": "ingest_pipeline_rationale_51",
-      "_tgt": "ingest_parsers_unsupportedfiletypeerror",
+      "_src": "ingest_parsers_unsupportedfiletypeerror",
+      "_tgt": "ingest_pipeline_rationale_51",
+      "confidence_score": 0.5,
       "source": "ingest_parsers_unsupportedfiletypeerror",
-      "target": "ingest_pipeline_rationale_51",
-      "confidence_score": 0.5
+      "target": "ingest_pipeline_rationale_51"
     },
     {
       "relation": "uses",
@@ -7132,11 +7132,11 @@
       "source_file": "backend/archivum/ingest/pipeline.py",
       "source_location": "L13",
       "weight": 0.8,
-      "_src": "ingest_pipeline_rationale_204",
-      "_tgt": "ingest_parsers_unsupportedfiletypeerror",
+      "_src": "ingest_parsers_unsupportedfiletypeerror",
+      "_tgt": "ingest_pipeline_rationale_204",
+      "confidence_score": 0.5,
       "source": "ingest_parsers_unsupportedfiletypeerror",
-      "target": "ingest_pipeline_rationale_204",
-      "confidence_score": 0.5
+      "target": "ingest_pipeline_rationale_204"
     },
     {
       "relation": "calls",
@@ -7253,8 +7253,8 @@
       "source_file": "backend/archivum/ingest/pipeline.py",
       "source_location": "L75",
       "weight": 1.0,
-      "_src": "ingest_pipeline_ingest",
-      "_tgt": "ingest_parsers_parse_source",
+      "_src": "ingest_parsers_parse_source",
+      "_tgt": "ingest_pipeline_ingest",
       "source": "ingest_parsers_parse_source",
       "target": "ingest_pipeline_ingest"
     },
@@ -7360,11 +7360,11 @@
       "source_file": "backend/archivum/ingest/pipeline.py",
       "source_location": "L14",
       "weight": 0.8,
-      "_src": "ingest_pipeline_rationale_1",
-      "_tgt": "ingest_agent_wikipage",
+      "_src": "ingest_agent_wikipage",
+      "_tgt": "ingest_pipeline_rationale_1",
+      "confidence_score": 0.5,
       "source": "ingest_agent_wikipage",
-      "target": "ingest_pipeline_rationale_1",
-      "confidence_score": 0.5
+      "target": "ingest_pipeline_rationale_1"
     },
     {
       "relation": "uses",
@@ -7372,11 +7372,11 @@
       "source_file": "backend/archivum/ingest/pipeline.py",
       "source_location": "L14",
       "weight": 0.8,
-      "_src": "ingest_pipeline_rationale_25",
-      "_tgt": "ingest_agent_wikipage",
+      "_src": "ingest_agent_wikipage",
+      "_tgt": "ingest_pipeline_rationale_25",
+      "confidence_score": 0.5,
       "source": "ingest_agent_wikipage",
-      "target": "ingest_pipeline_rationale_25",
-      "confidence_score": 0.5
+      "target": "ingest_pipeline_rationale_25"
     },
     {
       "relation": "uses",
@@ -7384,11 +7384,11 @@
       "source_file": "backend/archivum/ingest/pipeline.py",
       "source_location": "L14",
       "weight": 0.8,
-      "_src": "ingest_pipeline_rationale_39",
-      "_tgt": "ingest_agent_wikipage",
+      "_src": "ingest_agent_wikipage",
+      "_tgt": "ingest_pipeline_rationale_39",
+      "confidence_score": 0.5,
       "source": "ingest_agent_wikipage",
-      "target": "ingest_pipeline_rationale_39",
-      "confidence_score": 0.5
+      "target": "ingest_pipeline_rationale_39"
     },
     {
       "relation": "uses",
@@ -7396,11 +7396,11 @@
       "source_file": "backend/archivum/ingest/pipeline.py",
       "source_location": "L14",
       "weight": 0.8,
-      "_src": "ingest_pipeline_rationale_51",
-      "_tgt": "ingest_agent_wikipage",
+      "_src": "ingest_agent_wikipage",
+      "_tgt": "ingest_pipeline_rationale_51",
+      "confidence_score": 0.5,
       "source": "ingest_agent_wikipage",
-      "target": "ingest_pipeline_rationale_51",
-      "confidence_score": 0.5
+      "target": "ingest_pipeline_rationale_51"
     },
     {
       "relation": "uses",
@@ -7408,11 +7408,11 @@
       "source_file": "backend/archivum/ingest/pipeline.py",
       "source_location": "L14",
       "weight": 0.8,
-      "_src": "ingest_pipeline_rationale_204",
-      "_tgt": "ingest_agent_wikipage",
+      "_src": "ingest_agent_wikipage",
+      "_tgt": "ingest_pipeline_rationale_204",
+      "confidence_score": 0.5,
       "source": "ingest_agent_wikipage",
-      "target": "ingest_pipeline_rationale_204",
-      "confidence_score": 0.5
+      "target": "ingest_pipeline_rationale_204"
     },
     {
       "relation": "calls",
@@ -7444,11 +7444,11 @@
       "source_file": "backend/archivum/ingest/pipeline.py",
       "source_location": "L14",
       "weight": 0.8,
-      "_src": "ingest_pipeline_rationale_1",
-      "_tgt": "ingest_agent_extractionresult",
+      "_src": "ingest_agent_extractionresult",
+      "_tgt": "ingest_pipeline_rationale_1",
+      "confidence_score": 0.5,
       "source": "ingest_agent_extractionresult",
-      "target": "ingest_pipeline_rationale_1",
-      "confidence_score": 0.5
+      "target": "ingest_pipeline_rationale_1"
     },
     {
       "relation": "uses",
@@ -7456,11 +7456,11 @@
       "source_file": "backend/archivum/ingest/pipeline.py",
       "source_location": "L14",
       "weight": 0.8,
-      "_src": "ingest_pipeline_rationale_25",
-      "_tgt": "ingest_agent_extractionresult",
+      "_src": "ingest_agent_extractionresult",
+      "_tgt": "ingest_pipeline_rationale_25",
+      "confidence_score": 0.5,
       "source": "ingest_agent_extractionresult",
-      "target": "ingest_pipeline_rationale_25",
-      "confidence_score": 0.5
+      "target": "ingest_pipeline_rationale_25"
     },
     {
       "relation": "uses",
@@ -7468,11 +7468,11 @@
       "source_file": "backend/archivum/ingest/pipeline.py",
       "source_location": "L14",
       "weight": 0.8,
-      "_src": "ingest_pipeline_rationale_39",
-      "_tgt": "ingest_agent_extractionresult",
+      "_src": "ingest_agent_extractionresult",
+      "_tgt": "ingest_pipeline_rationale_39",
+      "confidence_score": 0.5,
       "source": "ingest_agent_extractionresult",
-      "target": "ingest_pipeline_rationale_39",
-      "confidence_score": 0.5
+      "target": "ingest_pipeline_rationale_39"
     },
     {
       "relation": "uses",
@@ -7480,11 +7480,11 @@
       "source_file": "backend/archivum/ingest/pipeline.py",
       "source_location": "L14",
       "weight": 0.8,
-      "_src": "ingest_pipeline_rationale_51",
-      "_tgt": "ingest_agent_extractionresult",
+      "_src": "ingest_agent_extractionresult",
+      "_tgt": "ingest_pipeline_rationale_51",
+      "confidence_score": 0.5,
       "source": "ingest_agent_extractionresult",
-      "target": "ingest_pipeline_rationale_51",
-      "confidence_score": 0.5
+      "target": "ingest_pipeline_rationale_51"
     },
     {
       "relation": "uses",
@@ -7492,11 +7492,11 @@
       "source_file": "backend/archivum/ingest/pipeline.py",
       "source_location": "L14",
       "weight": 0.8,
-      "_src": "ingest_pipeline_rationale_204",
-      "_tgt": "ingest_agent_extractionresult",
+      "_src": "ingest_agent_extractionresult",
+      "_tgt": "ingest_pipeline_rationale_204",
+      "confidence_score": 0.5,
       "source": "ingest_agent_extractionresult",
-      "target": "ingest_pipeline_rationale_204",
-      "confidence_score": 0.5
+      "target": "ingest_pipeline_rationale_204"
     },
     {
       "relation": "calls",
@@ -7541,8 +7541,8 @@
       "source_file": "backend/archivum/ingest/pipeline.py",
       "source_location": "L153",
       "weight": 1.0,
-      "_src": "ingest_pipeline_ingest",
-      "_tgt": "ingest_agent_slugify",
+      "_src": "ingest_agent_slugify",
+      "_tgt": "ingest_pipeline_ingest",
       "source": "ingest_agent_slugify",
       "target": "ingest_pipeline_ingest"
     },
@@ -7553,8 +7553,8 @@
       "source_file": "backend/archivum/api/pages.py",
       "source_location": "L115",
       "weight": 1.0,
-      "_src": "api_pages_create_page",
-      "_tgt": "ingest_agent_slugify",
+      "_src": "ingest_agent_slugify",
+      "_tgt": "api_pages_create_page",
       "source": "ingest_agent_slugify",
       "target": "api_pages_create_page"
     },
@@ -7565,8 +7565,8 @@
       "source_file": "backend/archivum/mcp/server.py",
       "source_location": "L110",
       "weight": 1.0,
-      "_src": "mcp_server_write_page",
-      "_tgt": "ingest_agent_slugify",
+      "_src": "ingest_agent_slugify",
+      "_tgt": "mcp_server_write_page",
       "source": "ingest_agent_slugify",
       "target": "mcp_server_write_page"
     },
@@ -7661,8 +7661,8 @@
       "source_file": "backend/archivum/ingest/pipeline.py",
       "source_location": "L81",
       "weight": 1.0,
-      "_src": "ingest_pipeline_ingest",
-      "_tgt": "ingest_agent_wikiagent_extract",
+      "_src": "ingest_agent_wikiagent_extract",
+      "_tgt": "ingest_pipeline_ingest",
       "source": "ingest_agent_wikiagent_extract",
       "target": "ingest_pipeline_ingest"
     },
@@ -7721,8 +7721,8 @@
       "source_file": "backend/archivum/ingest/pipeline.py",
       "source_location": "L80",
       "weight": 1.0,
-      "_src": "ingest_pipeline_ingest",
-      "_tgt": "ingest_agent_get_agent",
+      "_src": "ingest_agent_get_agent",
+      "_tgt": "ingest_pipeline_ingest",
       "source": "ingest_agent_get_agent",
       "target": "ingest_pipeline_ingest"
     },
@@ -7889,8 +7889,8 @@
       "source_file": "backend/archivum/mcp/server.py",
       "source_location": "L53",
       "weight": 1.0,
-      "_src": "mcp_server_ingest_source",
-      "_tgt": "ingest_pipeline_ingest",
+      "_src": "ingest_pipeline_ingest",
+      "_tgt": "mcp_server_ingest_source",
       "source": "ingest_pipeline_ingest",
       "target": "mcp_server_ingest_source"
     },
@@ -9473,8 +9473,8 @@
       "source_file": "frontend/src/pages/LoginPage.tsx",
       "source_location": "L19",
       "weight": 1.0,
-      "_src": "pages_loginpage_handlesubmit",
-      "_tgt": "src_api_login",
+      "_src": "src_api_login",
+      "_tgt": "pages_loginpage_handlesubmit",
       "source": "src_api_login",
       "target": "pages_loginpage_handlesubmit"
     },
@@ -9485,8 +9485,8 @@
       "source_file": "frontend/src/components/FileTree.tsx",
       "source_location": "L59",
       "weight": 1.0,
-      "_src": "components_filetree_handlefiledrop",
-      "_tgt": "src_api_listpages",
+      "_src": "src_api_listpages",
+      "_tgt": "components_filetree_handlefiledrop",
       "source": "src_api_listpages",
       "target": "components_filetree_handlefiledrop"
     },
@@ -9497,8 +9497,8 @@
       "source_file": "frontend/src/components/IngestPanel.tsx",
       "source_location": "L92",
       "weight": 1.0,
-      "_src": "components_ingestpanel_handleurlingest",
-      "_tgt": "src_api_listpages",
+      "_src": "src_api_listpages",
+      "_tgt": "components_ingestpanel_handleurlingest",
       "source": "src_api_listpages",
       "target": "components_ingestpanel_handleurlingest"
     },
@@ -9509,8 +9509,8 @@
       "source_file": "frontend/src/pages/LoginPage.tsx",
       "source_location": "L20",
       "weight": 1.0,
-      "_src": "pages_loginpage_handlesubmit",
-      "_tgt": "src_api_listpages",
+      "_src": "src_api_listpages",
+      "_tgt": "pages_loginpage_handlesubmit",
       "source": "src_api_listpages",
       "target": "pages_loginpage_handlesubmit"
     },
@@ -9521,8 +9521,8 @@
       "source_file": "frontend/src/components/FileTree.tsx",
       "source_location": "L37",
       "weight": 1.0,
-      "_src": "components_filetree_handlecreatepage",
-      "_tgt": "src_api_createpage",
+      "_src": "src_api_createpage",
+      "_tgt": "components_filetree_handlecreatepage",
       "source": "src_api_createpage",
       "target": "components_filetree_handlecreatepage"
     },
@@ -9533,8 +9533,8 @@
       "source_file": "frontend/src/components/QueryPanel.tsx",
       "source_location": "L92",
       "weight": 1.0,
-      "_src": "components_querypanel_handlesaveaspage",
-      "_tgt": "src_api_createpage",
+      "_src": "src_api_createpage",
+      "_tgt": "components_querypanel_handlesaveaspage",
       "source": "src_api_createpage",
       "target": "components_querypanel_handlesaveaspage"
     },
@@ -9545,8 +9545,8 @@
       "source_file": "frontend/src/components/SearchBar.tsx",
       "source_location": "L19",
       "weight": 1.0,
-      "_src": "components_searchbar_runsearch",
-      "_tgt": "src_api_search",
+      "_src": "src_api_search",
+      "_tgt": "components_searchbar_runsearch",
       "source": "src_api_search",
       "target": "components_searchbar_runsearch"
     },
@@ -9557,8 +9557,8 @@
       "source_file": "frontend/src/components/GraphView.tsx",
       "source_location": "L35",
       "weight": 1.0,
-      "_src": "components_graphview_loadgraph",
-      "_tgt": "src_api_getgraph",
+      "_src": "src_api_getgraph",
+      "_tgt": "components_graphview_loadgraph",
       "source": "src_api_getgraph",
       "target": "components_graphview_loadgraph"
     },
@@ -9605,8 +9605,8 @@
       "source_file": "frontend/src/components/FileTree.tsx",
       "source_location": "L51",
       "weight": 1.0,
-      "_src": "components_filetree_handlefiledrop",
-      "_tgt": "src_api_ingestfile",
+      "_src": "src_api_ingestfile",
+      "_tgt": "components_filetree_handlefiledrop",
       "source": "src_api_ingestfile",
       "target": "components_filetree_handlefiledrop"
     },
@@ -9617,8 +9617,8 @@
       "source_file": "frontend/src/components/IngestPanel.tsx",
       "source_location": "L91",
       "weight": 1.0,
-      "_src": "components_ingestpanel_handleurlingest",
-      "_tgt": "src_api_ingesturl",
+      "_src": "src_api_ingesturl",
+      "_tgt": "components_ingestpanel_handleurlingest",
       "source": "src_api_ingesturl",
       "target": "components_ingestpanel_handleurlingest"
     },
@@ -9629,8 +9629,8 @@
       "source_file": "frontend/src/components/QueryPanel.tsx",
       "source_location": "L64",
       "weight": 1.0,
-      "_src": "components_querypanel_handlesubmit",
-      "_tgt": "src_api_query",
+      "_src": "src_api_query",
+      "_tgt": "components_querypanel_handlesubmit",
       "source": "src_api_query",
       "target": "components_querypanel_handlesubmit"
     },
@@ -9689,8 +9689,8 @@
       "source_file": "frontend/src/App.tsx",
       "source_location": "L15",
       "weight": 1.0,
-      "_src": "src_app_protectedroutes",
-      "_tgt": "src_store_useappstate",
+      "_src": "src_store_useappstate",
+      "_tgt": "src_app_protectedroutes",
       "source": "src_store_useappstate",
       "target": "src_app_protectedroutes"
     },
@@ -9701,8 +9701,8 @@
       "source_file": "frontend/src/components/StatusBar.tsx",
       "source_location": "L7",
       "weight": 1.0,
-      "_src": "components_statusbar_statusbar",
-      "_tgt": "src_store_useappstate",
+      "_src": "src_store_useappstate",
+      "_tgt": "components_statusbar_statusbar",
       "source": "src_store_useappstate",
       "target": "components_statusbar_statusbar"
     },
@@ -9713,8 +9713,8 @@
       "source_file": "frontend/src/components/Editor/Editor.tsx",
       "source_location": "L20",
       "weight": 1.0,
-      "_src": "editor_editor_editor",
-      "_tgt": "src_store_useappstate",
+      "_src": "src_store_useappstate",
+      "_tgt": "editor_editor_editor",
       "source": "src_store_useappstate",
       "target": "editor_editor_editor"
     },
@@ -9725,8 +9725,8 @@
       "source_file": "frontend/src/App.tsx",
       "source_location": "L16",
       "weight": 1.0,
-      "_src": "src_app_protectedroutes",
-      "_tgt": "src_store_useappdispatch",
+      "_src": "src_store_useappdispatch",
+      "_tgt": "src_app_protectedroutes",
       "source": "src_store_useappdispatch",
       "target": "src_app_protectedroutes"
     },
@@ -9737,8 +9737,8 @@
       "source_file": "frontend/src/components/StatusBar.tsx",
       "source_location": "L8",
       "weight": 1.0,
-      "_src": "components_statusbar_statusbar",
-      "_tgt": "src_store_useappdispatch",
+      "_src": "src_store_useappdispatch",
+      "_tgt": "components_statusbar_statusbar",
       "source": "src_store_useappdispatch",
       "target": "components_statusbar_statusbar"
     },

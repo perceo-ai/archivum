@@ -1,7 +1,7 @@
 # Graph Report - archivum  (2026-04-28)
 
 ## Corpus Check
-- 43 files · ~22,334 words
+- 43 files · ~23,886 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
@@ -43,14 +43,14 @@
 ## Surprising Connections (you probably didn't know these)
 - `search_wiki()` --calls--> `search()`  [INFERRED]
   backend/archivum/mcp/server.py → frontend/src/api.ts
-- `JWT creation/validation, password hashing, FastAPI dependencies.` --uses--> `Settings`  [INFERRED]
-  backend/archivum/auth.py → backend/archivum/config.py
-- `Return bcrypt hash of *plaintext*.` --uses--> `Settings`  [INFERRED]
-  backend/archivum/auth.py → backend/archivum/config.py
-- `Return True if *plaintext* matches *hashed*.` --uses--> `Settings`  [INFERRED]
-  backend/archivum/auth.py → backend/archivum/config.py
-- `Return (raw_token, hashed_token) pair.` --uses--> `Settings`  [INFERRED]
-  backend/archivum/auth.py → backend/archivum/config.py
+- `Settings` --uses--> `JWT creation/validation, password hashing, FastAPI dependencies.`  [INFERRED]
+  backend/archivum/config.py → backend/archivum/auth.py
+- `Settings` --uses--> `Return bcrypt hash of *plaintext*.`  [INFERRED]
+  backend/archivum/config.py → backend/archivum/auth.py
+- `Settings` --uses--> `Return True if *plaintext* matches *hashed*.`  [INFERRED]
+  backend/archivum/config.py → backend/archivum/auth.py
+- `Settings` --uses--> `Return (raw_token, hashed_token) pair.`  [INFERRED]
+  backend/archivum/config.py → backend/archivum/auth.py
 
 ## Hyperedges (group relationships)
 - **Ingest to Knowledge Graph Flow** — archivum_prd_v1_0_ingest_pipeline, archivum_prd_v1_0_wiki_agent, archivum_prd_v1_0_markdown_canonical, archivum_prd_v1_0_qdrant, archivum_prd_v1_0_neo4j [EXTRACTED 1.00]
