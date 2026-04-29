@@ -2,6 +2,14 @@ import type { Page, SearchResult, GraphNode, GraphEdge, IngestProgress } from '.
 
 const BASE = '';
 
+function encodeSlugPath(slug: string): string {
+  // Keep '/' as path separators but encode each segment safely.
+  return slug
+    .split('/')
+    .map((seg) => encodeURIComponent(seg))
+    .join('/');
+}
+
 async function apiFetch(path: string, init?: RequestInit): Promise<Response> {
   const res = await fetch(`${BASE}${path}`, {
     credentials: 'include',
@@ -17,6 +25,19 @@ async function apiFetch(path: string, init?: RequestInit): Promise<Response> {
   }
   return res;
 }
+
+export type CreatePageInput = {
+  title: string;
+  content?: string;
+  tags?: string[];
+  slug?: string;
+};
+
+export type UpdatePageInput = {
+  title?: string | null;
+  content?: string | null;
+  tags?: string[] | null;
+};
 
 export async function login(password: string): Promise<void> {
   await apiFetch('/api/auth/login', {
@@ -35,32 +56,37 @@ export async function listPages(): Promise<Page[]> {
 }
 
 export async function getPage(slug: string): Promise<Page> {
-  const res = await apiFetch(`/api/pages/${encodeURIComponent(slug)}`);
+  const res = await apiFetch(`/api/pages/${encodeSlugPath(slug)}`);
   return res.json();
 }
 
-export async function updatePage(slug: string, content: string): Promise<Page> {
-  const res = await apiFetch(`/api/pages/${encodeURIComponent(slug)}`, {
+export async function updatePage(slug: string, input: UpdatePageInput): Promise<Page> {
+  const res = await apiFetch(`/api/pages/${encodeSlugPath(slug)}`, {
     method: 'PUT',
-    body: JSON.stringify({ content }),
+    body: JSON.stringify(input),
   });
   return res.json();
 }
 
-export async function createPage(slug: string, title: string, content: string): Promise<Page> {
+export async function createPage(input: CreatePageInput): Promise<Page> {
   const res = await apiFetch('/api/pages', {
     method: 'POST',
-    body: JSON.stringify({ slug, title, content }),
+    body: JSON.stringify({
+      title: input.title,
+      content: input.content ?? '',
+      tags: input.tags ?? [],
+      slug: input.slug,
+    }),
   });
   return res.json();
 }
 
 export async function deletePage(slug: string): Promise<void> {
-  await apiFetch(`/api/pages/${encodeURIComponent(slug)}`, { method: 'DELETE' });
+  await apiFetch(`/api/pages/${encodeSlugPath(slug)}`, { method: 'DELETE' });
 }
 
 export async function getBacklinks(slug: string): Promise<Page[]> {
-  const res = await apiFetch(`/api/pages/${encodeURIComponent(slug)}/backlinks`);
+  const res = await apiFetch(`/api/pages/${encodeSlugPath(slug)}/backlinks`);
   return res.json();
 }
 

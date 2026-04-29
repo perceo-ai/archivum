@@ -9,6 +9,7 @@ import uuid
 from typing import Any
 
 from fastembed import TextEmbedding
+import httpx
 from qdrant_client import AsyncQdrantClient
 from qdrant_client.models import (
     Distance,
@@ -27,6 +28,7 @@ logger = logging.getLogger(__name__)
 
 _client: AsyncQdrantClient | None = None
 _embedder: TextEmbedding | None = None
+_embed_dim_cache: dict[tuple[str, str, str], int] = {}
 
 
 def get_embedder(settings: Settings | None = None) -> TextEmbedding:
@@ -37,12 +39,187 @@ def get_embedder(settings: Settings | None = None) -> TextEmbedding:
     return _embedder
 
 
+def _resolve_embed_endpoint(s: Settings) -> tuple[str, str, dict[str, str]]:
+    """
+    Return (base_url, api_key, extra_headers) for OpenAI-compatible embeddings.
+
+    Providers:
+      - openai_compat: use EMBED_BASE_URL / EMBED_API_KEY
+      - openrouter: reuse OpenRouter base URL + key
+      - ollama: use OLLAMA_BASE_URL + /v1, no key by default
+    """
+    provider = (s.embed_provider or "local").strip().lower()
+    if provider == "openrouter":
+        return (s.openrouter_base_url.rstrip("/"), s.openrouter_api_key, {})
+    if provider == "ollama":
+        return (f"{s.ollama_base_url.rstrip('/')}/v1", "", {})
+    # default: openai_compat
+    base_url = (s.embed_base_url or "").rstrip("/")
+    if not base_url:
+        p = (s.embed_openai_compat_provider or "openai").strip().lower()
+        derived = {
+            "openai": "https://api.openai.com/v1",
+            "together": "https://api.together.xyz/v1",
+            "fireworks": "https://api.fireworks.ai/inference/v1",
+            "groq": "https://api.groq.com/openai/v1",
+            "deepinfra": "https://api.deepinfra.com/v1/openai",
+        }.get(p, "https://api.openai.com/v1")
+        base_url = derived
+    return (base_url, s.embed_api_key, {})
+
+
+def _is_azure_openai_base_url(base_url: str) -> bool:
+    return "openai.azure.com" in (base_url or "").lower()
+
+
+async def resolve_embed_dim(s: Settings) -> int:
+    """
+    Resolve the effective embedding vector dimension.
+
+    - If settings.embed_dim > 0, use it.
+    - If settings.embed_dim <= 0, probe the configured provider/model once and cache the result.
+    """
+    configured = int(getattr(s, "embed_dim", 0) or 0)
+    if configured > 0:
+        return configured
+
+    provider = (s.embed_provider or "local").strip().lower()
+    if provider == "local":
+        cache_key = (provider, (s.embed_model or "").strip(), "")
+    else:
+        base_url, _, _ = _resolve_embed_endpoint(s)
+        cache_key = (provider, (s.embed_model or "").strip(), base_url.rstrip("/"))
+
+    cached = _embed_dim_cache.get(cache_key)
+    if cached:
+        return cached
+
+    # Probe a single vector.
+    if provider == "local":
+        embedder = get_embedder(s)
+        vec = next(embedder.embed(["dimension probe"]))
+        dim = int(getattr(vec, "shape", [len(vec)])[0] if hasattr(vec, "shape") else len(vec))
+    else:
+        vectors = await _embed_texts_openai_compat(["dimension probe"], s)
+        dim = int(len(vectors[0]) if vectors else 0)
+
+    if dim <= 0:
+        raise RuntimeError(f"Could not resolve embedding dimension (provider={provider} model={s.embed_model})")
+
+    _embed_dim_cache[cache_key] = dim
+    logger.info(
+        "Resolved embedding dimension",
+        extra={"provider": provider, "model": s.embed_model, "embed_dim": dim},
+    )
+    return dim
+
+
+async def _embed_texts_openai_compat(texts: list[str], s: Settings) -> list[list[float]]:
+    base_url, api_key, extra_headers = _resolve_embed_endpoint(s)
+    if not base_url:
+        raise RuntimeError("Embeddings base URL could not be derived/configured")
+
+    # OpenAI compat: POST {base_url}/embeddings
+    url = f"{base_url}/embeddings"
+
+    headers: dict[str, str] = {"Accept": "application/json", **extra_headers}
+    if api_key:
+        headers["Authorization"] = f"Bearer {api_key}"
+
+    params: dict[str, Any] | None = None
+    if _is_azure_openai_base_url(base_url):
+        # Azure OpenAI uses api-key header and api-version query param.
+        # They often require a deployment name instead of a model id; we keep
+        # `embed_model` as "deployment name" for Azure users.
+        if api_key:
+            headers.pop("Authorization", None)
+            headers["api-key"] = api_key
+        params = {"api-version": s.embed_azure_api_version}
+
+    payload = {"model": s.embed_model, "input": texts}
+    logger.info(
+        "Embedding via OpenAI-compatible provider",
+        extra={
+            "provider": s.embed_provider,
+            "base_url": base_url,
+            "model": s.embed_model,
+            "count": len(texts),
+        },
+    )
+
+    async with httpx.AsyncClient(timeout=120) as client:
+        resp = await client.post(url, headers=headers, params=params, json=payload)
+        resp.raise_for_status()
+        data = resp.json()
+
+    items = (data.get("data") if isinstance(data, dict) else None) or []
+    vectors: list[list[float]] = []
+    for item in items:
+        emb = item.get("embedding") if isinstance(item, dict) else None
+        if isinstance(emb, list):
+            vectors.append([float(x) for x in emb])
+
+    if len(vectors) != len(texts):
+        raise RuntimeError(f"Embeddings API returned {len(vectors)} vectors for {len(texts)} inputs")
+    return vectors
+
+
 async def get_client(settings: Settings | None = None) -> AsyncQdrantClient:
     global _client
     if _client is None:
         s = settings or get_settings()
         _client = AsyncQdrantClient(url=s.qdrant_url)
     return _client
+
+
+async def _semantic_query_points(
+    client: AsyncQdrantClient,
+    *,
+    collection_name: str,
+    query_vector: list[float],
+    query_filter: Filter,
+    limit: int,
+    with_payload: bool = True,
+) -> list[Any]:
+    """
+    Qdrant client API compatibility shim.
+
+    `qdrant-client` async API uses `query_points()` (returning QueryResponse) in
+    newer versions. Some older variants exposed `search()` / `search_points()`.
+    """
+    if hasattr(client, "query_points"):
+        resp = await client.query_points(
+            collection_name=collection_name,
+            query=query_vector,
+            query_filter=query_filter,
+            limit=limit,
+            with_payload=with_payload,
+        )
+        return list(getattr(resp, "points", []) or [])
+
+    # Fallbacks (older client variants)
+    if hasattr(client, "search"):
+        return await client.search(  # type: ignore[attr-defined]
+            collection_name=collection_name,
+            query_vector=query_vector,
+            query_filter=query_filter,
+            limit=limit,
+            with_payload=with_payload,
+        )
+
+    if hasattr(client, "search_points"):
+        resp = await client.search_points(  # type: ignore[attr-defined]
+            collection_name=collection_name,
+            vector=query_vector,
+            query_filter=query_filter,
+            limit=limit,
+            with_payload=with_payload,
+        )
+        return list(getattr(resp, "points", []) or [])
+
+    raise AttributeError(
+        "Unsupported Qdrant async client: expected one of query_points/search/search_points"
+    )
 
 
 # ── Chunking ─────────────────────────────────────────────────────────────────
@@ -67,14 +244,26 @@ def _chunk_text(text: str, chunk_size: int = 512, overlap: int = 64) -> list[str
 # ── Embedding helper ─────────────────────────────────────────────────────────
 
 async def embed_texts(texts: list[str], settings: Settings | None = None) -> list[list[float]]:
-    """Embed *texts* using fastembed (sync, runs in executor)."""
-    loop = asyncio.get_running_loop()
-    embedder = get_embedder(settings)
+    """
+    Embed *texts* using either local fastembed or an OpenAI-compatible endpoint.
+    """
+    s = settings or get_settings()
+    provider = (s.embed_provider or "local").strip().lower()
 
-    def _embed() -> list[list[float]]:
-        return [v.tolist() for v in embedder.embed(texts)]
+    if provider == "local":
+        loop = asyncio.get_running_loop()
+        embedder = get_embedder(s)
+        logger.debug(
+            "Embedding texts (local)",
+            extra={"count": len(texts), "model": getattr(embedder, "model_name", None)},
+        )
 
-    return await loop.run_in_executor(None, _embed)
+        def _embed() -> list[list[float]]:
+            return [v.tolist() for v in embedder.embed(texts)]
+
+        return await loop.run_in_executor(None, _embed)
+
+    return await _embed_texts_openai_compat(texts, s)
 
 
 # ── Collection init ───────────────────────────────────────────────────────────
@@ -83,6 +272,7 @@ async def init_collection(settings: Settings | None = None) -> None:
     """Create the Qdrant collection if it does not already exist."""
     s = settings or get_settings()
     client = await get_client(s)
+    embed_dim = await resolve_embed_dim(s)
 
     try:
         exists = await client.collection_exists(s.qdrant_collection)
@@ -90,12 +280,76 @@ async def init_collection(settings: Settings | None = None) -> None:
             await client.create_collection(
                 collection_name=s.qdrant_collection,
                 vectors_config=VectorParams(
-                    size=s.embed_dim,
+                    size=embed_dim,
                     distance=Distance.COSINE,
                 ),
             )
             logger.info("Created Qdrant collection '%s'", s.qdrant_collection)
         else:
+            # If embed_dim changed (e.g. you switched embedding models), Qdrant
+            # needs to have vectors_config.size match, otherwise upserts/search
+            # will fail or produce incorrect results.
+            try:
+                desc = await client.get_collection(s.qdrant_collection)
+                # qdrant-client model shapes vary by version; try a few common paths.
+                existing_vectors = (
+                    getattr(desc, "vectors", None)
+                    or getattr(getattr(getattr(desc, "config", None), "params", None), "vectors", None)
+                )
+
+                existing_dim: int | None = None
+                if isinstance(existing_vectors, dict):
+                    if "size" in existing_vectors:
+                        existing_dim = int(existing_vectors["size"])
+                    elif "default" in existing_vectors:
+                        dv = existing_vectors.get("default")
+                        if isinstance(dv, dict) and "size" in dv:
+                            existing_dim = int(dv["size"])
+                        else:
+                            existing_dim = getattr(dv, "size", None)
+                            existing_dim = int(existing_dim) if existing_dim is not None else None
+                    elif len(existing_vectors) == 1:
+                        only = next(iter(existing_vectors.values()))
+                        if isinstance(only, dict) and "size" in only:
+                            existing_dim = int(only["size"])
+                        else:
+                            existing_dim = getattr(only, "size", None)
+                            existing_dim = int(existing_dim) if existing_dim is not None else None
+                else:
+                    size = getattr(existing_vectors, "size", None)
+                    if size is None:
+                        size = getattr(getattr(existing_vectors, "default", None), "size", None)
+                    existing_dim = int(size) if size is not None else None
+
+                if existing_dim is not None and int(existing_dim) != int(embed_dim):
+                    logger.warning(
+                        "Qdrant collection '%s' dim mismatch: existing=%s settings=%s",
+                        s.qdrant_collection,
+                        existing_dim,
+                        embed_dim,
+                    )
+                    if s.qdrant_recreate_collection_on_dim_mismatch:
+                        await client.delete_collection(s.qdrant_collection)
+                        await client.create_collection(
+                            collection_name=s.qdrant_collection,
+                            vectors_config=VectorParams(
+                                size=embed_dim,
+                                distance=Distance.COSINE,
+                            ),
+                        )
+                        logger.info(
+                            "Recreated Qdrant collection '%s' for embed_dim=%s",
+                            s.qdrant_collection,
+                            embed_dim,
+                        )
+                    else:
+                        logger.warning(
+                            "Set QDRANT_RECREATE_COLLECTION_ON_DIM_MISMATCH=true to auto-recreate."
+                        )
+            except Exception:
+                # Keep original behavior: if we can't read the collection description,
+                # just continue (operations will surface the real error).
+                pass
             logger.info("Qdrant collection '%s' already exists", s.qdrant_collection)
     except Exception as exc:
         logger.warning("Could not init Qdrant collection: %s", exc)
@@ -113,12 +367,23 @@ async def upsert_page(
     """Chunk *content*, embed all chunks, upsert to Qdrant. Returns chunk count."""
     s = settings or get_settings()
     client = await get_client(s)
+    embed_dim = await resolve_embed_dim(s)
 
+    logger.info(
+        "Qdrant upsert_page start",
+        extra={"slug": slug, "wiki_id": wiki_id, "collection": s.qdrant_collection, "content_chars": len(content or "")},
+    )
     # Delete stale vectors first
     await delete_page(slug, wiki_id, s)
 
     chunks = _chunk_text(content)
     vectors = await embed_texts(chunks, s)
+    logger.debug("Qdrant vectors ready", extra={"slug": slug, "chunks": len(chunks), "dim": len(vectors[0]) if vectors else 0})
+    if vectors and len(vectors[0]) != int(embed_dim):
+        raise RuntimeError(
+            f"Embedding dim mismatch: got={len(vectors[0])} settings.embed_dim={embed_dim} "
+            f"(provider={s.embed_provider} model={s.embed_model})"
+        )
 
     points = [
         PointStruct(
@@ -136,6 +401,7 @@ async def upsert_page(
     ]
 
     await client.upsert(collection_name=s.qdrant_collection, points=points)
+    logger.info("Qdrant upsert_page done", extra={"slug": slug, "wiki_id": wiki_id, "points": len(points)})
     return len(points)
 
 
@@ -148,11 +414,13 @@ async def search(
     """Semantic search. Returns list of {slug, title, excerpt, score}."""
     s = settings or get_settings()
     client = await get_client(s)
+    await resolve_embed_dim(s)  # ensures embed settings are usable and cached
 
     vectors = await embed_texts([query], s)
     query_vec = vectors[0]
 
-    results = await client.search(
+    results = await _semantic_query_points(
+        client,
         collection_name=s.qdrant_collection,
         query_vector=query_vec,
         query_filter=Filter(
@@ -187,9 +455,11 @@ async def search_raw(
     """Like search() but returns all individual chunk hits (for context building)."""
     s = settings or get_settings()
     client = await get_client(s)
+    await resolve_embed_dim(s)  # ensures embed settings are usable and cached
 
     vectors = await embed_texts([query], s)
-    results = await client.search(
+    results = await _semantic_query_points(
+        client,
         collection_name=s.qdrant_collection,
         query_vector=vectors[0],
         query_filter=Filter(
@@ -232,5 +502,6 @@ async def delete_page(
                 )
             ),
         )
+        logger.debug("Deleted Qdrant vectors", extra={"slug": slug, "wiki_id": wiki_id})
     except Exception as exc:
         logger.warning("Could not delete vectors for %s/%s: %s", wiki_id, slug, exc)

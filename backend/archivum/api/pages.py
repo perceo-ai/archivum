@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+import logging
+import re
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -15,6 +17,7 @@ from archivum.db import sqlite, qdrant_client as qdrant, graph
 from archivum.ingest.agent import slugify
 
 router = APIRouter(prefix="/api/pages", tags=["pages"])
+logger = logging.getLogger(__name__)
 
 
 # ── Schemas ───────────────────────────────────────────────────────────────────
@@ -47,6 +50,45 @@ class UpdatePageRequest(BaseModel):
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
+
+_SLUG_SEGMENT_RE = re.compile(r"^[a-z0-9][a-z0-9._-]*$")
+
+
+def _validate_slug(slug: str) -> str:
+    """
+    Allow folder-like slugs: "projects/archivum/notes".
+    Disallow traversal and weird separators.
+    """
+    if not slug or slug.strip() != slug:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={"detail": "Invalid slug", "code": "invalid_slug"},
+        )
+    if slug.startswith("/") or slug.endswith("/"):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={"detail": "Invalid slug", "code": "invalid_slug"},
+        )
+    if "\\" in slug:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={"detail": "Invalid slug", "code": "invalid_slug"},
+        )
+
+    parts = slug.split("/")
+    if any(p in ("", ".", "..") for p in parts):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={"detail": "Invalid slug", "code": "invalid_slug"},
+        )
+    for p in parts:
+        if not _SLUG_SEGMENT_RE.match(p):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail={"detail": f"Invalid slug segment '{p}'", "code": "invalid_slug"},
+            )
+    return slug
+
 
 def _deserialize_tags(tags_raw: str | list) -> list[str]:
     if isinstance(tags_raw, list):
@@ -91,11 +133,12 @@ async def list_pages(
     return [_row_to_summary(r) for r in rows]
 
 
-@router.get("/{slug}", response_model=PageDetail)
+@router.get("/{slug:path}", response_model=PageDetail)
 async def get_page(
     slug: str,
     current_user: CurrentUser = Depends(get_current_user),
 ) -> PageDetail:
+    slug = _validate_slug(slug)
     row = await sqlite.get_page(slug, current_user.wiki_id)
     if not row:
         raise HTTPException(
@@ -111,6 +154,10 @@ async def create_page(
     current_user: CurrentUser = Depends(require_writer),
     settings: Settings = Depends(get_settings),
 ) -> PageDetail:
+    logger.info(
+        "API create_page",
+        extra={"wiki_id": current_user.wiki_id, "title_chars": len(body.title or ""), "content_chars": len(body.content or "")},
+    )
     # Derive slug
     slug = body.slug or slugify(body.title)
     if not slug:
@@ -118,6 +165,7 @@ async def create_page(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail={"detail": "Could not generate slug from title", "code": "invalid_title"},
         )
+    slug = _validate_slug(slug)
 
     # Ensure uniqueness
     base_slug = slug
@@ -151,13 +199,18 @@ async def create_page(
     return _row_to_detail(row)  # type: ignore[arg-type]
 
 
-@router.put("/{slug}", response_model=PageDetail)
+@router.put("/{slug:path}", response_model=PageDetail)
 async def update_page(
     slug: str,
     body: UpdatePageRequest,
     current_user: CurrentUser = Depends(require_writer),
     settings: Settings = Depends(get_settings),
 ) -> PageDetail:
+    slug = _validate_slug(slug)
+    logger.info(
+        "API update_page",
+        extra={"wiki_id": current_user.wiki_id, "slug": slug, "has_title": body.title is not None, "has_content": body.content is not None},
+    )
     existing = await sqlite.get_page(slug, current_user.wiki_id)
     if not existing:
         raise HTTPException(
@@ -193,12 +246,14 @@ async def update_page(
     return _row_to_detail(row)  # type: ignore[arg-type]
 
 
-@router.delete("/{slug}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/{slug:path}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_page(
     slug: str,
     current_user: CurrentUser = Depends(require_writer),
     settings: Settings = Depends(get_settings),
 ) -> None:
+    slug = _validate_slug(slug)
+    logger.info("API delete_page", extra={"wiki_id": current_user.wiki_id, "slug": slug})
     existing = await sqlite.get_page(slug, current_user.wiki_id)
     if not existing:
         raise HTTPException(
@@ -219,12 +274,16 @@ async def delete_page(
     # Kuzu
     await graph.delete_page_node(slug)
 
+    # Cleanup: remove graph nodes that no longer have any backing Page.
+    await graph.cleanup_abandoned_nodes(current_user.wiki_id)
 
-@router.get("/{slug}/backlinks", response_model=list[dict])
+
+@router.get("/{slug:path}/backlinks", response_model=list[dict])
 async def get_backlinks(
     slug: str,
     current_user: CurrentUser = Depends(get_current_user),
 ) -> list[dict]:
+    slug = _validate_slug(slug)
     # Verify page exists
     existing = await sqlite.get_page(slug, current_user.wiki_id)
     if not existing:

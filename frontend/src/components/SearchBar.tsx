@@ -2,6 +2,9 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { search } from '../api';
 import type { SearchResult } from '../types';
+import { Button } from './ui/Button';
+import { Card } from './ui/Card';
+import { Input } from './ui/Input';
 
 export default function SearchBar() {
   const navigate = useNavigate();
@@ -27,39 +30,32 @@ export default function SearchBar() {
   }
 
   return (
-    <div className="flex flex-col h-full" style={{ backgroundColor: '#1e1e2e' }}>
+    <div className="flex flex-col h-full bg-bg">
       <div
-        className="shrink-0 border-b p-4"
-        style={{ borderColor: '#3a3a4a', backgroundColor: '#252535' }}
+        className="shrink-0 border-b border-border p-4 bg-panel/40 backdrop-blur supports-[backdrop-filter]:bg-panel/30"
       >
-        <h2 className="text-sm font-semibold text-text-secondary mb-3 uppercase tracking-wider">
+        <h2 className="text-sm font-semibold text-muted-foreground mb-3 uppercase tracking-wider">
           Search
         </h2>
         <form onSubmit={runSearch} className="flex gap-2">
-          <input
+          <Input
             value={q}
             onChange={(e) => setQ(e.target.value)}
             placeholder="Search your knowledge base..."
-            className="flex-1 bg-transparent border rounded px-3 py-2 text-sm text-text-primary placeholder-text-muted focus:outline-none focus:border-accent/50"
-            style={{ borderColor: '#3a3a4a' }}
           />
-          <button
+          <Button
             type="submit"
+            variant="primary"
             disabled={loading || !q.trim()}
-            className="px-4 py-2 rounded text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-            style={{ backgroundColor: '#4B91F1', color: '#ffffff' }}
           >
             {loading ? 'Searching…' : 'Search'}
-          </button>
+          </Button>
         </form>
       </div>
 
       <div className="flex-1 overflow-y-auto p-4">
         {error && (
-          <div
-            className="rounded p-3 mb-4 text-sm text-red-400 border border-red-400/30"
-            style={{ backgroundColor: '#2a1a1a' }}
-          >
+          <div className="rounded-lg p-3 mb-4 text-sm text-red-300 border border-red-400/25 bg-red-500/10">
             {error}
           </div>
         )}
@@ -73,7 +69,7 @@ export default function SearchBar() {
         )}
 
         {!loading && !error && results.length === 0 && q.trim() && (
-          <div className="text-sm text-text-muted">No results.</div>
+          <div className="text-sm text-muted-foreground">No results.</div>
         )}
 
         <div className="space-y-3">
@@ -81,19 +77,20 @@ export default function SearchBar() {
             <button
               key={r.slug}
               onClick={() => navigate(`/wiki/${r.slug}`)}
-              className="w-full text-left rounded border p-3 hover:border-accent/40 transition-colors"
-              style={{ borderColor: '#3a3a4a', backgroundColor: '#252535' }}
+              className="w-full text-left transition-colors"
             >
-              <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <div className="text-sm text-text-primary font-medium truncate">{r.title}</div>
-                  <div className="text-xs text-text-muted truncate">{r.slug}</div>
+              <Card className="p-3 hover:border-accent/30">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="text-sm text-foreground font-medium truncate">{r.title}</div>
+                    <div className="text-xs text-muted-foreground truncate">{r.slug}</div>
+                  </div>
+                  <div className="text-xs text-muted-foreground shrink-0">{r.score.toFixed(3)}</div>
                 </div>
-                <div className="text-xs text-text-muted shrink-0">{r.score.toFixed(3)}</div>
-              </div>
-              <div className="mt-2 text-sm text-text-secondary leading-relaxed">
-                {r.excerpt}
-              </div>
+                <div className="mt-2 text-sm text-muted-foreground leading-relaxed">
+                  {r.excerpt}
+                </div>
+              </Card>
             </button>
           ))}
         </div>

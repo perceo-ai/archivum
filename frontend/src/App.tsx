@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom';
 import { AppProvider, useAppState, useAppDispatch } from './store';
+import { ToastProvider } from './components/ui/Toast';
 import Layout from './components/Layout';
 import WikiPage from './pages/WikiPage';
 import LoginPage from './pages/LoginPage';
@@ -44,7 +45,7 @@ function ProtectedRoutes() {
           ? <Navigate to={`/wiki/${pages[0].slug}`} replace />
           : <Navigate to="/ingest" replace />
       } />
-      <Route path="/wiki/:slug" element={
+      <Route path="/wiki/*" element={
         <Layout>
           <WikiPage />
         </Layout>
@@ -86,10 +87,12 @@ function AppRoutes() {
 
 export default function App() {
   return (
-    <AppProvider>
-      <BrowserRouter>
-        <AppRoutes />
-      </BrowserRouter>
-    </AppProvider>
+    <ToastProvider>
+      <AppProvider>
+        <BrowserRouter>
+          <AppRoutes />
+        </BrowserRouter>
+      </AppProvider>
+    </ToastProvider>
   );
 }

@@ -3,6 +3,8 @@ import type { Network, Options } from 'vis-network';
 import { DataSet } from 'vis-data';
 import { getGraph } from '../api';
 import type { GraphNode, GraphEdge } from '../types';
+import { Button } from './ui/Button';
+import { Input } from './ui/Input';
 
 interface GraphViewProps {
   onNavigate: (slug: string) => void;
@@ -198,28 +200,34 @@ export default function GraphView({ onNavigate }: GraphViewProps) {
   }
 
   return (
-    <div className="flex flex-col h-full" style={{ backgroundColor: '#1e1e2e' }}>
+    <div className="flex flex-col h-full bg-bg">
       {/* Toolbar */}
       <div
-        className="flex items-center gap-2 px-4 py-2 border-b shrink-0"
-        style={{ borderColor: '#3a3a4a', backgroundColor: '#252535' }}
+        className="flex items-center gap-2 px-4 py-2 border-b border-border shrink-0 bg-panel/40 backdrop-blur supports-[backdrop-filter]:bg-panel/30"
       >
-        <input
+        <Input
           type="text"
           placeholder="Find node..."
           value={searchText}
           onChange={(e) => handleSearch(e.target.value)}
-          className="bg-transparent border rounded px-2 py-1 text-xs text-text-secondary placeholder-text-muted focus:outline-none focus:border-accent/50 w-48"
-          style={{ borderColor: '#3a3a4a' }}
+          className="w-56 h-8 text-xs"
         />
         <div className="flex gap-1">
-          <GraphButton onClick={zoomIn} title="Zoom in">+</GraphButton>
-          <GraphButton onClick={zoomOut} title="Zoom out">−</GraphButton>
-          <GraphButton onClick={fitAll} title="Fit all">⊡</GraphButton>
-          <GraphButton onClick={loadGraph} title="Refresh">↻</GraphButton>
+          <GraphButton onClick={zoomIn} title="Zoom in">
+            +
+          </GraphButton>
+          <GraphButton onClick={zoomOut} title="Zoom out">
+            −
+          </GraphButton>
+          <GraphButton onClick={fitAll} title="Fit all">
+            ⊡
+          </GraphButton>
+          <GraphButton onClick={loadGraph} title="Refresh">
+            ↻
+          </GraphButton>
         </div>
         <div className="flex-1" />
-        <span className="text-xs text-text-muted">
+        <span className="text-xs text-muted-foreground">
           {nodeCount} nodes · {edgeCount} edges
         </span>
         {/* Legend */}
@@ -230,7 +238,7 @@ export default function GraphView({ onNavigate }: GraphViewProps) {
                 className="inline-block w-2 h-2 rounded-full"
                 style={{ backgroundColor: color }}
               />
-              <span className="text-xs text-text-muted capitalize">{type}</span>
+              <span className="text-xs text-muted-foreground capitalize">{type}</span>
             </div>
           ))}
         </div>
@@ -251,12 +259,9 @@ export default function GraphView({ onNavigate }: GraphViewProps) {
           <div className="absolute inset-0 flex items-center justify-center">
             <div className="text-center">
               <p className="text-red-400 text-sm mb-3">{error}</p>
-              <button
-                onClick={loadGraph}
-                className="text-xs px-3 py-1.5 rounded border border-accent/50 text-accent hover:bg-accent/10 transition-colors"
-              >
+              <Button onClick={loadGraph} variant="secondary" size="sm">
                 Retry
-              </button>
+              </Button>
             </div>
           </div>
         )}
@@ -276,13 +281,14 @@ function GraphButton({
   children: React.ReactNode;
 }) {
   return (
-    <button
+    <Button
       onClick={onClick}
       title={title}
-      className="w-7 h-7 flex items-center justify-center rounded border text-text-secondary hover:text-text-primary hover:border-accent/50 transition-colors text-sm"
-      style={{ borderColor: '#3a3a4a' }}
+      variant="secondary"
+      size="icon"
+      className="h-8 w-8 text-sm"
     >
       {children}
-    </button>
+    </Button>
   );
 }

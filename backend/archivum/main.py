@@ -6,6 +6,9 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.requests import Request
+from starlette.responses import Response
 
 from archivum.api import auth as auth_routes
 from archivum.api import ingest as ingest_routes
@@ -19,13 +22,31 @@ from archivum.db import qdrant_client as qdrant
 from archivum.db import sqlite
 from archivum.db import graph
 from archivum.auth import hash_password
+from archivum.logging_config import setup_logging
+from archivum.observability import new_trace_id, set_trace_id
 
 logger = logging.getLogger(__name__)
+
+
+class _TraceMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next) -> Response:  # type: ignore[override]
+        trace_id = request.headers.get("x-trace-id") or new_trace_id("http")
+        set_trace_id(trace_id)
+        response = await call_next(request)
+        response.headers["x-trace-id"] = trace_id
+        return response
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     settings: Settings = get_settings()
+
+    setup_logging()
+    set_trace_id(new_trace_id("startup"))
+    logger.info(
+        "Starting Archivum API",
+        extra={"qdrant_url": settings.qdrant_url, "db_path": str(settings.db_path), "wiki_dir": str(settings.wiki_dir)},
+    )
 
     # Ensure directories exist
     settings.wiki_dir.mkdir(parents=True, exist_ok=True)
@@ -46,10 +67,12 @@ async def lifespan(app: FastAPI):
 
 
 def create_app() -> FastAPI:
+    setup_logging()
     settings = get_settings()
 
     app = FastAPI(title="Archivum API", version="0.1.0", lifespan=lifespan)
 
+    app.add_middleware(_TraceMiddleware)
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.cors_origins,

@@ -33,8 +33,8 @@ export default function BacklinksPanel() {
 
   return (
     <div className="flex flex-col h-full">
-      <div className="px-3 py-2 border-b shrink-0" style={{ borderColor: '#3a3a4a' }}>
-        <span className="text-xs font-semibold text-text-muted uppercase tracking-wider">
+      <div className="px-3 py-2 border-b border-border shrink-0">
+        <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
           Linked from
         </span>
       </div>
@@ -53,7 +53,7 @@ export default function BacklinksPanel() {
         )}
 
         {!loading && !error && backlinks.length === 0 && (
-          <div className="px-3 py-6 text-center text-text-muted text-xs">
+          <div className="px-3 py-6 text-center text-muted-foreground text-xs">
             {currentSlug ? 'No backlinks yet' : 'Open a page to see backlinks'}
           </div>
         )}
@@ -62,13 +62,13 @@ export default function BacklinksPanel() {
           <button
             key={page.slug}
             onClick={() => navigate(`/wiki/${page.slug}`)}
-            className="w-full text-left px-3 py-2 text-sm text-text-secondary hover:bg-white/5 hover:text-text-primary transition-colors group"
+            className="w-full text-left px-3 py-2 text-sm text-muted-foreground hover:bg-muted/40 hover:text-foreground transition-colors group"
           >
             <div className="flex items-center gap-2">
               <BacklinkIcon />
               <span className="flex-1 truncate">{page.title}</span>
             </div>
-            <p className="text-xs text-text-muted mt-0.5 pl-5 truncate">
+            <p className="text-xs text-muted-foreground/70 mt-0.5 pl-5 truncate">
               {page.slug}
             </p>
           </button>
@@ -76,11 +76,8 @@ export default function BacklinksPanel() {
       </div>
 
       {currentSlug && (
-        <div
-          className="px-3 py-2 border-t shrink-0"
-          style={{ borderColor: '#3a3a4a' }}
-        >
-          <p className="text-xs text-text-muted">
+        <div className="px-3 py-2 border-t border-border shrink-0">
+          <p className="text-xs text-muted-foreground">
             {backlinks.length} {backlinks.length === 1 ? 'reference' : 'references'}
           </p>
         </div>
@@ -100,7 +97,7 @@ function BacklinkIcon() {
       strokeWidth="1.5"
       strokeLinecap="round"
       strokeLinejoin="round"
-      className="text-text-muted shrink-0"
+      className="text-muted-foreground shrink-0"
     >
       <path d="M7 1l4 4-4 4" />
       <path d="M1 9V7a5 5 0 015-5h5" />

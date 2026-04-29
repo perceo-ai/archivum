@@ -15,6 +15,9 @@ import anthropic
 
 from archivum.config import Settings, get_settings
 from archivum.ingest.parsers import ParsedDoc
+from archivum.llm.openrouter_client import openrouter_chat_completion
+from archivum.llm.openai_compat_client import openai_compat_chat_completion
+from archivum.observability import span
 
 logger = logging.getLogger(__name__)
 
@@ -93,7 +96,11 @@ def slugify(title: str) -> str:
 class WikiAgent:
     def __init__(self, settings: Settings | None = None):
         self.settings = settings or get_settings()
-        self._client = anthropic.Anthropic(api_key=self.settings.anthropic_api_key)
+        self._client = (
+            anthropic.Anthropic(api_key=self.settings.anthropic_api_key)
+            if self.settings.llm_extraction_provider == "anthropic"
+            else None
+        )
 
     async def extract(self, doc: ParsedDoc) -> ExtractionResult:
         """Extract structured wiki data from a ParsedDoc.
@@ -101,10 +108,19 @@ class WikiAgent:
         Uses prompt caching on the system prompt. Sends up to 4000 chars of doc text
         to keep token costs low.
         """
-        import asyncio
+        if self.settings.llm_extraction_provider == "anthropic":
+            import asyncio
 
-        loop = asyncio.get_running_loop()
-        return await loop.run_in_executor(None, self._extract_sync, doc)
+            loop = asyncio.get_running_loop()
+            return await loop.run_in_executor(None, self._extract_sync, doc)
+
+        if self.settings.llm_extraction_provider == "openrouter":
+            return await self._extract_openrouter_async(doc)
+
+        if self.settings.llm_extraction_provider in {"openai_compat", "ollama"}:
+            return await self._extract_openai_compat_async(doc)
+
+        raise ValueError(f"Unsupported llm_extraction_provider: {self.settings.llm_extraction_provider}")
 
     def _extract_sync(self, doc: ParsedDoc) -> ExtractionResult:
         # Truncate very long documents
@@ -123,6 +139,12 @@ class WikiAgent:
         user_message = f"Extract and structure the following document into wiki pages:{source_hint}\n\n---\n\n{text}"
 
         try:
+            with span("anthropic.extract_sync", model=self.settings.llm_model) as sp:
+                logger.info(
+                    "Anthropic extraction start",
+                    extra={"model": self.settings.llm_model, "doc_chars": len(doc.text or ""), "sent_chars": len(text), **sp},
+                )
+            assert self._client is not None  # for mypy/type checkers
             response = self._client.messages.create(
                 model=self.settings.llm_model,
                 max_tokens=4096,
@@ -144,6 +166,10 @@ class WikiAgent:
                 raw_json = re.sub(r"\s*```$", "", raw_json)
 
             data = json.loads(raw_json)
+            logger.info(
+                "Anthropic extraction done",
+                extra={"model": self.settings.llm_model, "raw_json_chars": len(raw_json or ""), **sp},
+            )
             return self._parse_extraction(data, doc)
 
         except json.JSONDecodeError as exc:
@@ -151,6 +177,113 @@ class WikiAgent:
             return self._fallback_extraction(doc)
         except anthropic.APIError as exc:
             logger.error("Anthropic API error: %s", exc)
+            return self._fallback_extraction(doc)
+
+    async def _extract_openrouter_async(self, doc: ParsedDoc) -> ExtractionResult:
+        """OpenRouter-backed extraction (entities + relationships)."""
+        # Truncate very long documents (same policy as Anthropic path).
+        text = doc.text
+        if len(text) > 12000:
+            text = text[:12000] + "\n\n[... document truncated for processing ...]"
+
+        source_hint = ""
+        if doc.source:
+            source_hint = f"\nSource: {doc.source}"
+        if doc.metadata.get("url"):
+            source_hint = f"\nSource URL: {doc.metadata['url']}"
+        if doc.metadata.get("title"):
+            source_hint += f"\nDocument title: {doc.metadata['title']}"
+
+        user_message = f"Extract and structure the following document into wiki pages:{source_hint}\n\n---\n\n{text}"
+
+        try:
+            with span("openrouter.extract", model=self.settings.llm_model) as sp:
+                logger.info(
+                    "OpenRouter extraction start",
+                    extra={"model": self.settings.llm_model, "doc_chars": len(doc.text or ""), "sent_chars": len(text), **sp},
+                )
+                raw = await openrouter_chat_completion(
+                    settings=self.settings,
+                    model=self.settings.llm_model,
+                    max_tokens=4096,
+                    temperature=0.2,
+                    messages=[
+                        {"role": "system", "content": WIKI_SYSTEM_PROMPT},
+                        {"role": "user", "content": user_message},
+                    ],
+                )
+
+            raw_json = raw.strip()
+
+            # Strip accidental markdown code fences
+            if raw_json.startswith("```"):
+                raw_json = re.sub(r"^```(?:json)?\s*", "", raw_json)
+                raw_json = re.sub(r"\s*```$", "", raw_json)
+
+            data = json.loads(raw_json)
+            logger.info(
+                "OpenRouter extraction done",
+                extra={"model": self.settings.llm_model, "raw_json_chars": len(raw_json or ""), **sp},
+            )
+            return self._parse_extraction(data, doc)
+        except json.JSONDecodeError as exc:
+            logger.error("OpenRouter returned invalid JSON: %s", exc)
+            return self._fallback_extraction(doc)
+        except Exception as exc:
+            logger.error("OpenRouter extraction error: %s", exc)
+            return self._fallback_extraction(doc)
+
+    async def _extract_openai_compat_async(self, doc: ParsedDoc) -> ExtractionResult:
+        """OpenAI-compatible extraction (includes OpenAI, Together, Fireworks, Ollama, etc.)."""
+        text = doc.text
+        if len(text) > 12000:
+            text = text[:12000] + "\n\n[... document truncated for processing ...]"
+
+        source_hint = ""
+        if doc.source:
+            source_hint = f"\nSource: {doc.source}"
+        if doc.metadata.get("url"):
+            source_hint = f"\nSource URL: {doc.metadata['url']}"
+        if doc.metadata.get("title"):
+            source_hint += f"\nDocument title: {doc.metadata['title']}"
+
+        user_message = f"Extract and structure the following document into wiki pages:{source_hint}\n\n---\n\n{text}"
+
+        try:
+            provider = self.settings.llm_extraction_provider
+            with span("openai_compat.extract", provider=provider, model=self.settings.llm_model) as sp:
+                logger.info(
+                    "OpenAI-compatible extraction start",
+                    extra={"provider": provider, "model": self.settings.llm_model, "doc_chars": len(doc.text or ""), "sent_chars": len(text), **sp},
+                )
+                raw = await openai_compat_chat_completion(
+                    settings=self.settings,
+                    provider=provider,
+                    model=self.settings.llm_model,
+                    max_tokens=4096,
+                    temperature=0.2,
+                    messages=[
+                        {"role": "system", "content": WIKI_SYSTEM_PROMPT},
+                        {"role": "user", "content": user_message},
+                    ],
+                )
+
+            raw_json = raw.strip()
+            if raw_json.startswith("```"):
+                raw_json = re.sub(r"^```(?:json)?\s*", "", raw_json)
+                raw_json = re.sub(r"\s*```$", "", raw_json)
+
+            data = json.loads(raw_json)
+            logger.info(
+                "OpenAI-compatible extraction done",
+                extra={"provider": provider, "model": self.settings.llm_model, "raw_json_chars": len(raw_json or ""), **sp},
+            )
+            return self._parse_extraction(data, doc)
+        except json.JSONDecodeError as exc:
+            logger.error("OpenAI-compatible provider returned invalid JSON: %s", exc)
+            return self._fallback_extraction(doc)
+        except Exception as exc:
+            logger.error("OpenAI-compatible extraction error: %s", exc)
             return self._fallback_extraction(doc)
 
     def _parse_extraction(self, data: dict[str, Any], doc: ParsedDoc) -> ExtractionResult:

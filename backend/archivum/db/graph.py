@@ -28,8 +28,11 @@ def _get_conn(settings: Settings | None = None) -> kuzu.Connection:
     if _conn is None:
         s = settings or get_settings()
         kuzu_path = Path(s.kuzu_path)
+        # kuzu.Database expects a database *file path* in current kuzu-python.
+        # We store it under the configured directory.
         kuzu_path.mkdir(parents=True, exist_ok=True)
-        _db = kuzu.Database(str(kuzu_path))
+        db_file = kuzu_path / "archivum.kuzu"
+        _db = kuzu.Database(str(db_file))
         _conn = kuzu.Connection(_db)
         _init_schema(_conn)
     return _conn
@@ -328,3 +331,44 @@ async def delete_page_node(slug: str) -> None:
         except Exception as exc:
             logger.debug("delete_page_node error: %s", exc)
     await _run(_do)
+
+
+async def cleanup_abandoned_nodes(wiki_id: str = "default") -> dict[str, int]:
+    """
+    Delete graph nodes that no longer have any backing Page.
+
+    Today this means Entity nodes that have no incoming MENTIONS edge from any
+    Page in the same wiki_id (typically after a page delete).
+    """
+
+    def _do() -> dict[str, int]:
+        conn = _get_conn()
+        deleted_entities = 0
+        try:
+            res = conn.execute(
+                "MATCH (e:Entity) "
+                "WHERE e.wiki_id = $wiki_id "
+                "AND NOT EXISTS { MATCH (:Page {wiki_id: $wiki_id})-[:MENTIONS]->(e) } "
+                "RETURN COUNT(e)",
+                {"wiki_id": wiki_id},
+            )
+            if res.has_next():
+                row = res.get_next()
+                deleted_entities = int(row[0] or 0)
+        except Exception as exc:
+            logger.debug("cleanup_abandoned_nodes count error: %s", exc)
+
+        try:
+            conn.execute(
+                "MATCH (e:Entity) "
+                "WHERE e.wiki_id = $wiki_id "
+                "AND NOT EXISTS { MATCH (:Page {wiki_id: $wiki_id})-[:MENTIONS]->(e) } "
+                "DETACH DELETE e",
+                {"wiki_id": wiki_id},
+            )
+        except Exception as exc:
+            logger.debug("cleanup_abandoned_nodes delete error: %s", exc)
+
+        return {"deleted_entities": deleted_entities}
+
+    return await _run(_do)

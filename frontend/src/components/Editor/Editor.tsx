@@ -1,4 +1,4 @@
-import { useEffect, useRef, useCallback } from 'react';
+import { useEffect, useRef, useCallback, forwardRef, useImperativeHandle } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { EditorView, keymap } from '@codemirror/view';
 import { EditorState } from '@codemirror/state';
@@ -14,9 +14,18 @@ export interface EditorProps {
   slug: string;
   initialContent: string;
   onSave?: (status: 'saving' | 'saved' | 'error') => void;
+  onChange?: (content: string) => void;
 }
 
-export default function Editor({ slug, initialContent, onSave }: EditorProps) {
+export type EditorHandle = {
+  getContent: () => string;
+  focus: () => void;
+};
+
+const Editor = forwardRef<EditorHandle, EditorProps>(function Editor(
+  { slug, initialContent, onSave, onChange },
+  ref,
+) {
   const { pages } = useAppState();
   const navigate = useNavigate();
   const containerRef = useRef<HTMLDivElement>(null);
@@ -25,11 +34,20 @@ export default function Editor({ slug, initialContent, onSave }: EditorProps) {
   const slugRef = useRef(slug);
   slugRef.current = slug;
 
+  useImperativeHandle(
+    ref,
+    () => ({
+      getContent: () => viewRef.current?.state.doc.toString() ?? initialContent,
+      focus: () => viewRef.current?.focus(),
+    }),
+    [initialContent],
+  );
+
   const save = useCallback(
     async (content: string) => {
       onSave?.('saving');
       try {
-        await updatePage(slugRef.current, content);
+        await updatePage(slugRef.current, { content });
         onSave?.('saved');
       } catch {
         onSave?.('error');
@@ -56,6 +74,7 @@ export default function Editor({ slug, initialContent, onSave }: EditorProps) {
     const updateListener = EditorView.updateListener.of((update) => {
       if (update.docChanged) {
         const content = update.state.doc.toString();
+        onChange?.(content);
         scheduleSave(content);
       }
     });
@@ -139,4 +158,6 @@ export default function Editor({ slug, initialContent, onSave }: EditorProps) {
       style={{ backgroundColor: '#1e1e2e' }}
     />
   );
-}
+});
+
+export default Editor;

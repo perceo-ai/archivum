@@ -38,14 +38,56 @@ class Settings(BaseSettings):
     # ── Qdrant ─────────────────────────────────────────────────────────────
     qdrant_url: str = "http://localhost:6333"
     qdrant_collection: str = "archivum"
+    qdrant_recreate_collection_on_dim_mismatch: bool = False
 
     # ── Embeddings ─────────────────────────────────────────────────────────
+    # Embeddings can be either local (fastembed) or any OpenAI-compatible provider.
+    # Supported: local|openai_compat|openrouter|ollama
+    embed_provider: str = "local"
     embed_model: str = "BAAI/bge-small-en-v1.5"
-    embed_dim: int = 384
+    # Vector size in Qdrant. Set to 0 to auto-detect from the embedding provider/model.
+    embed_dim: int = 0
+
+    # OpenAI-compatible embeddings provider selection (used when embed_provider=openai_compat).
+    # We derive a base URL from this for common providers.
+    # Supported: openai|together|fireworks|groq|deepinfra|custom|azure
+    embed_openai_compat_provider: str = "openai"
+    # Optional override (mostly for custom/azure). If empty, we derive from provider.
+    embed_base_url: str = ""
+    embed_api_key: str = ""
+    # Azure OpenAI embeddings support (when embed_provider=openai_compat and base URL is an Azure endpoint).
+    embed_azure_api_version: str = "2024-02-15-preview"
+
+    # Ollama base URL (when embed_provider=ollama or llm_*_provider=ollama)
+    # Ollama's OpenAI-compat endpoints are typically at `${OLLAMA_BASE_URL}/v1`.
+    ollama_base_url: str = "http://localhost:11434"
 
     # ── LLM ────────────────────────────────────────────────────────────────
+    # LLM provider + model selection is split by pipeline stage so you can,
+    # for example, run paid extraction but free/cheaper synthesis (or vice versa).
+    #
+    # Extraction (entities + relationships):
+    # Supported: anthropic|openrouter|openai_compat|ollama
+    llm_extraction_provider: str = "anthropic"
     llm_model: str = "claude-haiku-4-5-20251001"
+
+    # Query synthesis (answers with citations):
+    # Supported: anthropic|openrouter|openai_compat|ollama
+    llm_synthesis_provider: str = "anthropic"
     llm_synthesis_model: str = "claude-sonnet-4-6"
+
+    # OpenRouter (OpenAI-compatible endpoint)
+    openrouter_api_key: str = ""
+    openrouter_base_url: str = "https://openrouter.ai/api/v1"
+
+    # Generic OpenAI-compatible endpoint (covers OpenAI, Together, Fireworks, etc.)
+    # Set LLM_*_PROVIDER=openai_compat and provide these values.
+    openai_compat_api_key: str = ""
+    # Prefer provider-based selection; only set base_url for custom/azure.
+    # Supported: openai|together|fireworks|groq|deepinfra|custom|azure
+    openai_compat_provider: str = "openai"
+    openai_compat_base_url: str = ""
+    openai_compat_azure_api_version: str = "2024-02-15-preview"
 
     # ── Multi-tenancy (future) ─────────────────────────────────────────────
     wiki_id: str = "default"

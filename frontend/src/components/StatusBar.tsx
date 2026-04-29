@@ -2,6 +2,7 @@ import { useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAppState, useAppDispatch } from '../store';
 import { logout } from '../api';
+import { Button } from './ui/Button';
 
 export default function StatusBar() {
   const { saveStatus, currentSlug } = useAppState();
@@ -32,29 +33,25 @@ export default function StatusBar() {
 
   return (
     <footer
-      className="h-8 shrink-0 border-t px-3 flex items-center text-xs"
-      style={{ borderColor: '#3a3a4a', backgroundColor: '#1a1a2a' }}
+      className="h-9 shrink-0 border-t border-border px-3 flex items-center text-xs bg-panel/30 backdrop-blur supports-[backdrop-filter]:bg-panel/20"
     >
-      <span className="text-text-muted">{currentSlug ? currentSlug : '—'}</span>
-      <span className="mx-2 text-text-muted">·</span>
+      <span className="text-muted-foreground">{currentSlug ? currentSlug : '—'}</span>
+      <span className="mx-2 text-muted-foreground">·</span>
       <span
         className={
           saveStatus === 'error'
             ? 'text-red-400'
             : saveStatus === 'saving'
               ? 'text-accent'
-              : 'text-text-secondary'
+              : 'text-muted-foreground'
         }
       >
         {text}
       </span>
       <div className="flex-1" />
-      <button
-        onClick={handleLogout}
-        className="text-text-muted hover:text-text-secondary transition-colors"
-      >
+      <Button variant="ghost" size="sm" onClick={handleLogout}>
         Logout
-      </button>
+      </Button>
     </footer>
   );
 }

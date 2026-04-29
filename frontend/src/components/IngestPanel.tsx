@@ -3,6 +3,10 @@ import { useNavigate } from 'react-router-dom';
 import { useAppDispatch } from '../store';
 import { ingestFile, ingestUrl, listPages } from '../api';
 import type { IngestProgress } from '../types';
+import { Button } from './ui/Button';
+import { Card } from './ui/Card';
+import { Input } from './ui/Input';
+import { cn } from '../lib/cn';
 
 interface FileStatus {
   name: string;
@@ -132,33 +136,32 @@ export default function IngestPanel() {
   }, 0);
 
   return (
-    <div className="flex flex-col h-full overflow-y-auto" style={{ backgroundColor: '#1e1e2e' }}>
+    <div className="flex flex-col h-full overflow-y-auto bg-bg">
       <div className="max-w-2xl mx-auto w-full p-6 flex flex-col gap-6">
         <div>
-          <h2 className="text-lg font-semibold text-text-primary mb-1">Ingest Content</h2>
-          <p className="text-sm text-text-muted">
+          <h2 className="text-lg font-semibold text-foreground mb-1">Ingest Content</h2>
+          <p className="text-sm text-muted-foreground">
             Import files or URLs into your knowledge base.
           </p>
         </div>
 
         {/* Drop zone */}
-        <div
+        <Card
           onDragOver={onDragOver}
           onDragLeave={onDragLeave}
           onDrop={onDrop}
           onClick={() => fileInputRef.current?.click()}
-          className="relative rounded-lg border-2 border-dashed cursor-pointer transition-colors p-10 text-center"
-          style={{
-            borderColor: dragOver ? '#4B91F1' : '#3a3a4a',
-            backgroundColor: dragOver ? '#4B91F110' : '#252535',
-          }}
+          className={cn(
+            'relative border-2 border-dashed cursor-pointer transition-colors p-10 text-center',
+            dragOver ? 'border-accent/60 bg-accent/5' : 'border-border/60',
+          )}
         >
           <UploadIcon className="mx-auto mb-3 text-text-muted w-10 h-10" />
           <p className="text-text-secondary text-sm font-medium">
             {dragOver ? 'Drop to ingest' : 'Drag & drop files here'}
           </p>
-          <p className="text-text-muted text-xs mt-1">or click to browse</p>
-          <p className="text-text-muted text-xs mt-3">
+          <p className="text-muted-foreground text-xs mt-1">or click to browse</p>
+          <p className="text-muted-foreground text-xs mt-3">
             Accepted: {ACCEPTED_TYPES.join(', ')}
           </p>
           <input
@@ -169,30 +172,27 @@ export default function IngestPanel() {
             className="hidden"
             onChange={(e) => e.target.files && processFiles(Array.from(e.target.files))}
           />
-        </div>
+        </Card>
 
         {/* URL input */}
         <div>
-          <p className="text-xs font-semibold text-text-muted uppercase tracking-wider mb-2">
+          <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">
             Or import a URL
           </p>
           <form onSubmit={handleUrlIngest} className="flex gap-2">
-            <input
+            <Input
               type="url"
               value={urlInput}
               onChange={(e) => setUrlInput(e.target.value)}
               placeholder="https://example.com/article"
-              className="flex-1 bg-transparent border rounded px-3 py-2 text-sm text-text-primary placeholder-text-muted focus:outline-none focus:border-accent/50"
-              style={{ borderColor: '#3a3a4a' }}
             />
-            <button
+            <Button
               type="submit"
+              variant="primary"
               disabled={processing || !urlInput.trim()}
-              className="px-4 py-2 rounded text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-              style={{ backgroundColor: '#4B91F1', color: '#ffffff' }}
             >
               Import
-            </button>
+            </Button>
           </form>
         </div>
 

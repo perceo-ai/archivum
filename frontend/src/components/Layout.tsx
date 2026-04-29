@@ -3,6 +3,7 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import FileTree from './FileTree';
 import BacklinksPanel from './BacklinksPanel';
 import StatusBar from './StatusBar';
+import { Button } from './ui/Button';
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -49,10 +50,9 @@ export default function Layout({ children }: LayoutProps) {
     <div className="flex flex-col h-screen bg-bg overflow-hidden">
       {/* Top bar */}
       <header
-        className="flex items-center gap-6 px-4 h-11 shrink-0 border-b"
-        style={{ borderColor: '#3a3a4a', backgroundColor: '#1a1a2a' }}
+        className="flex items-center gap-6 px-4 h-12 shrink-0 border-b border-border bg-panel/30 backdrop-blur supports-[backdrop-filter]:bg-panel/20"
       >
-        <span className="text-accent font-semibold text-base tracking-wide select-none">
+        <span className="text-foreground font-semibold text-base tracking-wide select-none">
           Archivum
         </span>
         <nav className="flex items-center gap-1">
@@ -62,8 +62,8 @@ export default function Layout({ children }: LayoutProps) {
               onClick={() => handleNav(item)}
               className={`px-3 py-1 rounded text-sm transition-colors ${
                 isActive(item)
-                  ? 'bg-accent/20 text-accent'
-                  : 'text-text-secondary hover:text-text-primary hover:bg-white/5'
+                  ? 'bg-accent/15 text-foreground'
+                  : 'text-muted-foreground hover:text-foreground hover:bg-muted/40'
               }`}
             >
               {item.label}
@@ -71,32 +71,30 @@ export default function Layout({ children }: LayoutProps) {
           ))}
         </nav>
         <div className="flex-1" />
-        <button
+        <Button
           onClick={() => dispatch({ type: 'TOGGLE_LEFT' })}
-          className="text-text-muted hover:text-text-secondary p-1 rounded transition-colors"
+          variant="ghost"
+          size="icon"
           title={leftOpen ? 'Collapse sidebar' : 'Expand sidebar'}
         >
           <SidebarLeftIcon />
-        </button>
-        <button
+        </Button>
+        <Button
           onClick={() => dispatch({ type: 'TOGGLE_RIGHT' })}
-          className="text-text-muted hover:text-text-secondary p-1 rounded transition-colors"
+          variant="ghost"
+          size="icon"
           title={rightOpen ? 'Collapse panel' : 'Expand panel'}
         >
           <SidebarRightIcon />
-        </button>
+        </Button>
       </header>
 
       {/* Main content area */}
       <div className="flex flex-1 overflow-hidden">
         {/* Left sidebar */}
         <aside
-          className="shrink-0 flex flex-col border-r overflow-hidden transition-all duration-200"
-          style={{
-            width: leftOpen ? '240px' : '0px',
-            borderColor: '#3a3a4a',
-            backgroundColor: '#252535',
-          }}
+          className="shrink-0 flex flex-col border-r border-border overflow-hidden transition-all duration-200 bg-panel/40 backdrop-blur supports-[backdrop-filter]:bg-panel/30"
+          style={{ width: leftOpen ? '280px' : '0px' }}
         >
           {leftOpen && <FileTree />}
         </aside>
@@ -108,12 +106,8 @@ export default function Layout({ children }: LayoutProps) {
 
         {/* Right sidebar */}
         <aside
-          className="shrink-0 flex flex-col border-l overflow-hidden transition-all duration-200"
-          style={{
-            width: rightOpen ? '240px' : '0px',
-            borderColor: '#3a3a4a',
-            backgroundColor: '#252535',
-          }}
+          className="shrink-0 flex flex-col border-l border-border overflow-hidden transition-all duration-200 bg-panel/40 backdrop-blur supports-[backdrop-filter]:bg-panel/30"
+          style={{ width: rightOpen ? '280px' : '0px' }}
         >
           {rightOpen && <BacklinksPanel />}
         </aside>

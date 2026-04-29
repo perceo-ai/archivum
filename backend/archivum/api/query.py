@@ -14,6 +14,8 @@ from archivum.auth import CurrentUser, get_current_user
 from archivum.config import Settings, get_settings
 from archivum.db import qdrant_client as qdrant
 from archivum.db import sqlite
+from archivum.llm.openrouter_client import openrouter_stream_tokens
+from archivum.llm.openai_compat_client import openai_compat_stream_tokens
 
 logger = logging.getLogger(__name__)
 
@@ -58,11 +60,31 @@ async def query(
             detail={"detail": "Question cannot be empty", "code": "empty_question"},
         )
 
-    if not settings.anthropic_api_key:
+    if settings.llm_synthesis_provider == "anthropic" and not settings.anthropic_api_key:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail={"detail": "ANTHROPIC_API_KEY not configured", "code": "missing_api_key"},
         )
+    if settings.llm_synthesis_provider == "openrouter" and not settings.openrouter_api_key:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={"detail": "OPENROUTER_API_KEY not configured", "code": "missing_api_key"},
+        )
+    if settings.llm_synthesis_provider == "openai_compat" and not settings.openai_compat_api_key:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={"detail": "OPENAI_COMPAT_API_KEY not configured", "code": "missing_api_key"},
+        )
+
+    logger.info(
+        "API query start",
+        extra={
+            "wiki_id": current_user.wiki_id,
+            "question_chars": len(question),
+            "provider": settings.llm_synthesis_provider,
+            "model": settings.llm_synthesis_model,
+        },
+    )
 
     # Fetch context
     raw_hits = await qdrant.search_raw(question, wiki_id=current_user.wiki_id, limit=6, settings=settings)
@@ -81,6 +103,10 @@ async def query(
 
     contexts = list(contexts_by_slug.values())
     slugs = [c.get("slug") for c in contexts if c.get("slug")]
+    logger.info(
+        "API query context ready",
+        extra={"wiki_id": current_user.wiki_id, "raw_hits": len(raw_hits), "contexts": len(contexts), "slugs": len(slugs)},
+    )
 
     # Build citations (full page summaries)
     citations: list[dict[str, Any]] = []
@@ -105,29 +131,53 @@ async def query(
         # Send citations first so UI can render sources panel early
         yield {"data": json.dumps({"type": "citations", "citations": citations})}
 
-        client = anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key)
         try:
-            stream = await client.messages.create(
-                model=settings.llm_synthesis_model,
-                max_tokens=1024,
-                messages=[{"role": "user", "content": prompt}],
-                stream=True,
-            )
+            if settings.llm_synthesis_provider == "anthropic":
+                client = anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key)
+                stream = await client.messages.create(
+                    model=settings.llm_synthesis_model,
+                    max_tokens=1024,
+                    messages=[{"role": "user", "content": prompt}],
+                    stream=True,
+                )
 
-            async for event in stream:
-                # anthropic SDK events vary; handle the common delta events
-                try:
-                    if event.type == "content_block_delta" and getattr(event, "delta", None):
-                        text = getattr(event.delta, "text", None)
-                        if text:
-                            yield {"data": json.dumps({"type": "token", "token": text})}
-                except Exception:
-                    continue
+                async for event in stream:
+                    # anthropic SDK events vary; handle the common delta events
+                    try:
+                        if event.type == "content_block_delta" and getattr(event, "delta", None):
+                            text = getattr(event.delta, "text", None)
+                            if text:
+                                yield {"data": json.dumps({"type": "token", "token": text})}
+                    except Exception:
+                        continue
+
+            elif settings.llm_synthesis_provider == "openrouter":
+                async for token in openrouter_stream_tokens(
+                    settings=settings,
+                    model=settings.llm_synthesis_model,
+                    messages=[{"role": "user", "content": prompt}],
+                    max_tokens=1024,
+                    temperature=0.2,
+                ):
+                    yield {"data": json.dumps({"type": "token", "token": token})}
+            elif settings.llm_synthesis_provider in {"openai_compat", "ollama"}:
+                async for token in openai_compat_stream_tokens(
+                    settings=settings,
+                    provider=settings.llm_synthesis_provider,
+                    model=settings.llm_synthesis_model,
+                    messages=[{"role": "user", "content": prompt}],
+                    max_tokens=1024,
+                    temperature=0.2,
+                ):
+                    yield {"data": json.dumps({"type": "token", "token": token})}
+            else:
+                raise ValueError(f"Unsupported llm_synthesis_provider: {settings.llm_synthesis_provider}")
 
         except Exception as exc:
             logger.exception("Query synthesis error")
             yield {"data": json.dumps({"type": "error", "message": f"{type(exc).__name__}: {exc}"})}
         finally:
+            logger.info("API query finished", extra={"wiki_id": current_user.wiki_id})
             yield {"data": "[DONE]"}
 
     return EventSourceResponse(event_generator())

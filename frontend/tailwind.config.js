@@ -7,13 +7,22 @@ export default {
   theme: {
     extend: {
       colors: {
-        bg: '#1e1e2e',
-        panel: '#252535',
-        border: '#3a3a4a',
-        accent: '#4B91F1',
-        'text-primary': '#cdd6f4',
-        'text-secondary': '#a6adc8',
-        'text-muted': '#6c7086',
+        bg: 'rgb(var(--bg) / <alpha-value>)',
+        panel: 'rgb(var(--panel) / <alpha-value>)',
+        muted: 'rgb(var(--muted) / <alpha-value>)',
+        border: 'rgb(var(--border) / <alpha-value>)',
+        ring: 'rgb(var(--ring) / <alpha-value>)',
+        accent: 'rgb(var(--accent) / <alpha-value>)',
+        'accent-foreground': 'rgb(var(--accent-foreground) / <alpha-value>)',
+        foreground: 'rgb(var(--foreground) / <alpha-value>)',
+        'muted-foreground': 'rgb(var(--muted-foreground) / <alpha-value>)',
+        danger: 'rgb(var(--danger) / <alpha-value>)',
+        'danger-foreground': 'rgb(var(--danger-foreground) / <alpha-value>)',
+
+        // Backwards compat while we migrate existing components
+        'text-primary': 'rgb(var(--foreground) / <alpha-value>)',
+        'text-secondary': 'rgb(var(--muted-foreground) / <alpha-value>)',
+        'text-muted': 'rgb(var(--muted-foreground) / <alpha-value>)',
       },
       fontFamily: {
         sans: [

@@ -73,6 +73,15 @@ async def ingest_file(
     settings: Settings = Depends(get_settings),
 ) -> EventSourceResponse:
     """Upload a single file and stream ingest progress via SSE."""
+    logger.info(
+        "API ingest_file",
+        extra={
+            "upload_filename": file.filename,
+            "content_type": file.content_type,
+            "size": getattr(file, "size", None),
+            "wiki_id": current_user.wiki_id,
+        },
+    )
 
     if file.size and file.size > MAX_FILE_SIZE:
         raise HTTPException(
@@ -106,6 +115,7 @@ async def ingest_url(
     settings: Settings = Depends(get_settings),
 ) -> EventSourceResponse:
     """Ingest a URL and stream progress via SSE."""
+    logger.info("API ingest_url", extra={"wiki_id": current_user.wiki_id})
 
     url = body.url.strip()
     if not url.startswith(("http://", "https://")):
@@ -128,6 +138,10 @@ async def ingest_batch_upload(
     settings: Settings = Depends(get_settings),
 ) -> EventSourceResponse:
     """Upload up to 20 files and stream batch progress via SSE."""
+    logger.info(
+        "API ingest_batch",
+        extra={"files": len(files), "wiki_id": current_user.wiki_id},
+    )
 
     if len(files) > MAX_BATCH_FILES:
         raise HTTPException(

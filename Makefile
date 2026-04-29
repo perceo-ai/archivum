@@ -4,7 +4,7 @@
 
 up:
 	@if [ ! -f .env ]; then cp .env.example .env && echo "Created .env — fill in your values before continuing" && exit 1; fi
-	docker compose up -d
+	docker compose up
 
 down:
 	docker compose down
