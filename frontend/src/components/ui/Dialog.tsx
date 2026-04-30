@@ -1,6 +1,7 @@
 import * as React from 'react';
+import * as DialogPrimitive from '@radix-ui/react-dialog';
+import { X } from 'lucide-react';
 import { cn } from '../../lib/cn';
-import { Button } from './Button';
 
 export function Dialog({
   open,
@@ -17,69 +18,46 @@ export function Dialog({
   children?: React.ReactNode;
   footer?: React.ReactNode;
 }) {
-  React.useEffect(() => {
-    function onKeyDown(e: KeyboardEvent) {
-      if (e.key === 'Escape') onOpenChange(false);
-    }
-    if (!open) return;
-    window.addEventListener('keydown', onKeyDown);
-    return () => window.removeEventListener('keydown', onKeyDown);
-  }, [open, onOpenChange]);
-
-  if (!open) return null;
-
   return (
-    <div className="fixed inset-0 z-50">
-      <div
-        className="absolute inset-0 bg-black/60 backdrop-blur-sm"
-        onMouseDown={() => onOpenChange(false)}
-      />
-      <div className="absolute inset-0 flex items-center justify-center p-4">
-        <div
+    <DialogPrimitive.Root open={open} onOpenChange={onOpenChange}>
+      <DialogPrimitive.Portal>
+        <DialogPrimitive.Overlay className="fixed inset-0 z-50 bg-black/60" />
+        <DialogPrimitive.Content
           className={cn(
-            'w-full max-w-lg rounded-xl border border-border bg-panel/80 shadow-xl shadow-black/40',
-            'backdrop-blur supports-[backdrop-filter]:bg-panel/60',
+            'fixed left-[50%] top-[50%] z-50 w-full max-w-lg translate-x-[-50%] translate-y-[-50%]',
+            'rounded-lg border bg-background p-0 shadow-lg outline-none',
           )}
-          role="dialog"
-          aria-modal="true"
-          onMouseDown={(e) => e.stopPropagation()}
         >
-          <div className="p-4 border-b border-border/70">
-            <div className="flex items-start justify-between gap-3">
+          <div className="p-4 border-b">
+            <div className="flex items-start justify-between gap-4">
               <div className="min-w-0">
-                <div className="text-sm font-semibold text-foreground">{title}</div>
+                <DialogPrimitive.Title className="text-base font-semibold leading-none tracking-tight">
+                  {title}
+                </DialogPrimitive.Title>
                 {description && (
-                  <div className="text-sm text-muted-foreground mt-1">{description}</div>
+                  <DialogPrimitive.Description className="text-sm text-muted-foreground mt-2">
+                    {description}
+                  </DialogPrimitive.Description>
                 )}
               </div>
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={() => onOpenChange(false)}
+              <DialogPrimitive.Close
+                className={cn(
+                  'rounded-sm opacity-70 ring-offset-background transition-opacity',
+                  'hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2',
+                  'disabled:pointer-events-none',
+                )}
                 aria-label="Close"
               >
-                <XIcon />
-              </Button>
+                <X className="h-4 w-4" />
+              </DialogPrimitive.Close>
             </div>
           </div>
-          {children && <div className="p-4">{children}</div>}
-          {footer && <div className="p-4 border-t border-border/70">{footer}</div>}
-        </div>
-      </div>
-    </div>
-  );
-}
 
-function XIcon() {
-  return (
-    <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-      <path
-        d="M12 4L4 12M4 4l8 8"
-        stroke="currentColor"
-        strokeWidth="1.5"
-        strokeLinecap="round"
-      />
-    </svg>
+          {children && <div className="p-4">{children}</div>}
+          {footer && <div className="p-4 border-t">{footer}</div>}
+        </DialogPrimitive.Content>
+      </DialogPrimitive.Portal>
+    </DialogPrimitive.Root>
   );
 }
 

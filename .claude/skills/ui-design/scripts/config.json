@@ -1,0 +1,16 @@
+{
+  "primary": "custom",
+  "accent": "custom",
+  "neutral": "gray",
+  "success": "emerald",
+  "warning": "amber",
+  "error": "rose",
+  "info": "blue",
+  "font_display": "Inter",
+  "font_mono": "Source Code Pro",
+  "radius": "rounded-lg",
+  "rtl": false,
+  "radius_sm": "rounded-sm",
+  "accentHex": "#242424",
+  "primaryHex": "#262626"
+}

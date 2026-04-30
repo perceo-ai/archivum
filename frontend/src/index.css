@@ -4,19 +4,35 @@
 
 @layer base {
   :root {
-    --bg: 15 15 23; /* slate-950-ish */
-    --panel: 20 20 32;
-    --muted: 30 30 48;
-    --border: 56 56 79;
-    --ring: 93 161 255;
-    --foreground: 226 232 240;
-    --muted-foreground: 148 163 184;
+    --background: 222.2 84% 4.9%;
+    --foreground: 210 40% 98%;
 
-    --accent: 93 161 255;
-    --accent-foreground: 10 10 18;
+    --card: 222.2 84% 4.9%;
+    --card-foreground: 210 40% 98%;
 
-    --danger: 248 113 113;
-    --danger-foreground: 10 10 18;
+    --popover: 222.2 84% 4.9%;
+    --popover-foreground: 210 40% 98%;
+
+    --primary: 210 40% 98%;
+    --primary-foreground: 222.2 47.4% 11.2%;
+
+    --secondary: 217.2 32.6% 17.5%;
+    --secondary-foreground: 210 40% 98%;
+
+    --muted: 217.2 32.6% 17.5%;
+    --muted-foreground: 215 20.2% 65.1%;
+
+    --accent: 217.2 32.6% 17.5%;
+    --accent-foreground: 210 40% 98%;
+
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 210 40% 98%;
+
+    --border: 217.2 32.6% 17.5%;
+    --input: 217.2 32.6% 17.5%;
+    --ring: 212.7 26.8% 83.9%;
+
+    --radius: 0.75rem;
   }
 
   html, body, #root {
@@ -26,8 +42,8 @@
   }
 
   body {
-    background-color: rgb(var(--bg));
-    color: rgb(var(--foreground));
+    background-color: hsl(var(--background));
+    color: hsl(var(--foreground));
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
@@ -44,16 +60,16 @@
   }
 
   ::-webkit-scrollbar-track {
-    background: rgb(var(--bg));
+    background: hsl(var(--background));
   }
 
   ::-webkit-scrollbar-thumb {
-    background: rgb(var(--border));
+    background: hsl(var(--border));
     border-radius: 3px;
   }
 
   ::-webkit-scrollbar-thumb:hover {
-    background: rgb(var(--border) / 0.9);
+    background: hsl(var(--border) / 0.9);
   }
 }
 
@@ -75,13 +91,13 @@
 
   /* Wikilink decorations */
   .cm-wikilink-existing {
-    color: rgb(var(--accent));
+    color: hsl(var(--ring));
     text-decoration: underline;
     cursor: pointer;
   }
 
   .cm-wikilink-existing:hover {
-    color: rgb(var(--accent) / 0.85);
+    color: hsl(var(--ring) / 0.85);
   }
 
   .cm-wikilink-missing {
@@ -98,9 +114,9 @@
   .skeleton {
     background: linear-gradient(
       90deg,
-      rgb(var(--panel)) 25%,
-      rgb(var(--muted)) 50%,
-      rgb(var(--panel)) 75%
+      hsl(var(--card)) 25%,
+      hsl(var(--muted)) 50%,
+      hsl(var(--card)) 75%
     );
     background-size: 200% 100%;
     animation: skeleton-loading 1.4s ease infinite;

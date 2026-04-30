@@ -57,17 +57,14 @@ export default function Layout({ children }: LayoutProps) {
         </span>
         <nav className="flex items-center gap-1">
           {NAV_ITEMS.map((item) => (
-            <button
+            <Button
               key={item.path}
               onClick={() => handleNav(item)}
-              className={`px-3 py-1 rounded text-sm transition-colors ${
-                isActive(item)
-                  ? 'bg-accent/15 text-foreground'
-                  : 'text-muted-foreground hover:text-foreground hover:bg-muted/40'
-              }`}
+              variant={isActive(item) ? 'secondary' : 'ghost'}
+              size="sm"
             >
               {item.label}
-            </button>
+            </Button>
           ))}
         </nav>
         <div className="flex-1" />

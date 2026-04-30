@@ -7,6 +7,18 @@ import { cn } from '../lib/cn';
 import { Button } from './ui/Button';
 import { Input } from './ui/Input';
 import { Badge } from './ui/Badge';
+import { Dialog } from './ui/Dialog';
+import { Popover, PopoverContent, PopoverTrigger } from './ui/Popover';
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from './ui/Command';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from './ui/DropdownMenu';
+import { ScrollArea } from './ui/ScrollArea';
+import { Check, ChevronsUpDown, FilePlus2, MoreHorizontal, Upload } from 'lucide-react';
 
 export default function FileTree() {
   const { pages, currentSlug } = useAppState();
@@ -14,9 +26,10 @@ export default function FileTree() {
   const navigate = useNavigate();
   const [filter, setFilter] = useState('');
   const [dragOver, setDragOver] = useState(false);
-  const [creating, setCreating] = useState(false);
-  const [newTitle, setNewTitle] = useState('');
-  const [newFolder, setNewFolder] = useState('');
+  const [createOpen, setCreateOpen] = useState(false);
+  const [createTitle, setCreateTitle] = useState('');
+  const [createFolder, setCreateFolder] = useState<string>('');
+  const [folderPickerOpen, setFolderPickerOpen] = useState(false);
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set());
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -48,20 +61,20 @@ export default function FileTree() {
   }, [filter, filtered]);
 
   async function handleCreatePage() {
-    if (!newTitle.trim()) return;
-    const titleSlug = slugifySegment(newTitle.trim());
-    const folderSlug = slugifyFolder(newFolder.trim());
+    if (!createTitle.trim()) return;
+    const titleSlug = slugifySegment(createTitle.trim()) || 'untitled';
+    const folderSlug = createFolder;
     const slug = folderSlug ? `${folderSlug}/${titleSlug}` : titleSlug;
     try {
       const page = await createPage({
         slug,
-        title: newTitle.trim(),
-        content: `# ${newTitle.trim()}\n\n`,
+        title: createTitle.trim(),
+        content: `# ${createTitle.trim()}\n\n`,
       });
       dispatch({ type: 'UPSERT_PAGE', page });
-      setCreating(false);
-      setNewTitle('');
-      setNewFolder('');
+      setCreateOpen(false);
+      setCreateTitle('');
+      setCreateFolder('');
       navigate(`/wiki/${page.slug}`);
     } catch (err) {
       console.error('Failed to create page:', err);
@@ -107,11 +120,14 @@ export default function FileTree() {
 
   return (
     <div
-      className="flex flex-col h-full"
+      className={cn(
+        'flex flex-col h-full',
+        dragOver && 'outline-dashed outline-2 outline-ring outline-offset-[-2px]',
+      )}
       onDragOver={onDragOver}
       onDragLeave={onDragLeave}
       onDrop={onDrop}
-      style={{ outline: dragOver ? '2px dashed rgb(var(--accent))' : 'none' }}
+      data-dragover={dragOver ? 'true' : 'false'}
     >
       {/* Header */}
       <div className="px-3 py-2 border-b border-border shrink-0">
@@ -119,8 +135,17 @@ export default function FileTree() {
           <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
             Pages
           </span>
-          <Button onClick={() => setCreating(true)} variant="ghost" size="icon" title="New page">
-            <PlusIcon />
+          <Button
+            onClick={() => {
+              setCreateFolder('');
+              setCreateOpen(true);
+            }}
+            variant="ghost"
+            size="icon"
+            title="New page"
+            aria-label="New page"
+          >
+            <FilePlus2 className="h-4 w-4" />
           </Button>
         </div>
         <Input
@@ -132,83 +157,55 @@ export default function FileTree() {
         />
       </div>
 
-      {/* New page input */}
-      {creating && (
-        <div className="px-3 py-2 border-b border-border space-y-2">
-          <Input
-            type="text"
-            placeholder="Folder (optional) e.g. work/meetings"
-            value={newFolder}
-            onChange={(e) => setNewFolder(e.target.value)}
-            className="h-8 text-xs"
-          />
-          <Input
-            type="text"
-            placeholder="Page title..."
-            value={newTitle}
-            onChange={(e) => setNewTitle(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') handleCreatePage();
-              if (e.key === 'Escape') {
-                setCreating(false);
-                setNewTitle('');
-                setNewFolder('');
-              }
-            }}
-            autoFocus
-            className="h-8 text-xs"
-          />
-          <div className="flex items-center gap-2">
-            <Button onClick={handleCreatePage} variant="primary" size="sm" disabled={!newTitle.trim()}>
-              Create
-            </Button>
-            <Button
-              onClick={() => {
-                setCreating(false);
-                setNewTitle('');
-                setNewFolder('');
-              }}
-              variant="ghost"
-              size="sm"
-            >
-              Cancel
-            </Button>
-          </div>
-        </div>
-      )}
-
       {/* Pages list */}
-      <div className="flex-1 overflow-y-auto py-1">
-        {filtered.length === 0 && (
-          <div className="px-3 py-4 text-center text-muted-foreground text-xs">
-            {filter ? 'No matches' : 'No pages yet'}
-          </div>
-        )}
-        <TreeFolder
-          node={tree}
-          depth={0}
-          currentSlug={currentSlug}
-          onToggle={(path) =>
-            setExpanded((prev) => {
-              const next = new Set(prev);
-              if (next.has(path)) next.delete(path);
-              else next.add(path);
-              return next;
-            })
-          }
-          isExpanded={(path) => (autoExpanded ? autoExpanded.has(path) : expanded.has(path))}
-          onNavigate={(s) => navigate(`/wiki/${s}`)}
-        />
-      </div>
+      <ScrollArea className="flex-1 py-1">
+        <div className="pb-2">
+          {filtered.length === 0 && (
+            <div className="px-3 py-4 text-center text-muted-foreground text-xs">
+              {filter ? 'No matches' : 'No pages yet'}
+            </div>
+          )}
+          <TreeFolder
+            node={tree}
+            depth={0}
+            currentSlug={currentSlug}
+            onToggle={(path) =>
+              setExpanded((prev) => {
+                const next = new Set(prev);
+                if (next.has(path)) next.delete(path);
+                else next.add(path);
+                return next;
+              })
+            }
+            isExpanded={(path) => (autoExpanded ? autoExpanded.has(path) : expanded.has(path))}
+            onNavigate={(s) => navigate(`/wiki/${s}`)}
+            onNewPageInFolder={(folderPath) => {
+              setCreateFolder(folderPath);
+              setCreateOpen(true);
+            }}
+          />
+        </div>
+      </ScrollArea>
 
       {/* Drop hint */}
-      <div
-        className="px-3 py-2 border-t border-border text-xs text-muted-foreground text-center shrink-0"
-        onClick={() => fileInputRef.current?.click()}
-        role="button"
-        style={{ cursor: 'pointer' }}
-      >
-        Drop files to ingest
+      <div className="px-3 py-2 border-t border-border shrink-0">
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className={cn(
+            'w-full justify-center',
+            'data-[dragover=true]:border-ring data-[dragover=true]:bg-accent/40',
+          )}
+          data-dragover={dragOver ? 'true' : 'false'}
+          onClick={() => fileInputRef.current?.click()}
+        >
+          <Upload className="h-4 w-4" />
+          Import files…
+        </Button>
+        <div className="mt-2 text-[11px] text-muted-foreground text-center">
+          You can also drag & drop files anywhere in this sidebar.
+        </div>
       </div>
       <input
         ref={fileInputRef}
@@ -217,15 +214,93 @@ export default function FileTree() {
         className="hidden"
         onChange={(e) => e.target.files && handleFileDrop(e.target.files)}
       />
-    </div>
-  );
-}
 
-function PlusIcon() {
-  return (
-    <svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor">
-      <path d="M7 1v12M1 7h12" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-    </svg>
+      <Dialog
+        open={createOpen}
+        onOpenChange={(o) => {
+          setCreateOpen(o);
+          if (!o) {
+            setFolderPickerOpen(false);
+            setCreateTitle('');
+            setCreateFolder('');
+          }
+        }}
+        title="New page"
+        description="Choose where it lives, then type a title."
+        footer={
+          <div className="flex items-center justify-end gap-2">
+            <Button variant="ghost" onClick={() => setCreateOpen(false)}>
+              Cancel
+            </Button>
+            <Button variant="default" onClick={handleCreatePage} disabled={!createTitle.trim()}>
+              Create
+            </Button>
+          </div>
+        }
+      >
+        <div className="space-y-3">
+          <div className="space-y-2">
+            <div className="text-sm font-medium">Location</div>
+            <Popover open={folderPickerOpen} onOpenChange={setFolderPickerOpen}>
+              <PopoverTrigger asChild>
+                <Button
+                  variant="outline"
+                  role="combobox"
+                  aria-expanded={folderPickerOpen}
+                  className="w-full justify-between"
+                >
+                  <span className="truncate">
+                    {createFolder ? createFolder : 'Root'}
+                  </span>
+                  <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="p-0" align="start">
+                <Command>
+                  <CommandInput placeholder="Search folders..." />
+                  <CommandList>
+                    <CommandEmpty>No folders found.</CommandEmpty>
+                    <CommandGroup heading="Folders">
+                      {folderOptions(tree).map((path) => (
+                        <CommandItem
+                          key={path || '__root__'}
+                          value={path || 'Root'}
+                          onSelect={() => {
+                            setCreateFolder(path);
+                            setFolderPickerOpen(false);
+                          }}
+                        >
+                          <Check
+                            className={cn(
+                              'mr-2 h-4 w-4',
+                              createFolder === path ? 'opacity-100' : 'opacity-0',
+                            )}
+                          />
+                          <span className="truncate">{path || 'Root'}</span>
+                        </CommandItem>
+                      ))}
+                    </CommandGroup>
+                  </CommandList>
+                </Command>
+              </PopoverContent>
+            </Popover>
+          </div>
+
+          <div className="space-y-2">
+            <div className="text-sm font-medium">Title</div>
+            <Input
+              value={createTitle}
+              onChange={(e) => setCreateTitle(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') handleCreatePage();
+              }}
+              placeholder="e.g. Meeting notes"
+              autoFocus
+            />
+          </div>
+        </div>
+      </Dialog>
+    </div>
   );
 }
 
@@ -272,6 +347,18 @@ function buildTree(pages: Array<{ slug: string; title: string; authored_by: 'use
   return root;
 }
 
+function folderOptions(tree: TreeNode): string[] {
+  const out: string[] = [''];
+  function walk(node: TreeNode) {
+    for (const f of node.folders) {
+      out.push(f.path);
+      walk(f);
+    }
+  }
+  walk(tree);
+  return out;
+}
+
 function TreeFolder({
   node,
   depth,
@@ -279,6 +366,7 @@ function TreeFolder({
   onToggle,
   isExpanded,
   onNavigate,
+  onNewPageInFolder,
 }: {
   node: TreeNode;
   depth: number;
@@ -286,6 +374,7 @@ function TreeFolder({
   onToggle: (path: string) => void;
   isExpanded: (path: string) => boolean;
   onNavigate: (slug: string) => void;
+  onNewPageInFolder: (folderPath: string) => void;
 }) {
   const isRoot = node.path === '';
   const expanded = isRoot ? true : isExpanded(node.path);
@@ -294,19 +383,69 @@ function TreeFolder({
   return (
     <div>
       {!isRoot && (
-        <button
+        <div
           className={cn(
-            'w-full text-left px-2 py-1.5 text-xs transition-colors flex items-center gap-1.5',
-            'hover:bg-muted/40 text-muted-foreground hover:text-foreground',
+            'w-full px-2 py-1.5 text-xs transition-colors flex items-center gap-1.5 group',
+            'hover:bg-muted/50 text-muted-foreground hover:text-foreground',
           )}
           style={{ paddingLeft: 8 + depth * 12 }}
-          onClick={() => onToggle(node.path)}
         >
-          <ChevronIcon open={expanded} />
-          <FolderIcon />
-          <span className="truncate">{node.name}</span>
-          {!hasChildren && <span className="ml-auto text-[11px] text-muted-foreground/70">—</span>}
-        </button>
+          <button
+            className="flex min-w-0 flex-1 items-center gap-1.5 text-left"
+            onClick={() => onToggle(node.path)}
+          >
+            <ChevronIcon open={expanded} />
+            <FolderIcon />
+            <span className="truncate">{node.name}</span>
+            {!hasChildren && <span className="ml-2 text-[11px] text-muted-foreground/70">—</span>}
+          </button>
+
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-7 w-7 opacity-0 group-hover:opacity-100"
+                aria-label="Folder actions"
+              >
+                <MoreHorizontal className="h-4 w-4" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem
+                onSelect={() => onNewPageInFolder(node.path)}
+                className="gap-2"
+              >
+                <FilePlus2 className="h-4 w-4" />
+                New page here
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onSelect={() => {
+                  void navigator.clipboard?.writeText(node.path);
+                }}
+              >
+                Copy folder path
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem
+                onSelect={() => onToggle(node.path)}
+                className="gap-2"
+              >
+                {expanded ? (
+                  <>
+                    <ChevronsUpDown className="h-4 w-4 rotate-180" />
+                    Collapse
+                  </>
+                ) : (
+                  <>
+                    <ChevronsUpDown className="h-4 w-4" />
+                    Expand
+                  </>
+                )}
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
       )}
 
       {expanded && (
@@ -320,6 +459,7 @@ function TreeFolder({
               onToggle={onToggle}
               isExpanded={isExpanded}
               onNavigate={onNavigate}
+              onNewPageInFolder={onNewPageInFolder}
             />
           ))}
 
@@ -328,10 +468,10 @@ function TreeFolder({
               key={p.slug}
               onClick={() => onNavigate(p.slug)}
               className={cn(
-                'w-full text-left px-2 py-2 text-sm transition-colors flex items-start gap-2 group',
+                'w-full text-left px-2 py-2 text-sm transition-colors flex items-start gap-2',
                 currentSlug === p.slug
                   ? 'bg-accent/10 text-foreground'
-                  : 'text-muted-foreground hover:bg-muted/40 hover:text-foreground',
+                  : 'text-muted-foreground hover:bg-muted/50 hover:text-foreground',
               )}
               style={{ paddingLeft: 8 + (isRoot ? depth : depth + 1) * 12 }}
             >
@@ -351,18 +491,6 @@ function slugifySegment(input: string): string {
     .toLowerCase()
     .replace(/[^a-z0-9._-]+/g, '-')
     .replace(/^-+|-+$/g, '');
-}
-
-function slugifyFolder(folder: string): string {
-  if (!folder) return '';
-  const normalized = folder
-    .trim()
-    .replace(/^\/+|\/+$/g, '')
-    .split('/')
-    .map((seg) => slugifySegment(seg))
-    .filter(Boolean)
-    .join('/');
-  return normalized;
 }
 
 function ChevronIcon({ open }: { open: boolean }) {

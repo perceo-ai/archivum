@@ -54,7 +54,7 @@
       "source_file": "backend/archivum/__init__.py",
       "source_location": "L1",
       "id": "backend_archivum_init_py",
-      "community": 15,
+      "community": 16,
       "norm_label": "__init__.py"
     },
     {
@@ -62,7 +62,7 @@
       "file_type": "rationale",
       "source_file": "backend/archivum/__init__.py",
       "source_location": "L1",
-      "community": 15,
+      "community": 16,
       "norm_label": "archivum \u2014 self-hosted ai-powered knowledge base.",
       "id": "archivum_init_rationale_1"
     },
@@ -72,7 +72,7 @@
       "source_file": "backend/archivum/config.py",
       "source_location": "L1",
       "id": "backend_archivum_config_py",
-      "community": 5,
+      "community": 4,
       "norm_label": "config.py"
     },
     {
@@ -99,7 +99,7 @@
       "source_file": "backend/archivum/config.py",
       "source_location": "L104",
       "id": "archivum_config_get_settings",
-      "community": 5,
+      "community": 4,
       "norm_label": "get_settings()"
     },
     {
@@ -107,7 +107,7 @@
       "file_type": "rationale",
       "source_file": "backend/archivum/config.py",
       "source_location": "L1",
-      "community": 5,
+      "community": 4,
       "norm_label": "application configuration via pydantic-settings (reads from .env).",
       "id": "archivum_config_rationale_1"
     },
@@ -171,7 +171,7 @@
       "source_file": "backend/archivum/auth.py",
       "source_location": "L47",
       "id": "archivum_auth_create_access_token",
-      "community": 4,
+      "community": 3,
       "norm_label": "create_access_token()"
     },
     {
@@ -180,7 +180,7 @@
       "source_file": "backend/archivum/auth.py",
       "source_location": "L66",
       "id": "archivum_auth_create_refresh_token",
-      "community": 4,
+      "community": 3,
       "norm_label": "create_refresh_token()"
     },
     {
@@ -251,7 +251,7 @@
       "file_type": "rationale",
       "source_file": "backend/archivum/auth.py",
       "source_location": "L67",
-      "community": 4,
+      "community": 3,
       "norm_label": "return (raw_token, hashed_token) pair.",
       "id": "archivum_auth_rationale_67"
     },
@@ -279,7 +279,7 @@
       "source_file": "backend/archivum/__main__.py",
       "source_location": "L1",
       "id": "backend_archivum_main_py",
-      "community": 7,
+      "community": 4,
       "norm_label": "__main__.py"
     },
     {
@@ -288,7 +288,7 @@
       "source_file": "backend/archivum/main.py",
       "source_location": "L31",
       "id": "archivum_main_tracemiddleware",
-      "community": 7,
+      "community": 2,
       "norm_label": "_tracemiddleware"
     },
     {
@@ -297,7 +297,7 @@
       "source_file": "",
       "source_location": "",
       "id": "basehttpmiddleware",
-      "community": 7,
+      "community": 2,
       "norm_label": "basehttpmiddleware"
     },
     {
@@ -306,7 +306,7 @@
       "source_file": "backend/archivum/main.py",
       "source_location": "L32",
       "id": "archivum_main_tracemiddleware_dispatch",
-      "community": 3,
+      "community": 2,
       "norm_label": ".dispatch()"
     },
     {
@@ -315,7 +315,7 @@
       "source_file": "backend/archivum/main.py",
       "source_location": "L41",
       "id": "archivum_main_lifespan",
-      "community": 2,
+      "community": 4,
       "norm_label": "lifespan()"
     },
     {
@@ -324,7 +324,7 @@
       "source_file": "backend/archivum/main.py",
       "source_location": "L69",
       "id": "archivum_main_create_app",
-      "community": 7,
+      "community": 4,
       "norm_label": "create_app()"
     },
     {
@@ -333,7 +333,7 @@
       "source_file": "backend/archivum/cli_config.py",
       "source_location": "L1",
       "id": "backend_archivum_cli_config_py",
-      "community": 7,
+      "community": 8,
       "norm_label": "cli_config.py"
     },
     {
@@ -342,7 +342,7 @@
       "source_file": "backend/archivum/cli_config.py",
       "source_location": "L36",
       "id": "archivum_cli_config_mask_secret",
-      "community": 7,
+      "community": 8,
       "norm_label": "_mask_secret()"
     },
     {
@@ -351,7 +351,7 @@
       "source_file": "backend/archivum/cli_config.py",
       "source_location": "L44",
       "id": "archivum_cli_config_find_env_file",
-      "community": 7,
+      "community": 8,
       "norm_label": "_find_env_file()"
     },
     {
@@ -360,7 +360,7 @@
       "source_file": "backend/archivum/cli_config.py",
       "source_location": "L54",
       "id": "archivum_cli_config_parse_env_kv",
-      "community": 7,
+      "community": 8,
       "norm_label": "_parse_env_kv()"
     },
     {
@@ -369,7 +369,7 @@
       "source_file": "backend/archivum/cli_config.py",
       "source_location": "L68",
       "id": "archivum_cli_config_set_env_var",
-      "community": 7,
+      "community": 8,
       "norm_label": "_set_env_var()"
     },
     {
@@ -378,7 +378,7 @@
       "source_file": "backend/archivum/cli_config.py",
       "source_location": "L84",
       "id": "archivum_cli_config_prompt_choice",
-      "community": 7,
+      "community": 8,
       "norm_label": "_prompt_choice()"
     },
     {
@@ -387,7 +387,7 @@
       "source_file": "backend/archivum/cli_config.py",
       "source_location": "L102",
       "id": "archivum_cli_config_prompt_text",
-      "community": 7,
+      "community": 8,
       "norm_label": "_prompt_text()"
     },
     {
@@ -396,7 +396,7 @@
       "source_file": "backend/archivum/cli_config.py",
       "source_location": "L107",
       "id": "archivum_cli_config_prompt_secret",
-      "community": 7,
+      "community": 8,
       "norm_label": "_prompt_secret()"
     },
     {
@@ -405,7 +405,7 @@
       "source_file": "backend/archivum/cli_config.py",
       "source_location": "L112",
       "id": "archivum_cli_config_main",
-      "community": 7,
+      "community": 8,
       "norm_label": "main()"
     },
     {
@@ -414,7 +414,7 @@
       "source_file": "backend/archivum/observability.py",
       "source_location": "L1",
       "id": "backend_archivum_observability_py",
-      "community": 2,
+      "community": 5,
       "norm_label": "observability.py"
     },
     {
@@ -423,7 +423,7 @@
       "source_file": "backend/archivum/observability.py",
       "source_location": "L13",
       "id": "archivum_observability_get_trace_id",
-      "community": 5,
+      "community": 4,
       "norm_label": "get_trace_id()"
     },
     {
@@ -432,7 +432,7 @@
       "source_file": "backend/archivum/observability.py",
       "source_location": "L17",
       "id": "archivum_observability_set_trace_id",
-      "community": 2,
+      "community": 5,
       "norm_label": "set_trace_id()"
     },
     {
@@ -441,7 +441,7 @@
       "source_file": "backend/archivum/observability.py",
       "source_location": "L21",
       "id": "archivum_observability_new_trace_id",
-      "community": 2,
+      "community": 5,
       "norm_label": "new_trace_id()"
     },
     {
@@ -450,7 +450,7 @@
       "source_file": "backend/archivum/observability.py",
       "source_location": "L27",
       "id": "archivum_observability_span",
-      "community": 8,
+      "community": 9,
       "norm_label": "span()"
     },
     {
@@ -458,7 +458,7 @@
       "file_type": "rationale",
       "source_file": "backend/archivum/observability.py",
       "source_location": "L28",
-      "community": 8,
+      "community": 9,
       "norm_label": "lightweight timing span.      usage:         with span(\"qdrant.upsert\", slug=slu",
       "id": "archivum_observability_rationale_28"
     },
@@ -468,7 +468,7 @@
       "source_file": "backend/archivum/logging_config.py",
       "source_location": "L1",
       "id": "backend_archivum_logging_config_py",
-      "community": 7,
+      "community": 8,
       "norm_label": "logging_config.py"
     },
     {
@@ -477,7 +477,7 @@
       "source_file": "backend/archivum/logging_config.py",
       "source_location": "L13",
       "id": "archivum_logging_config_logrecord_reserved_keys",
-      "community": 7,
+      "community": 8,
       "norm_label": "_logrecord_reserved_keys()"
     },
     {
@@ -486,7 +486,7 @@
       "source_file": "backend/archivum/logging_config.py",
       "source_location": "L33",
       "id": "archivum_logging_config_install_safe_extra_patch",
-      "community": 7,
+      "community": 8,
       "norm_label": "_install_safe_extra_patch()"
     },
     {
@@ -495,7 +495,7 @@
       "source_file": "backend/archivum/logging_config.py",
       "source_location": "L70",
       "id": "archivum_logging_config_traceidfilter",
-      "community": 7,
+      "community": 8,
       "norm_label": "_traceidfilter"
     },
     {
@@ -504,7 +504,7 @@
       "source_file": "backend/archivum/logging_config.py",
       "source_location": "L71",
       "id": "archivum_logging_config_traceidfilter_filter",
-      "community": 5,
+      "community": 4,
       "norm_label": ".filter()"
     },
     {
@@ -513,7 +513,7 @@
       "source_file": "backend/archivum/logging_config.py",
       "source_location": "L76",
       "id": "archivum_logging_config_level_from_env",
-      "community": 7,
+      "community": 8,
       "norm_label": "_level_from_env()"
     },
     {
@@ -522,7 +522,7 @@
       "source_file": "backend/archivum/logging_config.py",
       "source_location": "L81",
       "id": "archivum_logging_config_setup_logging",
-      "community": 7,
+      "community": 8,
       "norm_label": "setup_logging()"
     },
     {
@@ -531,7 +531,7 @@
       "source_file": "backend/archivum/logging_config.py",
       "source_location": "L117",
       "id": "archivum_logging_config_log_extra",
-      "community": 7,
+      "community": 8,
       "norm_label": "log_extra()"
     },
     {
@@ -539,7 +539,7 @@
       "file_type": "rationale",
       "source_file": "backend/archivum/logging_config.py",
       "source_location": "L14",
-      "community": 7,
+      "community": 8,
       "norm_label": "reserved keys in `logging.logrecord` that cannot be overridden via `extra=`.",
       "id": "archivum_logging_config_rationale_14"
     },
@@ -548,7 +548,7 @@
       "file_type": "rationale",
       "source_file": "backend/archivum/logging_config.py",
       "source_location": "L34",
-      "community": 7,
+      "community": 8,
       "norm_label": "prevent stdlib logging from raising `keyerror` when `extra` includes a reserved",
       "id": "archivum_logging_config_rationale_34"
     },
@@ -557,7 +557,7 @@
       "file_type": "rationale",
       "source_file": "backend/archivum/logging_config.py",
       "source_location": "L82",
-      "community": 7,
+      "community": 8,
       "norm_label": "configure stdlib logging for all archivum processes.      environment:       - l",
       "id": "archivum_logging_config_rationale_82"
     },
@@ -566,7 +566,7 @@
       "file_type": "rationale",
       "source_file": "backend/archivum/logging_config.py",
       "source_location": "L118",
-      "community": 7,
+      "community": 8,
       "norm_label": "convenience helper so we consistently attach structured fields.",
       "id": "archivum_logging_config_rationale_118"
     },
@@ -576,7 +576,7 @@
       "source_file": "backend/archivum/db/__init__.py",
       "source_location": "L1",
       "id": "backend_archivum_db_init_py",
-      "community": 16,
+      "community": 17,
       "norm_label": "__init__.py"
     },
     {
@@ -584,7 +584,7 @@
       "file_type": "rationale",
       "source_file": "backend/archivum/db/__init__.py",
       "source_location": "L1",
-      "community": 16,
+      "community": 17,
       "norm_label": "database layer: sqlite, qdrant, kuzu.",
       "id": "db_init_rationale_1"
     },
@@ -594,7 +594,7 @@
       "source_file": "backend/archivum/db/sqlite.py",
       "source_location": "L1",
       "id": "backend_archivum_db_sqlite_py",
-      "community": 4,
+      "community": 3,
       "norm_label": "sqlite.py"
     },
     {
@@ -603,7 +603,7 @@
       "source_file": "backend/archivum/db/sqlite.py",
       "source_location": "L114",
       "id": "db_sqlite_configure",
-      "community": 4,
+      "community": 3,
       "norm_label": "configure()"
     },
     {
@@ -612,7 +612,7 @@
       "source_file": "backend/archivum/db/sqlite.py",
       "source_location": "L121",
       "id": "db_sqlite_get_db",
-      "community": 4,
+      "community": 3,
       "norm_label": "get_db()"
     },
     {
@@ -621,7 +621,7 @@
       "source_file": "backend/archivum/db/sqlite.py",
       "source_location": "L132",
       "id": "db_sqlite_init_db",
-      "community": 4,
+      "community": 3,
       "norm_label": "init_db()"
     },
     {
@@ -630,7 +630,7 @@
       "source_file": "backend/archivum/db/sqlite.py",
       "source_location": "L141",
       "id": "db_sqlite_get_user_by_username",
-      "community": 4,
+      "community": 3,
       "norm_label": "get_user_by_username()"
     },
     {
@@ -639,7 +639,7 @@
       "source_file": "backend/archivum/db/sqlite.py",
       "source_location": "L150",
       "id": "db_sqlite_create_user",
-      "community": 4,
+      "community": 3,
       "norm_label": "create_user()"
     },
     {
@@ -648,7 +648,7 @@
       "source_file": "backend/archivum/db/sqlite.py",
       "source_location": "L165",
       "id": "db_sqlite_ensure_owner_exists",
-      "community": 4,
+      "community": 3,
       "norm_label": "ensure_owner_exists()"
     },
     {
@@ -657,7 +657,7 @@
       "source_file": "backend/archivum/db/sqlite.py",
       "source_location": "L183",
       "id": "db_sqlite_list_pages",
-      "community": 4,
+      "community": 3,
       "norm_label": "list_pages()"
     },
     {
@@ -666,7 +666,7 @@
       "source_file": "backend/archivum/db/sqlite.py",
       "source_location": "L194",
       "id": "db_sqlite_get_page",
-      "community": 4,
+      "community": 3,
       "norm_label": "get_page()"
     },
     {
@@ -675,7 +675,7 @@
       "source_file": "backend/archivum/db/sqlite.py",
       "source_location": "L204",
       "id": "db_sqlite_upsert_page",
-      "community": 4,
+      "community": 3,
       "norm_label": "upsert_page()"
     },
     {
@@ -684,7 +684,7 @@
       "source_file": "backend/archivum/db/sqlite.py",
       "source_location": "L239",
       "id": "db_sqlite_delete_page",
-      "community": 4,
+      "community": 3,
       "norm_label": "delete_page()"
     },
     {
@@ -693,7 +693,7 @@
       "source_file": "backend/archivum/db/sqlite.py",
       "source_location": "L248",
       "id": "db_sqlite_search_pages_fts",
-      "community": 4,
+      "community": 3,
       "norm_label": "search_pages_fts()"
     },
     {
@@ -702,7 +702,7 @@
       "source_file": "backend/archivum/db/sqlite.py",
       "source_location": "L272",
       "id": "db_sqlite_create_share_link",
-      "community": 4,
+      "community": 3,
       "norm_label": "create_share_link()"
     },
     {
@@ -711,7 +711,7 @@
       "source_file": "backend/archivum/db/sqlite.py",
       "source_location": "L289",
       "id": "db_sqlite_get_share_link",
-      "community": 4,
+      "community": 3,
       "norm_label": "get_share_link()"
     },
     {
@@ -720,7 +720,7 @@
       "source_file": "backend/archivum/db/sqlite.py",
       "source_location": "L299",
       "id": "db_sqlite_revoke_share_link",
-      "community": 4,
+      "community": 3,
       "norm_label": "revoke_share_link()"
     },
     {
@@ -729,7 +729,7 @@
       "source_file": "backend/archivum/db/sqlite.py",
       "source_location": "L308",
       "id": "db_sqlite_list_share_links",
-      "community": 4,
+      "community": 3,
       "norm_label": "list_share_links()"
     },
     {
@@ -738,7 +738,7 @@
       "source_file": "backend/archivum/db/sqlite.py",
       "source_location": "L320",
       "id": "db_sqlite_create_ingest_log",
-      "community": 4,
+      "community": 3,
       "norm_label": "create_ingest_log()"
     },
     {
@@ -747,7 +747,7 @@
       "source_file": "backend/archivum/db/sqlite.py",
       "source_location": "L334",
       "id": "db_sqlite_update_ingest_log",
-      "community": 4,
+      "community": 3,
       "norm_label": "update_ingest_log()"
     },
     {
@@ -756,7 +756,7 @@
       "source_file": "backend/archivum/db/sqlite.py",
       "source_location": "L349",
       "id": "db_sqlite_list_ingest_logs",
-      "community": 4,
+      "community": 3,
       "norm_label": "list_ingest_logs()"
     },
     {
@@ -765,7 +765,7 @@
       "source_file": "backend/archivum/db/sqlite.py",
       "source_location": "L361",
       "id": "db_sqlite_store_refresh_token",
-      "community": 4,
+      "community": 3,
       "norm_label": "store_refresh_token()"
     },
     {
@@ -774,7 +774,7 @@
       "source_file": "backend/archivum/db/sqlite.py",
       "source_location": "L374",
       "id": "db_sqlite_get_refresh_token",
-      "community": 4,
+      "community": 3,
       "norm_label": "get_refresh_token()"
     },
     {
@@ -783,7 +783,7 @@
       "source_file": "backend/archivum/db/sqlite.py",
       "source_location": "L386",
       "id": "db_sqlite_revoke_refresh_token",
-      "community": 4,
+      "community": 3,
       "norm_label": "revoke_refresh_token()"
     },
     {
@@ -792,7 +792,7 @@
       "source_file": "backend/archivum/db/sqlite.py",
       "source_location": "L394",
       "id": "db_sqlite_revoke_all_refresh_tokens",
-      "community": 4,
+      "community": 3,
       "norm_label": "revoke_all_refresh_tokens()"
     },
     {
@@ -800,7 +800,7 @@
       "file_type": "rationale",
       "source_file": "backend/archivum/db/sqlite.py",
       "source_location": "L1",
-      "community": 4,
+      "community": 3,
       "norm_label": "aiosqlite wrapper \u2014 schema init and crud for all tables.",
       "id": "db_sqlite_rationale_1"
     },
@@ -809,7 +809,7 @@
       "file_type": "rationale",
       "source_file": "backend/archivum/db/sqlite.py",
       "source_location": "L166",
-      "community": 4,
+      "community": 3,
       "norm_label": "create the owner account if it doesn't already exist.",
       "id": "db_sqlite_rationale_166"
     },
@@ -818,7 +818,7 @@
       "file_type": "rationale",
       "source_file": "backend/archivum/db/sqlite.py",
       "source_location": "L212",
-      "community": 4,
+      "community": 3,
       "norm_label": "return (id, created) where created=true means a new row was inserted.",
       "id": "db_sqlite_rationale_212"
     },
@@ -827,7 +827,7 @@
       "file_type": "rationale",
       "source_file": "backend/archivum/db/sqlite.py",
       "source_location": "L251",
-      "community": 4,
+      "community": 3,
       "norm_label": "full-text search using fts5. returns rows with a snippet.",
       "id": "db_sqlite_rationale_251"
     },
@@ -837,7 +837,7 @@
       "source_file": "backend/archivum/db/qdrant_client.py",
       "source_location": "L1",
       "id": "backend_archivum_db_qdrant_client_py",
-      "community": 5,
+      "community": 4,
       "norm_label": "qdrant_client.py"
     },
     {
@@ -846,7 +846,7 @@
       "source_file": "backend/archivum/db/qdrant_client.py",
       "source_location": "L34",
       "id": "db_qdrant_client_get_embedder",
-      "community": 5,
+      "community": 4,
       "norm_label": "get_embedder()"
     },
     {
@@ -855,7 +855,7 @@
       "source_file": "backend/archivum/db/qdrant_client.py",
       "source_location": "L42",
       "id": "db_qdrant_client_resolve_embed_endpoint",
-      "community": 5,
+      "community": 4,
       "norm_label": "_resolve_embed_endpoint()"
     },
     {
@@ -864,7 +864,7 @@
       "source_file": "backend/archivum/db/qdrant_client.py",
       "source_location": "L71",
       "id": "db_qdrant_client_is_azure_openai_base_url",
-      "community": 5,
+      "community": 4,
       "norm_label": "_is_azure_openai_base_url()"
     },
     {
@@ -873,7 +873,7 @@
       "source_file": "backend/archivum/db/qdrant_client.py",
       "source_location": "L75",
       "id": "db_qdrant_client_resolve_embed_dim",
-      "community": 5,
+      "community": 4,
       "norm_label": "resolve_embed_dim()"
     },
     {
@@ -882,7 +882,7 @@
       "source_file": "backend/archivum/db/qdrant_client.py",
       "source_location": "L117",
       "id": "db_qdrant_client_embed_texts_openai_compat",
-      "community": 5,
+      "community": 4,
       "norm_label": "_embed_texts_openai_compat()"
     },
     {
@@ -891,7 +891,7 @@
       "source_file": "backend/archivum/db/qdrant_client.py",
       "source_location": "L167",
       "id": "db_qdrant_client_get_client",
-      "community": 5,
+      "community": 4,
       "norm_label": "get_client()"
     },
     {
@@ -900,7 +900,7 @@
       "source_file": "backend/archivum/db/qdrant_client.py",
       "source_location": "L175",
       "id": "db_qdrant_client_semantic_query_points",
-      "community": 5,
+      "community": 4,
       "norm_label": "_semantic_query_points()"
     },
     {
@@ -909,7 +909,7 @@
       "source_file": "backend/archivum/db/qdrant_client.py",
       "source_location": "L227",
       "id": "db_qdrant_client_chunk_text",
-      "community": 5,
+      "community": 4,
       "norm_label": "_chunk_text()"
     },
     {
@@ -918,7 +918,7 @@
       "source_file": "backend/archivum/db/qdrant_client.py",
       "source_location": "L246",
       "id": "db_qdrant_client_embed_texts",
-      "community": 5,
+      "community": 4,
       "norm_label": "embed_texts()"
     },
     {
@@ -927,7 +927,7 @@
       "source_file": "backend/archivum/db/qdrant_client.py",
       "source_location": "L271",
       "id": "db_qdrant_client_init_collection",
-      "community": 5,
+      "community": 4,
       "norm_label": "init_collection()"
     },
     {
@@ -936,7 +936,7 @@
       "source_file": "backend/archivum/db/qdrant_client.py",
       "source_location": "L360",
       "id": "db_qdrant_client_upsert_page",
-      "community": 5,
+      "community": 4,
       "norm_label": "upsert_page()"
     },
     {
@@ -945,7 +945,7 @@
       "source_file": "backend/archivum/db/qdrant_client.py",
       "source_location": "L408",
       "id": "db_qdrant_client_search",
-      "community": 5,
+      "community": 4,
       "norm_label": "search()"
     },
     {
@@ -954,7 +954,7 @@
       "source_file": "backend/archivum/db/qdrant_client.py",
       "source_location": "L449",
       "id": "db_qdrant_client_search_raw",
-      "community": 5,
+      "community": 4,
       "norm_label": "search_raw()"
     },
     {
@@ -963,7 +963,7 @@
       "source_file": "backend/archivum/db/qdrant_client.py",
       "source_location": "L484",
       "id": "db_qdrant_client_delete_page",
-      "community": 5,
+      "community": 4,
       "norm_label": "delete_page()"
     },
     {
@@ -971,7 +971,7 @@
       "file_type": "rationale",
       "source_file": "backend/archivum/db/qdrant_client.py",
       "source_location": "L1",
-      "community": 5,
+      "community": 4,
       "norm_label": "qdrant wrapper: collection management, upsert, search, delete.",
       "id": "db_qdrant_client_rationale_1"
     },
@@ -980,7 +980,7 @@
       "file_type": "rationale",
       "source_file": "backend/archivum/db/qdrant_client.py",
       "source_location": "L43",
-      "community": 5,
+      "community": 4,
       "norm_label": "return (base_url, api_key, extra_headers) for openai-compatible embeddings.",
       "id": "db_qdrant_client_rationale_43"
     },
@@ -989,7 +989,7 @@
       "file_type": "rationale",
       "source_file": "backend/archivum/db/qdrant_client.py",
       "source_location": "L76",
-      "community": 5,
+      "community": 4,
       "norm_label": "resolve the effective embedding vector dimension.      - if settings.embed_dim >",
       "id": "db_qdrant_client_rationale_76"
     },
@@ -998,7 +998,7 @@
       "file_type": "rationale",
       "source_file": "backend/archivum/db/qdrant_client.py",
       "source_location": "L184",
-      "community": 5,
+      "community": 4,
       "norm_label": "semantic search. returns list of {slug, title, excerpt, score}.",
       "id": "db_qdrant_client_rationale_184"
     },
@@ -1007,7 +1007,7 @@
       "file_type": "rationale",
       "source_file": "backend/archivum/db/qdrant_client.py",
       "source_location": "L228",
-      "community": 5,
+      "community": 4,
       "norm_label": "split *text* into overlapping token-approximate chunks.      we approximate toke",
       "id": "db_qdrant_client_rationale_228"
     },
@@ -1016,7 +1016,7 @@
       "file_type": "rationale",
       "source_file": "backend/archivum/db/qdrant_client.py",
       "source_location": "L247",
-      "community": 5,
+      "community": 4,
       "norm_label": "embed *texts* using either local fastembed or an openai-compatible endpoint.",
       "id": "db_qdrant_client_rationale_247"
     },
@@ -1025,7 +1025,7 @@
       "file_type": "rationale",
       "source_file": "backend/archivum/db/qdrant_client.py",
       "source_location": "L272",
-      "community": 5,
+      "community": 4,
       "norm_label": "create the qdrant collection if it does not already exist.",
       "id": "db_qdrant_client_rationale_272"
     },
@@ -1034,7 +1034,7 @@
       "file_type": "rationale",
       "source_file": "backend/archivum/db/qdrant_client.py",
       "source_location": "L367",
-      "community": 5,
+      "community": 4,
       "norm_label": "chunk *content*, embed all chunks, upsert to qdrant. returns chunk count.",
       "id": "db_qdrant_client_rationale_367"
     },
@@ -1043,7 +1043,7 @@
       "file_type": "rationale",
       "source_file": "backend/archivum/db/qdrant_client.py",
       "source_location": "L414",
-      "community": 5,
+      "community": 4,
       "norm_label": "semantic search. returns list of {slug, title, excerpt, score}.",
       "id": "db_qdrant_client_rationale_414"
     },
@@ -1052,7 +1052,7 @@
       "file_type": "rationale",
       "source_file": "backend/archivum/db/qdrant_client.py",
       "source_location": "L455",
-      "community": 5,
+      "community": 4,
       "norm_label": "like search() but returns all individual chunk hits (for context building).",
       "id": "db_qdrant_client_rationale_455"
     },
@@ -1061,7 +1061,7 @@
       "file_type": "rationale",
       "source_file": "backend/archivum/db/qdrant_client.py",
       "source_location": "L489",
-      "community": 5,
+      "community": 4,
       "norm_label": "delete all vectors for the given slug + wiki_id.",
       "id": "db_qdrant_client_rationale_489"
     },
@@ -1071,7 +1071,7 @@
       "source_file": "backend/archivum/db/graph.py",
       "source_location": "L1",
       "id": "backend_archivum_db_graph_py",
-      "community": 2,
+      "community": 6,
       "norm_label": "graph.py"
     },
     {
@@ -1080,7 +1080,7 @@
       "source_file": "backend/archivum/db/graph.py",
       "source_location": "L26",
       "id": "db_graph_get_conn",
-      "community": 2,
+      "community": 6,
       "norm_label": "_get_conn()"
     },
     {
@@ -1089,7 +1089,7 @@
       "source_file": "backend/archivum/db/graph.py",
       "source_location": "L41",
       "id": "db_graph_init_schema",
-      "community": 2,
+      "community": 6,
       "norm_label": "_init_schema()"
     },
     {
@@ -1098,7 +1098,7 @@
       "source_file": "backend/archivum/db/graph.py",
       "source_location": "L73",
       "id": "db_graph_run",
-      "community": 2,
+      "community": 6,
       "norm_label": "_run()"
     },
     {
@@ -1107,7 +1107,7 @@
       "source_file": "backend/archivum/db/graph.py",
       "source_location": "L80",
       "id": "db_graph_init_graph",
-      "community": 2,
+      "community": 6,
       "norm_label": "init_graph()"
     },
     {
@@ -1116,7 +1116,7 @@
       "source_file": "backend/archivum/db/graph.py",
       "source_location": "L86",
       "id": "db_graph_upsert_page",
-      "community": 2,
+      "community": 6,
       "norm_label": "upsert_page()"
     },
     {
@@ -1125,7 +1125,7 @@
       "source_file": "backend/archivum/db/graph.py",
       "source_location": "L97",
       "id": "db_graph_upsert_entity",
-      "community": 2,
+      "community": 6,
       "norm_label": "upsert_entity()"
     },
     {
@@ -1134,7 +1134,7 @@
       "source_file": "backend/archivum/db/graph.py",
       "source_location": "L107",
       "id": "db_graph_add_reference",
-      "community": 2,
+      "community": 6,
       "norm_label": "add_reference()"
     },
     {
@@ -1143,7 +1143,7 @@
       "source_file": "backend/archivum/db/graph.py",
       "source_location": "L121",
       "id": "db_graph_add_mention",
-      "community": 2,
+      "community": 6,
       "norm_label": "add_mention()"
     },
     {
@@ -1152,7 +1152,7 @@
       "source_file": "backend/archivum/db/graph.py",
       "source_location": "L135",
       "id": "db_graph_add_entity_relation",
-      "community": 2,
+      "community": 6,
       "norm_label": "add_entity_relation()"
     },
     {
@@ -1161,7 +1161,7 @@
       "source_file": "backend/archivum/db/graph.py",
       "source_location": "L151",
       "id": "db_graph_get_neighbors",
-      "community": 2,
+      "community": 6,
       "norm_label": "get_neighbors()"
     },
     {
@@ -1170,7 +1170,7 @@
       "source_file": "backend/archivum/db/graph.py",
       "source_location": "L227",
       "id": "db_graph_get_backlinks",
-      "community": 2,
+      "community": 6,
       "norm_label": "get_backlinks()"
     },
     {
@@ -1179,7 +1179,7 @@
       "source_file": "backend/archivum/db/graph.py",
       "source_location": "L248",
       "id": "db_graph_get_all_nodes_edges",
-      "community": 2,
+      "community": 6,
       "norm_label": "get_all_nodes_edges()"
     },
     {
@@ -1188,7 +1188,7 @@
       "source_file": "backend/archivum/db/graph.py",
       "source_location": "L325",
       "id": "db_graph_delete_page_node",
-      "community": 2,
+      "community": 6,
       "norm_label": "delete_page_node()"
     },
     {
@@ -1197,7 +1197,7 @@
       "source_file": "backend/archivum/db/graph.py",
       "source_location": "L336",
       "id": "db_graph_cleanup_abandoned_nodes",
-      "community": 2,
+      "community": 6,
       "norm_label": "cleanup_abandoned_nodes()"
     },
     {
@@ -1205,7 +1205,7 @@
       "file_type": "rationale",
       "source_file": "backend/archivum/db/graph.py",
       "source_location": "L1",
-      "community": 2,
+      "community": 6,
       "norm_label": "kuzu embedded graph-db wrapper.  all kuzu calls are synchronous; they are wrappe",
       "id": "db_graph_rationale_1"
     },
@@ -1214,7 +1214,7 @@
       "file_type": "rationale",
       "source_file": "backend/archivum/db/graph.py",
       "source_location": "L42",
-      "community": 2,
+      "community": 6,
       "norm_label": "create node/rel tables if they don't exist.",
       "id": "db_graph_rationale_42"
     },
@@ -1223,7 +1223,7 @@
       "file_type": "rationale",
       "source_file": "backend/archivum/db/graph.py",
       "source_location": "L81",
-      "community": 2,
+      "community": 6,
       "norm_label": "initialize the kuzu database and schema (call at startup).",
       "id": "db_graph_rationale_81"
     },
@@ -1232,7 +1232,7 @@
       "file_type": "rationale",
       "source_file": "backend/archivum/db/graph.py",
       "source_location": "L152",
-      "community": 2,
+      "community": 6,
       "norm_label": "return nodes + edges 1 hop from *node_id* (works for both page and entity).",
       "id": "db_graph_rationale_152"
     },
@@ -1241,7 +1241,7 @@
       "file_type": "rationale",
       "source_file": "backend/archivum/db/graph.py",
       "source_location": "L228",
-      "community": 2,
+      "community": 6,
       "norm_label": "return all page nodes that have a references edge pointing to *slug*.",
       "id": "db_graph_rationale_228"
     },
@@ -1250,7 +1250,7 @@
       "file_type": "rationale",
       "source_file": "backend/archivum/db/graph.py",
       "source_location": "L249",
-      "community": 2,
+      "community": 6,
       "norm_label": "return all nodes + edges for vis.js full-graph rendering.",
       "id": "db_graph_rationale_249"
     },
@@ -1259,7 +1259,7 @@
       "file_type": "rationale",
       "source_file": "backend/archivum/db/graph.py",
       "source_location": "L326",
-      "community": 2,
+      "community": 6,
       "norm_label": "remove a page node and all its edges from the graph.",
       "id": "db_graph_rationale_326"
     },
@@ -1268,9 +1268,9 @@
       "file_type": "rationale",
       "source_file": "backend/archivum/db/graph.py",
       "source_location": "L337",
-      "id": "db_graph_rationale_337",
-      "community": 2,
-      "norm_label": "delete graph nodes that no longer have any backing page.      today this means e"
+      "community": 6,
+      "norm_label": "delete graph nodes that no longer have any backing page.      today this means e",
+      "id": "db_graph_rationale_337"
     },
     {
       "label": "__init__.py",
@@ -1278,7 +1278,7 @@
       "source_file": "backend/archivum/ingest/__init__.py",
       "source_location": "L1",
       "id": "backend_archivum_ingest_init_py",
-      "community": 17,
+      "community": 18,
       "norm_label": "__init__.py"
     },
     {
@@ -1286,7 +1286,7 @@
       "file_type": "rationale",
       "source_file": "backend/archivum/ingest/__init__.py",
       "source_location": "L1",
-      "community": 17,
+      "community": 18,
       "norm_label": "ingest layer: parsers, llm agent, orchestration pipeline.",
       "id": "ingest_init_rationale_1"
     },
@@ -1485,7 +1485,7 @@
       "source_file": "backend/archivum/ingest/agent.py",
       "source_location": "L97",
       "id": "ingest_agent_wikiagent_init",
-      "community": 1,
+      "community": 4,
       "norm_label": ".__init__()"
     },
     {
@@ -1611,7 +1611,7 @@
       "source_file": "backend/archivum/ingest/pipeline.py",
       "source_location": "L1",
       "id": "backend_archivum_ingest_pipeline_py",
-      "community": 2,
+      "community": 5,
       "norm_label": "pipeline.py"
     },
     {
@@ -1620,7 +1620,7 @@
       "source_file": "backend/archivum/ingest/pipeline.py",
       "source_location": "L52",
       "id": "ingest_pipeline_safe_extra",
-      "community": 2,
+      "community": 5,
       "norm_label": "_safe_extra()"
     },
     {
@@ -1629,7 +1629,7 @@
       "source_file": "backend/archivum/ingest/pipeline.py",
       "source_location": "L64",
       "id": "ingest_pipeline_unique_slug",
-      "community": 2,
+      "community": 5,
       "norm_label": "_unique_slug()"
     },
     {
@@ -1638,7 +1638,7 @@
       "source_file": "backend/archivum/ingest/pipeline.py",
       "source_location": "L78",
       "id": "ingest_pipeline_extract_wikilinks",
-      "community": 2,
+      "community": 5,
       "norm_label": "_extract_wikilinks()"
     },
     {
@@ -1647,7 +1647,7 @@
       "source_file": "backend/archivum/ingest/pipeline.py",
       "source_location": "L85",
       "id": "ingest_pipeline_ingest",
-      "community": 2,
+      "community": 5,
       "norm_label": "ingest()"
     },
     {
@@ -1656,7 +1656,7 @@
       "source_file": "backend/archivum/ingest/pipeline.py",
       "source_location": "L310",
       "id": "ingest_pipeline_ingest_batch",
-      "community": 2,
+      "community": 5,
       "norm_label": "ingest_batch()"
     },
     {
@@ -1728,7 +1728,7 @@
       "source_file": "backend/archivum/api/auth.py",
       "source_location": "L1",
       "id": "backend_archivum_api_auth_py",
-      "community": 4,
+      "community": 3,
       "norm_label": "auth.py"
     },
     {
@@ -1755,7 +1755,7 @@
       "source_file": "backend/archivum/api/auth.py",
       "source_location": "L37",
       "id": "api_auth_authresponse",
-      "community": 4,
+      "community": 3,
       "norm_label": "authresponse"
     },
     {
@@ -1764,7 +1764,7 @@
       "source_file": "backend/archivum/api/auth.py",
       "source_location": "L43",
       "id": "api_auth_set_access_cookie",
-      "community": 4,
+      "community": 3,
       "norm_label": "_set_access_cookie()"
     },
     {
@@ -1773,7 +1773,7 @@
       "source_file": "backend/archivum/api/auth.py",
       "source_location": "L55",
       "id": "api_auth_set_refresh_cookie",
-      "community": 4,
+      "community": 3,
       "norm_label": "_set_refresh_cookie()"
     },
     {
@@ -1782,7 +1782,7 @@
       "source_file": "backend/archivum/api/auth.py",
       "source_location": "L68",
       "id": "api_auth_login",
-      "community": 4,
+      "community": 3,
       "norm_label": "login()"
     },
     {
@@ -1791,7 +1791,7 @@
       "source_file": "backend/archivum/api/auth.py",
       "source_location": "L100",
       "id": "api_auth_logout",
-      "community": 4,
+      "community": 3,
       "norm_label": "logout()"
     },
     {
@@ -1800,7 +1800,7 @@
       "source_file": "backend/archivum/api/auth.py",
       "source_location": "L107",
       "id": "api_auth_refresh",
-      "community": 4,
+      "community": 3,
       "norm_label": "refresh()"
     },
     {
@@ -1809,7 +1809,7 @@
       "source_file": "backend/archivum/api/auth.py",
       "source_location": "L147",
       "id": "api_auth_register",
-      "community": 4,
+      "community": 3,
       "norm_label": "register()"
     },
     {
@@ -1818,7 +1818,7 @@
       "source_file": "backend/archivum/api/auth.py",
       "source_location": "L168",
       "id": "api_auth_me",
-      "community": 4,
+      "community": 3,
       "norm_label": "me()"
     },
     {
@@ -1826,7 +1826,7 @@
       "file_type": "rationale",
       "source_file": "backend/archivum/api/auth.py",
       "source_location": "L1",
-      "community": 4,
+      "community": 3,
       "norm_label": "authentication routes: /api/auth/*",
       "id": "api_auth_rationale_1"
     },
@@ -1953,7 +1953,7 @@
       "source_file": "backend/archivum/api/pages.py",
       "source_location": "L1",
       "id": "backend_archivum_api_pages_py",
-      "community": 9,
+      "community": 10,
       "norm_label": "pages.py"
     },
     {
@@ -1962,7 +1962,7 @@
       "source_file": "backend/archivum/api/pages.py",
       "source_location": "L25",
       "id": "api_pages_pagesummary",
-      "community": 9,
+      "community": 10,
       "norm_label": "pagesummary"
     },
     {
@@ -1971,7 +1971,7 @@
       "source_file": "backend/archivum/api/pages.py",
       "source_location": "L34",
       "id": "api_pages_pagedetail",
-      "community": 9,
+      "community": 10,
       "norm_label": "pagedetail"
     },
     {
@@ -1998,7 +1998,7 @@
       "source_file": "backend/archivum/api/pages.py",
       "source_location": "L57",
       "id": "api_pages_validate_slug",
-      "community": 9,
+      "community": 10,
       "norm_label": "_validate_slug()"
     },
     {
@@ -2007,7 +2007,7 @@
       "source_file": "backend/archivum/api/pages.py",
       "source_location": "L93",
       "id": "api_pages_deserialize_tags",
-      "community": 9,
+      "community": 10,
       "norm_label": "_deserialize_tags()"
     },
     {
@@ -2016,7 +2016,7 @@
       "source_file": "backend/archivum/api/pages.py",
       "source_location": "L102",
       "id": "api_pages_row_to_summary",
-      "community": 9,
+      "community": 10,
       "norm_label": "_row_to_summary()"
     },
     {
@@ -2025,7 +2025,7 @@
       "source_file": "backend/archivum/api/pages.py",
       "source_location": "L113",
       "id": "api_pages_row_to_detail",
-      "community": 9,
+      "community": 10,
       "norm_label": "_row_to_detail()"
     },
     {
@@ -2034,7 +2034,7 @@
       "source_file": "backend/archivum/api/pages.py",
       "source_location": "L129",
       "id": "api_pages_list_pages",
-      "community": 9,
+      "community": 10,
       "norm_label": "list_pages()"
     },
     {
@@ -2043,7 +2043,7 @@
       "source_file": "backend/archivum/api/pages.py",
       "source_location": "L137",
       "id": "api_pages_get_page",
-      "community": 9,
+      "community": 10,
       "norm_label": "get_page()"
     },
     {
@@ -2052,7 +2052,7 @@
       "source_file": "backend/archivum/api/pages.py",
       "source_location": "L152",
       "id": "api_pages_create_page",
-      "community": 9,
+      "community": 10,
       "norm_label": "create_page()"
     },
     {
@@ -2061,7 +2061,7 @@
       "source_file": "backend/archivum/api/pages.py",
       "source_location": "L203",
       "id": "api_pages_update_page",
-      "community": 9,
+      "community": 10,
       "norm_label": "update_page()"
     },
     {
@@ -2070,7 +2070,7 @@
       "source_file": "backend/archivum/api/pages.py",
       "source_location": "L250",
       "id": "api_pages_delete_page",
-      "community": 9,
+      "community": 10,
       "norm_label": "delete_page()"
     },
     {
@@ -2079,7 +2079,7 @@
       "source_file": "backend/archivum/api/pages.py",
       "source_location": "L282",
       "id": "api_pages_get_backlinks",
-      "community": 9,
+      "community": 10,
       "norm_label": "get_backlinks()"
     },
     {
@@ -2087,7 +2087,7 @@
       "file_type": "rationale",
       "source_file": "backend/archivum/api/pages.py",
       "source_location": "L1",
-      "community": 9,
+      "community": 10,
       "norm_label": "pages routes: /api/pages/*",
       "id": "api_pages_rationale_1"
     },
@@ -2096,7 +2096,7 @@
       "file_type": "rationale",
       "source_file": "backend/archivum/api/pages.py",
       "source_location": "L58",
-      "community": 9,
+      "community": 10,
       "norm_label": "allow folder-like slugs: \"projects/archivum/notes\".     disallow traversal and w",
       "id": "api_pages_rationale_58"
     },
@@ -2106,7 +2106,7 @@
       "source_file": "backend/archivum/api/search.py",
       "source_location": "L1",
       "id": "backend_archivum_api_search_py",
-      "community": 4,
+      "community": 0,
       "norm_label": "search.py"
     },
     {
@@ -2115,7 +2115,7 @@
       "source_file": "backend/archivum/api/search.py",
       "source_location": "L14",
       "id": "api_search_search",
-      "community": 4,
+      "community": 0,
       "norm_label": "search()"
     },
     {
@@ -2123,7 +2123,7 @@
       "file_type": "rationale",
       "source_file": "backend/archivum/api/search.py",
       "source_location": "L20",
-      "community": 4,
+      "community": 0,
       "norm_label": "semantic search via qdrant (primary) with keyword fts fallback.      returns [{s",
       "id": "api_search_rationale_20"
     },
@@ -2133,7 +2133,7 @@
       "source_file": "backend/archivum/api/graph.py",
       "source_location": "L1",
       "id": "backend_archivum_api_graph_py",
-      "community": 2,
+      "community": 6,
       "norm_label": "graph.py"
     },
     {
@@ -2142,7 +2142,7 @@
       "source_file": "backend/archivum/api/graph.py",
       "source_location": "L12",
       "id": "api_graph_get_graph",
-      "community": 2,
+      "community": 6,
       "norm_label": "get_graph()"
     },
     {
@@ -2151,7 +2151,7 @@
       "source_file": "backend/archivum/api/graph.py",
       "source_location": "L24",
       "id": "api_graph_graph_neighbors",
-      "community": 2,
+      "community": 6,
       "norm_label": "graph_neighbors()"
     },
     {
@@ -2196,7 +2196,7 @@
       "source_file": "backend/archivum/api/system.py",
       "source_location": "L1",
       "id": "backend_archivum_api_system_py",
-      "community": 2,
+      "community": 6,
       "norm_label": "system.py"
     },
     {
@@ -2205,7 +2205,7 @@
       "source_file": "backend/archivum/api/system.py",
       "source_location": "L19",
       "id": "api_system_rebuild_indexes",
-      "community": 2,
+      "community": 6,
       "norm_label": "rebuild_indexes()"
     },
     {
@@ -2214,7 +2214,7 @@
       "source_file": "backend/archivum/api/system.py",
       "source_location": "L47",
       "id": "api_system_lint_wiki",
-      "community": 2,
+      "community": 6,
       "norm_label": "lint_wiki()"
     },
     {
@@ -2223,7 +2223,7 @@
       "source_file": "backend/archivum/mcp/__init__.py",
       "source_location": "L1",
       "id": "backend_archivum_mcp_init_py",
-      "community": 18,
+      "community": 19,
       "norm_label": "__init__.py"
     },
     {
@@ -2231,7 +2231,7 @@
       "file_type": "rationale",
       "source_file": "backend/archivum/mcp/__init__.py",
       "source_location": "L1",
-      "community": 18,
+      "community": 19,
       "norm_label": "mcp server for archivum (stdio + sse).",
       "id": "mcp_init_rationale_1"
     },
@@ -2241,7 +2241,7 @@
       "source_file": "backend/archivum/mcp/server.py",
       "source_location": "L1",
       "id": "backend_archivum_mcp_server_py",
-      "community": 2,
+      "community": 5,
       "norm_label": "server.py"
     },
     {
@@ -2250,7 +2250,7 @@
       "source_file": "backend/archivum/mcp/server.py",
       "source_location": "L30",
       "id": "mcp_server_toolcontext",
-      "community": 2,
+      "community": 5,
       "norm_label": "toolcontext"
     },
     {
@@ -2259,7 +2259,7 @@
       "source_file": "backend/archivum/mcp/server.py",
       "source_location": "L45",
       "id": "mcp_server_require_key",
-      "community": 2,
+      "community": 5,
       "norm_label": "_require_key()"
     },
     {
@@ -2268,7 +2268,7 @@
       "source_file": "backend/archivum/mcp/server.py",
       "source_location": "L55",
       "id": "mcp_server_ingest_source",
-      "community": 2,
+      "community": 5,
       "norm_label": "ingest_source()"
     },
     {
@@ -2277,7 +2277,7 @@
       "source_file": "backend/archivum/mcp/server.py",
       "source_location": "L72",
       "id": "mcp_server_search_wiki",
-      "community": 2,
+      "community": 5,
       "norm_label": "search_wiki()"
     },
     {
@@ -2286,7 +2286,7 @@
       "source_file": "backend/archivum/mcp/server.py",
       "source_location": "L81",
       "id": "mcp_server_list_pages",
-      "community": 2,
+      "community": 5,
       "norm_label": "list_pages()"
     },
     {
@@ -2295,7 +2295,7 @@
       "source_file": "backend/archivum/mcp/server.py",
       "source_location": "L100",
       "id": "mcp_server_get_page",
-      "community": 2,
+      "community": 5,
       "norm_label": "get_page()"
     },
     {
@@ -2304,7 +2304,7 @@
       "source_file": "backend/archivum/mcp/server.py",
       "source_location": "L119",
       "id": "mcp_server_write_page",
-      "community": 2,
+      "community": 5,
       "norm_label": "write_page()"
     },
     {
@@ -2313,7 +2313,7 @@
       "source_file": "backend/archivum/mcp/server.py",
       "source_location": "L153",
       "id": "mcp_server_graph_neighbors",
-      "community": 2,
+      "community": 5,
       "norm_label": "graph_neighbors()"
     },
     {
@@ -2322,7 +2322,7 @@
       "source_file": "backend/archivum/mcp/server.py",
       "source_location": "L163",
       "id": "mcp_server_lint_wiki",
-      "community": 2,
+      "community": 5,
       "norm_label": "lint_wiki()"
     },
     {
@@ -2331,7 +2331,7 @@
       "source_file": "backend/archivum/mcp/server.py",
       "source_location": "L191",
       "id": "mcp_server_query",
-      "community": 2,
+      "community": 5,
       "norm_label": "query()"
     },
     {
@@ -2340,7 +2340,7 @@
       "source_file": "backend/archivum/mcp/server.py",
       "source_location": "L264",
       "id": "mcp_server_main",
-      "community": 2,
+      "community": 5,
       "norm_label": "main()"
     },
     {
@@ -2348,7 +2348,7 @@
       "file_type": "rationale",
       "source_file": "backend/archivum/mcp/server.py",
       "source_location": "L56",
-      "community": 2,
+      "community": 5,
       "norm_label": "process a file path or url into the wiki.",
       "id": "mcp_server_rationale_56"
     },
@@ -2357,7 +2357,7 @@
       "file_type": "rationale",
       "source_file": "backend/archivum/mcp/server.py",
       "source_location": "L73",
-      "community": 2,
+      "community": 5,
       "norm_label": "semantic search; returns top-k with excerpts.",
       "id": "mcp_server_rationale_73"
     },
@@ -2366,7 +2366,7 @@
       "file_type": "rationale",
       "source_file": "backend/archivum/mcp/server.py",
       "source_location": "L82",
-      "community": 2,
+      "community": 5,
       "norm_label": "list pages for a wiki.",
       "id": "mcp_server_rationale_82"
     },
@@ -2375,7 +2375,7 @@
       "file_type": "rationale",
       "source_file": "backend/archivum/mcp/server.py",
       "source_location": "L101",
-      "community": 2,
+      "community": 5,
       "norm_label": "retrieve full markdown content by slug.",
       "id": "mcp_server_rationale_101"
     },
@@ -2384,7 +2384,7 @@
       "file_type": "rationale",
       "source_file": "backend/archivum/mcp/server.py",
       "source_location": "L126",
-      "community": 2,
+      "community": 5,
       "norm_label": "create or update a page and re-index.",
       "id": "mcp_server_rationale_126"
     },
@@ -2393,7 +2393,7 @@
       "file_type": "rationale",
       "source_file": "backend/archivum/mcp/server.py",
       "source_location": "L154",
-      "community": 2,
+      "community": 5,
       "norm_label": "return kuzu neighbors of a page/entity.",
       "id": "mcp_server_rationale_154"
     },
@@ -2402,7 +2402,7 @@
       "file_type": "rationale",
       "source_file": "backend/archivum/mcp/server.py",
       "source_location": "L164",
-      "community": 2,
+      "community": 5,
       "norm_label": "health check: broken wikilinks + orphan pages (v1).",
       "id": "mcp_server_rationale_164"
     },
@@ -2411,7 +2411,7 @@
       "file_type": "rationale",
       "source_file": "backend/archivum/mcp/server.py",
       "source_location": "L192",
-      "community": 2,
+      "community": 5,
       "norm_label": "ask a question; returns synthesised answer with citations.",
       "id": "mcp_server_rationale_192"
     },
@@ -2421,7 +2421,7 @@
       "source_file": "backend/archivum/llm/__init__.py",
       "source_location": "L1",
       "id": "backend_archivum_llm_init_py",
-      "community": 19,
+      "community": 20,
       "norm_label": "__init__.py"
     },
     {
@@ -2429,7 +2429,7 @@
       "file_type": "rationale",
       "source_file": "backend/archivum/llm/__init__.py",
       "source_location": "L1",
-      "community": 19,
+      "community": 20,
       "norm_label": "llm provider helpers (anthropic, openrouter, etc.).",
       "id": "llm_init_rationale_1"
     },
@@ -2439,7 +2439,7 @@
       "source_file": "backend/archivum/llm/openrouter_client.py",
       "source_location": "L1",
       "id": "backend_archivum_llm_openrouter_client_py",
-      "community": 8,
+      "community": 9,
       "norm_label": "openrouter_client.py"
     },
     {
@@ -2448,7 +2448,7 @@
       "source_file": "backend/archivum/llm/openrouter_client.py",
       "source_location": "L15",
       "id": "llm_openrouter_client_openrouter_chat_completion",
-      "community": 8,
+      "community": 9,
       "norm_label": "openrouter_chat_completion()"
     },
     {
@@ -2457,7 +2457,7 @@
       "source_file": "backend/archivum/llm/openrouter_client.py",
       "source_location": "L53",
       "id": "llm_openrouter_client_openrouter_stream_tokens",
-      "community": 8,
+      "community": 9,
       "norm_label": "openrouter_stream_tokens()"
     },
     {
@@ -2465,7 +2465,7 @@
       "file_type": "rationale",
       "source_file": "backend/archivum/llm/openrouter_client.py",
       "source_location": "L23",
-      "community": 8,
+      "community": 9,
       "norm_label": "one-shot openai-compatible chat completion.",
       "id": "llm_openrouter_client_rationale_23"
     },
@@ -2474,7 +2474,7 @@
       "file_type": "rationale",
       "source_file": "backend/archivum/llm/openrouter_client.py",
       "source_location": "L61",
-      "community": 8,
+      "community": 9,
       "norm_label": "stream `delta.content` tokens from openrouter sse.",
       "id": "llm_openrouter_client_rationale_61"
     },
@@ -2484,7 +2484,7 @@
       "source_file": "backend/archivum/llm/openai_compat_client.py",
       "source_location": "L1",
       "id": "backend_archivum_llm_openai_compat_client_py",
-      "community": 8,
+      "community": 9,
       "norm_label": "openai_compat_client.py"
     },
     {
@@ -2493,7 +2493,7 @@
       "source_file": "backend/archivum/llm/openai_compat_client.py",
       "source_location": "L15",
       "id": "llm_openai_compat_client_is_azure_openai_base_url",
-      "community": 8,
+      "community": 9,
       "norm_label": "_is_azure_openai_base_url()"
     },
     {
@@ -2502,7 +2502,7 @@
       "source_file": "backend/archivum/llm/openai_compat_client.py",
       "source_location": "L28",
       "id": "llm_openai_compat_client_derive_base_url",
-      "community": 8,
+      "community": 9,
       "norm_label": "_derive_base_url()"
     },
     {
@@ -2511,7 +2511,7 @@
       "source_file": "backend/archivum/llm/openai_compat_client.py",
       "source_location": "L36",
       "id": "llm_openai_compat_client_resolve_llm_endpoint",
-      "community": 8,
+      "community": 9,
       "norm_label": "_resolve_llm_endpoint()"
     },
     {
@@ -2520,7 +2520,7 @@
       "source_file": "backend/archivum/llm/openai_compat_client.py",
       "source_location": "L61",
       "id": "llm_openai_compat_client_openai_compat_chat_completion",
-      "community": 8,
+      "community": 9,
       "norm_label": "openai_compat_chat_completion()"
     },
     {
@@ -2529,7 +2529,7 @@
       "source_file": "backend/archivum/llm/openai_compat_client.py",
       "source_location": "L106",
       "id": "llm_openai_compat_client_openai_compat_stream_tokens",
-      "community": 8,
+      "community": 9,
       "norm_label": "openai_compat_stream_tokens()"
     },
     {
@@ -2537,7 +2537,7 @@
       "file_type": "rationale",
       "source_file": "backend/archivum/llm/openai_compat_client.py",
       "source_location": "L37",
-      "community": 8,
+      "community": 9,
       "norm_label": "return (base_url, api_key, headers, params) for openai-compatible chat.",
       "id": "llm_openai_compat_client_rationale_37"
     },
@@ -2546,7 +2546,7 @@
       "file_type": "rationale",
       "source_file": "backend/archivum/llm/openai_compat_client.py",
       "source_location": "L70",
-      "community": 8,
+      "community": 9,
       "norm_label": "one-shot openai-compatible chat completion against openai_compat_base_url     or",
       "id": "llm_openai_compat_client_rationale_70"
     },
@@ -2555,7 +2555,7 @@
       "file_type": "rationale",
       "source_file": "backend/archivum/llm/openai_compat_client.py",
       "source_location": "L115",
-      "community": 8,
+      "community": 9,
       "norm_label": "stream `delta.content` tokens from an openai-compatible sse stream.",
       "id": "llm_openai_compat_client_rationale_115"
     },
@@ -2601,7 +2601,7 @@
       "source_file": "frontend/src/api.ts",
       "source_location": "L1",
       "id": "frontend_src_api_ts",
-      "community": 3,
+      "community": 2,
       "norm_label": "api.ts"
     },
     {
@@ -2610,7 +2610,7 @@
       "source_file": "frontend/src/api.ts",
       "source_location": "L5",
       "id": "src_api_encodeslugpath",
-      "community": 3,
+      "community": 2,
       "norm_label": "encodeslugpath()"
     },
     {
@@ -2619,7 +2619,7 @@
       "source_file": "frontend/src/api.ts",
       "source_location": "L13",
       "id": "src_api_apifetch",
-      "community": 3,
+      "community": 2,
       "norm_label": "apifetch()"
     },
     {
@@ -2628,7 +2628,7 @@
       "source_file": "frontend/src/api.ts",
       "source_location": "L42",
       "id": "src_api_login",
-      "community": 3,
+      "community": 2,
       "norm_label": "login()"
     },
     {
@@ -2637,7 +2637,7 @@
       "source_file": "frontend/src/api.ts",
       "source_location": "L49",
       "id": "src_api_logout",
-      "community": 3,
+      "community": 2,
       "norm_label": "logout()"
     },
     {
@@ -2646,7 +2646,7 @@
       "source_file": "frontend/src/api.ts",
       "source_location": "L53",
       "id": "src_api_listpages",
-      "community": 3,
+      "community": 2,
       "norm_label": "listpages()"
     },
     {
@@ -2655,7 +2655,7 @@
       "source_file": "frontend/src/api.ts",
       "source_location": "L58",
       "id": "src_api_getpage",
-      "community": 3,
+      "community": 2,
       "norm_label": "getpage()"
     },
     {
@@ -2664,7 +2664,7 @@
       "source_file": "frontend/src/api.ts",
       "source_location": "L63",
       "id": "src_api_updatepage",
-      "community": 3,
+      "community": 2,
       "norm_label": "updatepage()"
     },
     {
@@ -2673,7 +2673,7 @@
       "source_file": "frontend/src/api.ts",
       "source_location": "L71",
       "id": "src_api_createpage",
-      "community": 3,
+      "community": 2,
       "norm_label": "createpage()"
     },
     {
@@ -2682,7 +2682,7 @@
       "source_file": "frontend/src/api.ts",
       "source_location": "L84",
       "id": "src_api_deletepage",
-      "community": 3,
+      "community": 2,
       "norm_label": "deletepage()"
     },
     {
@@ -2691,7 +2691,7 @@
       "source_file": "frontend/src/api.ts",
       "source_location": "L88",
       "id": "src_api_getbacklinks",
-      "community": 3,
+      "community": 2,
       "norm_label": "getbacklinks()"
     },
     {
@@ -2700,7 +2700,7 @@
       "source_file": "frontend/src/api.ts",
       "source_location": "L93",
       "id": "src_api_search",
-      "community": 3,
+      "community": 2,
       "norm_label": "search()"
     },
     {
@@ -2709,7 +2709,7 @@
       "source_file": "frontend/src/api.ts",
       "source_location": "L98",
       "id": "src_api_getgraph",
-      "community": 3,
+      "community": 2,
       "norm_label": "getgraph()"
     },
     {
@@ -2718,7 +2718,7 @@
       "source_file": "frontend/src/api.ts",
       "source_location": "L103",
       "id": "src_api_parsessestream",
-      "community": 3,
+      "community": 2,
       "norm_label": "parsessestream()"
     },
     {
@@ -2727,7 +2727,7 @@
       "source_file": "frontend/src/api.ts",
       "source_location": "L136",
       "id": "src_api_ingestfile",
-      "community": 3,
+      "community": 2,
       "norm_label": "ingestfile()"
     },
     {
@@ -2736,7 +2736,7 @@
       "source_file": "frontend/src/api.ts",
       "source_location": "L157",
       "id": "src_api_ingesturl",
-      "community": 3,
+      "community": 2,
       "norm_label": "ingesturl()"
     },
     {
@@ -2745,7 +2745,7 @@
       "source_file": "frontend/src/api.ts",
       "source_location": "L176",
       "id": "src_api_query",
-      "community": 3,
+      "community": 2,
       "norm_label": "query()"
     },
     {
@@ -2754,7 +2754,7 @@
       "source_file": "frontend/src/store.ts",
       "source_location": "L1",
       "id": "frontend_src_store_ts",
-      "community": 10,
+      "community": 11,
       "norm_label": "store.ts"
     },
     {
@@ -2763,7 +2763,7 @@
       "source_file": "frontend/src/store.ts",
       "source_location": "L40",
       "id": "src_store_reducer",
-      "community": 10,
+      "community": 11,
       "norm_label": "reducer()"
     },
     {
@@ -2772,7 +2772,7 @@
       "source_file": "frontend/src/store.ts",
       "source_location": "L77",
       "id": "src_store_appprovider",
-      "community": 10,
+      "community": 11,
       "norm_label": "appprovider()"
     },
     {
@@ -2781,7 +2781,7 @@
       "source_file": "frontend/src/store.ts",
       "source_location": "L82",
       "id": "src_store_useappstate",
-      "community": 10,
+      "community": 11,
       "norm_label": "useappstate()"
     },
     {
@@ -2790,7 +2790,7 @@
       "source_file": "frontend/src/store.ts",
       "source_location": "L88",
       "id": "src_store_useappdispatch",
-      "community": 10,
+      "community": 11,
       "norm_label": "useappdispatch()"
     },
     {
@@ -2808,7 +2808,7 @@
       "source_file": "frontend/src/App.tsx",
       "source_location": "L1",
       "id": "frontend_src_app_tsx",
-      "community": 10,
+      "community": 11,
       "norm_label": "app.tsx"
     },
     {
@@ -2817,7 +2817,7 @@
       "source_file": "frontend/src/App.tsx",
       "source_location": "L15",
       "id": "src_app_protectedroutes",
-      "community": 10,
+      "community": 11,
       "norm_label": "protectedroutes()"
     },
     {
@@ -2826,7 +2826,7 @@
       "source_file": "frontend/src/App.tsx",
       "source_location": "L78",
       "id": "src_app_approutes",
-      "community": 10,
+      "community": 11,
       "norm_label": "approutes()"
     },
     {
@@ -2835,7 +2835,7 @@
       "source_file": "frontend/src/App.tsx",
       "source_location": "L88",
       "id": "src_app_app",
-      "community": 10,
+      "community": 11,
       "norm_label": "app()"
     },
     {
@@ -2844,7 +2844,7 @@
       "source_file": "frontend/src/components/Layout.tsx",
       "source_location": "L1",
       "id": "frontend_src_components_layout_tsx",
-      "community": 3,
+      "community": 2,
       "norm_label": "layout.tsx"
     },
     {
@@ -2853,7 +2853,7 @@
       "source_file": "frontend/src/components/Layout.tsx",
       "source_location": "L34",
       "id": "components_layout_isactive",
-      "community": 3,
+      "community": 2,
       "norm_label": "isactive()"
     },
     {
@@ -2862,7 +2862,7 @@
       "source_file": "frontend/src/components/Layout.tsx",
       "source_location": "L39",
       "id": "components_layout_handlenav",
-      "community": 3,
+      "community": 2,
       "norm_label": "handlenav()"
     },
     {
@@ -2871,71 +2871,62 @@
       "source_file": "frontend/src/components/FileTree.tsx",
       "source_location": "L1",
       "id": "frontend_src_components_filetree_tsx",
-      "community": 3,
+      "community": 2,
       "norm_label": "filetree.tsx"
     },
     {
       "label": "handleCreatePage()",
       "file_type": "code",
       "source_file": "frontend/src/components/FileTree.tsx",
-      "source_location": "L50",
+      "source_location": "L63",
       "id": "components_filetree_handlecreatepage",
-      "community": 3,
+      "community": 2,
       "norm_label": "handlecreatepage()"
     },
     {
       "label": "handleFileDrop()",
       "file_type": "code",
       "source_file": "frontend/src/components/FileTree.tsx",
-      "source_location": "L71",
+      "source_location": "L84",
       "id": "components_filetree_handlefiledrop",
-      "community": 3,
+      "community": 2,
       "norm_label": "handlefiledrop()"
     },
     {
       "label": "onDragOver()",
       "file_type": "code",
       "source_file": "frontend/src/components/FileTree.tsx",
-      "source_location": "L91",
+      "source_location": "L104",
       "id": "components_filetree_ondragover",
-      "community": 3,
+      "community": 2,
       "norm_label": "ondragover()"
     },
     {
       "label": "onDragLeave()",
       "file_type": "code",
       "source_file": "frontend/src/components/FileTree.tsx",
-      "source_location": "L96",
+      "source_location": "L109",
       "id": "components_filetree_ondragleave",
-      "community": 3,
+      "community": 2,
       "norm_label": "ondragleave()"
     },
     {
       "label": "onDrop()",
       "file_type": "code",
       "source_file": "frontend/src/components/FileTree.tsx",
-      "source_location": "L100",
+      "source_location": "L113",
       "id": "components_filetree_ondrop",
-      "community": 3,
+      "community": 2,
       "norm_label": "ondrop()"
     },
     {
-      "label": "ensureFolder()",
+      "label": "walk()",
       "file_type": "code",
       "source_file": "frontend/src/components/FileTree.tsx",
-      "source_location": "L245",
-      "id": "components_filetree_ensurefolder",
-      "community": 3,
-      "norm_label": "ensurefolder()"
-    },
-    {
-      "label": "sortNode()",
-      "file_type": "code",
-      "source_file": "frontend/src/components/FileTree.tsx",
-      "source_location": "L265",
-      "id": "components_filetree_sortnode",
-      "community": 3,
-      "norm_label": "sortnode()"
+      "source_location": "L352",
+      "id": "components_filetree_walk",
+      "community": 2,
+      "norm_label": "walk()"
     },
     {
       "label": "BacklinksPanel.tsx",
@@ -2952,7 +2943,7 @@
       "source_file": "frontend/src/components/GraphView.tsx",
       "source_location": "L1",
       "id": "frontend_src_components_graphview_tsx",
-      "community": 12,
+      "community": 13,
       "norm_label": "graphview.tsx"
     },
     {
@@ -2961,7 +2952,7 @@
       "source_file": "frontend/src/components/GraphView.tsx",
       "source_location": "L33",
       "id": "components_graphview_loadgraph",
-      "community": 12,
+      "community": 13,
       "norm_label": "loadgraph()"
     },
     {
@@ -2970,7 +2961,7 @@
       "source_file": "frontend/src/components/GraphView.tsx",
       "source_location": "L48",
       "id": "components_graphview_rendergraph",
-      "community": 12,
+      "community": 13,
       "norm_label": "rendergraph()"
     },
     {
@@ -2979,7 +2970,7 @@
       "source_file": "frontend/src/components/GraphView.tsx",
       "source_location": "L162",
       "id": "components_graphview_handlesearch",
-      "community": 12,
+      "community": 13,
       "norm_label": "handlesearch()"
     },
     {
@@ -2988,7 +2979,7 @@
       "source_file": "frontend/src/components/GraphView.tsx",
       "source_location": "L186",
       "id": "components_graphview_zoomin",
-      "community": 12,
+      "community": 13,
       "norm_label": "zoomin()"
     },
     {
@@ -2997,7 +2988,7 @@
       "source_file": "frontend/src/components/GraphView.tsx",
       "source_location": "L192",
       "id": "components_graphview_zoomout",
-      "community": 12,
+      "community": 13,
       "norm_label": "zoomout()"
     },
     {
@@ -3006,7 +2997,7 @@
       "source_file": "frontend/src/components/GraphView.tsx",
       "source_location": "L198",
       "id": "components_graphview_fitall",
-      "community": 12,
+      "community": 13,
       "norm_label": "fitall()"
     },
     {
@@ -3015,7 +3006,7 @@
       "source_file": "frontend/src/components/QueryPanel.tsx",
       "source_location": "L1",
       "id": "frontend_src_components_querypanel_tsx",
-      "community": 3,
+      "community": 2,
       "norm_label": "querypanel.tsx"
     },
     {
@@ -3024,7 +3015,7 @@
       "source_file": "frontend/src/components/QueryPanel.tsx",
       "source_location": "L11",
       "id": "components_querypanel_rendermarkdown",
-      "community": 3,
+      "community": 2,
       "norm_label": "rendermarkdown()"
     },
     {
@@ -3033,7 +3024,7 @@
       "source_file": "frontend/src/components/QueryPanel.tsx",
       "source_location": "L55",
       "id": "components_querypanel_handlesubmit",
-      "community": 3,
+      "community": 2,
       "norm_label": "handlesubmit()"
     },
     {
@@ -3042,7 +3033,7 @@
       "source_file": "frontend/src/components/QueryPanel.tsx",
       "source_location": "L84",
       "id": "components_querypanel_handlesaveaspage",
-      "community": 3,
+      "community": 2,
       "norm_label": "handlesaveaspage()"
     },
     {
@@ -3051,7 +3042,7 @@
       "source_file": "frontend/src/components/IngestPanel.tsx",
       "source_location": "L1",
       "id": "frontend_src_components_ingestpanel_tsx",
-      "community": 3,
+      "community": 2,
       "norm_label": "ingestpanel.tsx"
     },
     {
@@ -3060,7 +3051,7 @@
       "source_file": "frontend/src/components/IngestPanel.tsx",
       "source_location": "L29",
       "id": "components_ingestpanel_updatefilestatus",
-      "community": 3,
+      "community": 2,
       "norm_label": "updatefilestatus()"
     },
     {
@@ -3069,7 +3060,7 @@
       "source_file": "frontend/src/components/IngestPanel.tsx",
       "source_location": "L81",
       "id": "components_ingestpanel_handleurlingest",
-      "community": 3,
+      "community": 2,
       "norm_label": "handleurlingest()"
     },
     {
@@ -3078,7 +3069,7 @@
       "source_file": "frontend/src/components/IngestPanel.tsx",
       "source_location": "L108",
       "id": "components_ingestpanel_ondragover",
-      "community": 3,
+      "community": 2,
       "norm_label": "ondragover()"
     },
     {
@@ -3087,7 +3078,7 @@
       "source_file": "frontend/src/components/IngestPanel.tsx",
       "source_location": "L113",
       "id": "components_ingestpanel_ondragleave",
-      "community": 3,
+      "community": 2,
       "norm_label": "ondragleave()"
     },
     {
@@ -3096,7 +3087,7 @@
       "source_file": "frontend/src/components/IngestPanel.tsx",
       "source_location": "L120",
       "id": "components_ingestpanel_ondrop",
-      "community": 3,
+      "community": 2,
       "norm_label": "ondrop()"
     },
     {
@@ -3105,7 +3096,7 @@
       "source_file": "frontend/src/components/IngestPanel.tsx",
       "source_location": "L128",
       "id": "components_ingestpanel_clearcompleted",
-      "community": 3,
+      "community": 2,
       "norm_label": "clearcompleted()"
     },
     {
@@ -3114,7 +3105,7 @@
       "source_file": "frontend/src/components/StatusBar.tsx",
       "source_location": "L1",
       "id": "frontend_src_components_statusbar_tsx",
-      "community": 10,
+      "community": 11,
       "norm_label": "statusbar.tsx"
     },
     {
@@ -3123,7 +3114,7 @@
       "source_file": "frontend/src/components/StatusBar.tsx",
       "source_location": "L7",
       "id": "components_statusbar_statusbar",
-      "community": 10,
+      "community": 11,
       "norm_label": "statusbar()"
     },
     {
@@ -3132,7 +3123,7 @@
       "source_file": "frontend/src/components/SearchBar.tsx",
       "source_location": "L1",
       "id": "frontend_src_components_searchbar_tsx",
-      "community": 3,
+      "community": 2,
       "norm_label": "searchbar.tsx"
     },
     {
@@ -3141,7 +3132,7 @@
       "source_file": "frontend/src/components/SearchBar.tsx",
       "source_location": "L16",
       "id": "components_searchbar_runsearch",
-      "community": 3,
+      "community": 2,
       "norm_label": "runsearch()"
     },
     {
@@ -3150,7 +3141,7 @@
       "source_file": "frontend/src/components/Editor/wikilinkExtension.ts",
       "source_location": "L1",
       "id": "frontend_src_components_editor_wikilinkextension_ts",
-      "community": 11,
+      "community": 12,
       "norm_label": "wikilinkextension.ts"
     },
     {
@@ -3159,7 +3150,7 @@
       "source_file": "frontend/src/components/Editor/wikilinkExtension.ts",
       "source_location": "L19",
       "id": "editor_wikilinkextension_makewikilinkcompletion",
-      "community": 11,
+      "community": 12,
       "norm_label": "makewikilinkcompletion()"
     },
     {
@@ -3168,7 +3159,7 @@
       "source_file": "frontend/src/components/Editor/wikilinkExtension.ts",
       "source_location": "L55",
       "id": "editor_wikilinkextension_wikilinkwidget",
-      "community": 11,
+      "community": 12,
       "norm_label": "wikilinkwidget"
     },
     {
@@ -3177,7 +3168,7 @@
       "source_file": "frontend/src/components/Editor/wikilinkExtension.ts",
       "source_location": "L56",
       "id": "editor_wikilinkextension_wikilinkwidget_constructor",
-      "community": 11,
+      "community": 12,
       "norm_label": ".constructor()"
     },
     {
@@ -3186,7 +3177,7 @@
       "source_file": "frontend/src/components/Editor/wikilinkExtension.ts",
       "source_location": "L65",
       "id": "editor_wikilinkextension_wikilinkwidget_eq",
-      "community": 11,
+      "community": 12,
       "norm_label": ".eq()"
     },
     {
@@ -3195,7 +3186,7 @@
       "source_file": "frontend/src/components/Editor/wikilinkExtension.ts",
       "source_location": "L73",
       "id": "editor_wikilinkextension_wikilinkwidget_todom",
-      "community": 11,
+      "community": 12,
       "norm_label": ".todom()"
     },
     {
@@ -3204,7 +3195,7 @@
       "source_file": "frontend/src/components/Editor/wikilinkExtension.ts",
       "source_location": "L85",
       "id": "editor_wikilinkextension_wikilinkwidget_ignoreevent",
-      "community": 11,
+      "community": 12,
       "norm_label": ".ignoreevent()"
     },
     {
@@ -3213,7 +3204,7 @@
       "source_file": "frontend/src/components/Editor/wikilinkExtension.ts",
       "source_location": "L90",
       "id": "editor_wikilinkextension_builddecorations",
-      "community": 11,
+      "community": 12,
       "norm_label": "builddecorations()"
     },
     {
@@ -3222,7 +3213,7 @@
       "source_file": "frontend/src/components/Editor/wikilinkExtension.ts",
       "source_location": "L120",
       "id": "editor_wikilinkextension_makewikilinkplugin",
-      "community": 11,
+      "community": 12,
       "norm_label": "makewikilinkplugin()"
     },
     {
@@ -3231,7 +3222,7 @@
       "source_file": "frontend/src/components/Editor/wikilinkExtension.ts",
       "source_location": "L151",
       "id": "editor_wikilinkextension_wikilinkextension",
-      "community": 11,
+      "community": 12,
       "norm_label": "wikilinkextension()"
     },
     {
@@ -3249,16 +3240,16 @@
       "source_file": "frontend/src/components/ui/Button.tsx",
       "source_location": "L1",
       "id": "frontend_src_components_ui_button_tsx",
-      "community": 20,
+      "community": 21,
       "norm_label": "button.tsx"
     },
     {
       "label": "Button()",
       "file_type": "code",
       "source_file": "frontend/src/components/ui/Button.tsx",
-      "source_location": "L7",
+      "source_location": "L43",
       "id": "ui_button_button",
-      "community": 20,
+      "community": 21,
       "norm_label": "button()"
     },
     {
@@ -3267,7 +3258,7 @@
       "source_file": "frontend/src/components/ui/Input.tsx",
       "source_location": "L1",
       "id": "frontend_src_components_ui_input_tsx",
-      "community": 7,
+      "community": 8,
       "norm_label": "input.tsx"
     },
     {
@@ -3276,7 +3267,7 @@
       "source_file": "frontend/src/components/ui/Input.tsx",
       "source_location": "L4",
       "id": "ui_input_input",
-      "community": 7,
+      "community": 8,
       "norm_label": "input()"
     },
     {
@@ -3285,7 +3276,7 @@
       "source_file": "frontend/src/components/ui/Textarea.tsx",
       "source_location": "L1",
       "id": "frontend_src_components_ui_textarea_tsx",
-      "community": 21,
+      "community": 22,
       "norm_label": "textarea.tsx"
     },
     {
@@ -3294,7 +3285,7 @@
       "source_file": "frontend/src/components/ui/Textarea.tsx",
       "source_location": "L4",
       "id": "ui_textarea_textarea",
-      "community": 21,
+      "community": 22,
       "norm_label": "textarea()"
     },
     {
@@ -3303,7 +3294,7 @@
       "source_file": "frontend/src/components/ui/Card.tsx",
       "source_location": "L1",
       "id": "frontend_src_components_ui_card_tsx",
-      "community": 13,
+      "community": 14,
       "norm_label": "card.tsx"
     },
     {
@@ -3312,44 +3303,53 @@
       "source_file": "frontend/src/components/ui/Card.tsx",
       "source_location": "L4",
       "id": "ui_card_card",
-      "community": 13,
+      "community": 14,
       "norm_label": "card()"
     },
     {
       "label": "CardHeader()",
       "file_type": "code",
       "source_file": "frontend/src/components/ui/Card.tsx",
-      "source_location": "L17",
+      "source_location": "L16",
       "id": "ui_card_cardheader",
-      "community": 13,
+      "community": 14,
       "norm_label": "cardheader()"
     },
     {
       "label": "CardTitle()",
       "file_type": "code",
       "source_file": "frontend/src/components/ui/Card.tsx",
-      "source_location": "L21",
+      "source_location": "L20",
       "id": "ui_card_cardtitle",
-      "community": 13,
+      "community": 14,
       "norm_label": "cardtitle()"
     },
     {
       "label": "CardDescription()",
       "file_type": "code",
       "source_file": "frontend/src/components/ui/Card.tsx",
-      "source_location": "L25",
+      "source_location": "L24",
       "id": "ui_card_carddescription",
-      "community": 13,
+      "community": 14,
       "norm_label": "carddescription()"
     },
     {
       "label": "CardContent()",
       "file_type": "code",
       "source_file": "frontend/src/components/ui/Card.tsx",
-      "source_location": "L31",
+      "source_location": "L30",
       "id": "ui_card_cardcontent",
-      "community": 13,
+      "community": 14,
       "norm_label": "cardcontent()"
+    },
+    {
+      "label": "CardFooter()",
+      "file_type": "code",
+      "source_file": "frontend/src/components/ui/Card.tsx",
+      "source_location": "L34",
+      "id": "ui_card_cardfooter",
+      "community": 14,
+      "norm_label": "cardfooter()"
     },
     {
       "label": "Badge.tsx",
@@ -3357,16 +3357,16 @@
       "source_file": "frontend/src/components/ui/Badge.tsx",
       "source_location": "L1",
       "id": "frontend_src_components_ui_badge_tsx",
-      "community": 22,
+      "community": 23,
       "norm_label": "badge.tsx"
     },
     {
       "label": "Badge()",
       "file_type": "code",
       "source_file": "frontend/src/components/ui/Badge.tsx",
-      "source_location": "L6",
+      "source_location": "L28",
       "id": "ui_badge_badge",
-      "community": 22,
+      "community": 23,
       "norm_label": "badge()"
     },
     {
@@ -3375,17 +3375,8 @@
       "source_file": "frontend/src/components/ui/Dialog.tsx",
       "source_location": "L1",
       "id": "frontend_src_components_ui_dialog_tsx",
-      "community": 23,
+      "community": 33,
       "norm_label": "dialog.tsx"
-    },
-    {
-      "label": "onKeyDown()",
-      "file_type": "code",
-      "source_file": "frontend/src/components/ui/Dialog.tsx",
-      "source_location": "L21",
-      "id": "ui_dialog_onkeydown",
-      "community": 23,
-      "norm_label": "onkeydown()"
     },
     {
       "label": "Toast.tsx",
@@ -3393,8 +3384,44 @@
       "source_file": "frontend/src/components/ui/Toast.tsx",
       "source_location": "L1",
       "id": "frontend_src_components_ui_toast_tsx",
-      "community": 33,
+      "community": 34,
       "norm_label": "toast.tsx"
+    },
+    {
+      "label": "DropdownMenu.tsx",
+      "file_type": "code",
+      "source_file": "frontend/src/components/ui/DropdownMenu.tsx",
+      "source_location": "L1",
+      "id": "frontend_src_components_ui_dropdownmenu_tsx",
+      "community": 35,
+      "norm_label": "dropdownmenu.tsx"
+    },
+    {
+      "label": "Popover.tsx",
+      "file_type": "code",
+      "source_file": "frontend/src/components/ui/Popover.tsx",
+      "source_location": "L1",
+      "id": "frontend_src_components_ui_popover_tsx",
+      "community": 36,
+      "norm_label": "popover.tsx"
+    },
+    {
+      "label": "Command.tsx",
+      "file_type": "code",
+      "source_file": "frontend/src/components/ui/Command.tsx",
+      "source_location": "L1",
+      "id": "frontend_src_components_ui_command_tsx",
+      "community": 37,
+      "norm_label": "command.tsx"
+    },
+    {
+      "label": "ScrollArea.tsx",
+      "file_type": "code",
+      "source_file": "frontend/src/components/ui/ScrollArea.tsx",
+      "source_location": "L1",
+      "id": "frontend_src_components_ui_scrollarea_tsx",
+      "community": 38,
+      "norm_label": "scrollarea.tsx"
     },
     {
       "label": "LoginPage.tsx",
@@ -3402,7 +3429,7 @@
       "source_file": "frontend/src/pages/LoginPage.tsx",
       "source_location": "L1",
       "id": "frontend_src_pages_loginpage_tsx",
-      "community": 3,
+      "community": 2,
       "norm_label": "loginpage.tsx"
     },
     {
@@ -3411,7 +3438,7 @@
       "source_file": "frontend/src/pages/LoginPage.tsx",
       "source_location": "L16",
       "id": "pages_loginpage_handlesubmit",
-      "community": 3,
+      "community": 2,
       "norm_label": "handlesubmit()"
     },
     {
@@ -3438,7 +3465,7 @@
       "source_file": "frontend/src/pages/WikiPage.tsx",
       "source_location": "L1",
       "id": "frontend_src_pages_wikipage_tsx",
-      "community": 3,
+      "community": 2,
       "norm_label": "wikipage.tsx"
     },
     {
@@ -3447,7 +3474,7 @@
       "source_file": "frontend/src/pages/WikiPage.tsx",
       "source_location": "L61",
       "id": "pages_wikipage_schedulemetasave",
-      "community": 3,
+      "community": 2,
       "norm_label": "schedulemetasave()"
     },
     {
@@ -3456,7 +3483,7 @@
       "source_file": "frontend/src/pages/WikiPage.tsx",
       "source_location": "L80",
       "id": "pages_wikipage_handlesavenow",
-      "community": 3,
+      "community": 2,
       "norm_label": "handlesavenow()"
     },
     {
@@ -3465,7 +3492,7 @@
       "source_file": "frontend/src/pages/WikiPage.tsx",
       "source_location": "L97",
       "id": "pages_wikipage_handledelete",
-      "community": 3,
+      "community": 2,
       "norm_label": "handledelete()"
     },
     {
@@ -3474,7 +3501,7 @@
       "source_file": "frontend/src/pages/WikiPage.tsx",
       "source_location": "L121",
       "id": "pages_wikipage_handlecreate",
-      "community": 3,
+      "community": 2,
       "norm_label": "handlecreate()"
     },
     {
@@ -3483,16 +3510,16 @@
       "source_file": "frontend/src/lib/cn.ts",
       "source_location": "L1",
       "id": "frontend_src_lib_cn_ts",
-      "community": 5,
+      "community": 4,
       "norm_label": "cn.ts"
     },
     {
       "label": "cn()",
       "file_type": "code",
       "source_file": "frontend/src/lib/cn.ts",
-      "source_location": "L1",
+      "source_location": "L4",
       "id": "lib_cn_cn",
-      "community": 5,
+      "community": 4,
       "norm_label": "cn()"
     },
     {
@@ -3563,7 +3590,7 @@
       "file_type": "rationale",
       "source_file": "backend/archivum/logging_config.py",
       "source_location": "L23",
-      "community": 34,
+      "community": 39,
       "norm_label": "configure stdlib logging for all archivum processes.      environment:       - l",
       "id": "archivum_logging_config_rationale_23"
     },
@@ -3572,7 +3599,7 @@
       "file_type": "rationale",
       "source_file": "backend/archivum/logging_config.py",
       "source_location": "L58",
-      "community": 35,
+      "community": 40,
       "norm_label": "convenience helper so we consistently attach structured fields.",
       "id": "archivum_logging_config_rationale_58"
     },
@@ -4447,7 +4474,7 @@
         "timeline": "1 week build",
         "rationale": "Archivum fills the gap between manual wikis (which require constant bookkeeping and rot) and LLM retrieval tools (which treat every query as a clean slate and accumulate nothing). An AI agent incrementally builds and maintains a persistent wiki so knowledge compounds with every source added and every question asked. Latin root 'archive' chosen for global recognisability, distinctiveness in PKM/dev tools space, and scalability from personal tool to product brand."
       },
-      "community": 6,
+      "community": 7,
       "norm_label": "archivum",
       "id": "archivum_prd_v1_0_archivum"
     },
@@ -4466,7 +4493,7 @@
         "processing": "sequential (not parallel) to avoid LLM rate limits",
         "rationale": "Sequential processing avoids LLM rate limits. /raw is write-once \u2014 files are never modified after ingest, protecting source integrity."
       },
-      "community": 6,
+      "community": 7,
       "norm_label": "ingest pipeline",
       "id": "archivum_prd_v1_0_ingest_pipeline"
     },
@@ -4484,7 +4511,7 @@
         "role": "Incrementally builds and maintains wiki pages; writes markdown, embeds for semantic search, syncs relationships to graph DB",
         "north_star_metric": "agent-authored wiki pages \u2014 count of pages whose last write was by the agent, not the user"
       },
-      "community": 6,
+      "community": 7,
       "norm_label": "wiki agent",
       "id": "archivum_prd_v1_0_wiki_agent"
     },
@@ -4528,7 +4555,7 @@
         ],
         "rationale": "Both stdio and SSE transports are required so that desktop-local clients (Claude Desktop, Cursor, Zed) and web/remote clients (ChatGPT plugins, Gemini, remote agents) can all use the same server definition without per-client configuration. Official Python MCP SDK supports both from a single definition."
       },
-      "community": 6,
+      "community": 7,
       "norm_label": "mcp server",
       "id": "archivum_prd_v1_0_mcp_server"
     },
@@ -4546,7 +4573,7 @@
         "port": 8000,
         "notable_endpoint": "POST /api/rebuild-indexes"
       },
-      "community": 6,
+      "community": 7,
       "norm_label": "rest api",
       "id": "archivum_prd_v1_0_rest_api"
     },
@@ -4564,7 +4591,7 @@
         "port": 3000,
         "layout": "three-panel: file sidebar / editor+active view / backlinks+context panel"
       },
-      "community": 6,
+      "community": 7,
       "norm_label": "web ui",
       "id": "archivum_prd_v1_0_web_ui"
     },
@@ -4588,7 +4615,7 @@
         "auto_save_latency": "under 500ms round trip",
         "rationale": "Chosen to replace Obsidian, eliminating dependency on a closed-source local app and its sync paywall while providing equivalent markdown editing in-browser."
       },
-      "community": 6,
+      "community": 7,
       "norm_label": "codemirror 6 editor",
       "id": "archivum_prd_v1_0_codemirror6"
     },
@@ -4607,7 +4634,7 @@
         "role": "vector store for semantic search; derived index, fully rebuildable from markdown",
         "search_target_latency": "under 1 second"
       },
-      "community": 6,
+      "community": 7,
       "norm_label": "qdrant",
       "id": "archivum_prd_v1_0_qdrant"
     },
@@ -4627,7 +4654,7 @@
         "graph_render_target": "under 2 seconds for 500 nodes",
         "risk": "may be too heavy for home server \u2014 fallback is Kuzu (embedded graph DB)"
       },
-      "community": 6,
+      "community": 7,
       "norm_label": "neo4j",
       "id": "archivum_prd_v1_0_neo4j"
     },
@@ -4644,7 +4671,7 @@
         "role": "embedded graph DB, fallback for Neo4j if RAM footprint too high on home server",
         "rationale": "Much lighter than Neo4j; no separate container required."
       },
-      "community": 6,
+      "community": 7,
       "norm_label": "kuzu",
       "id": "archivum_prd_v1_0_kuzu"
     },
@@ -4671,7 +4698,7 @@
         "multi_tenancy_prep": "wiki_id field on all data models from day 1",
         "rationale": "Single docker compose up with zero manual steps beyond .env is the deployment goal. wiki_id on all models from day 1 ensures future multi-tenancy without a rewrite."
       },
-      "community": 6,
+      "community": 7,
       "norm_label": "docker compose stack",
       "id": "archivum_prd_v1_0_docker_compose"
     },
@@ -4687,7 +4714,7 @@
       "attributes": {
         "rationale": "Markdown files are canonical; Qdrant and Neo4j are derived and fully rebuildable from them. This makes the system resilient \u2014 indexes can always be regenerated from the source-of-truth files."
       },
-      "community": 6,
+      "community": 7,
       "norm_label": "markdown as canonical format",
       "id": "archivum_prd_v1_0_markdown_canonical"
     },
@@ -4721,7 +4748,7 @@
         "update_latency": "within 5 seconds of new ingest completing",
         "risk": "first item cut if timeline is tight"
       },
-      "community": 6,
+      "community": 7,
       "norm_label": "graph view",
       "id": "archivum_prd_v1_0_graph_view"
     },
@@ -4740,7 +4767,7 @@
         "citations": "linked to specific wiki pages",
         "save_answer": "Save as page button creates new wiki page indexed in Qdrant and Neo4j"
       },
-      "community": 6,
+      "community": 7,
       "norm_label": "query engine",
       "id": "archivum_prd_v1_0_query_engine"
     },
@@ -4758,7 +4785,7 @@
         "latency": "under 1 second",
         "fallback": "keyword search if vector results are sparse"
       },
-      "community": 6,
+      "community": 7,
       "norm_label": "semantic search",
       "id": "archivum_prd_v1_0_semantic_search"
     },
@@ -4791,7 +4818,7 @@
         "db_isolation": "Qdrant and Neo4j ports not exposed to host by default",
         "rationale": "No public port exposed directly. Tailscale for trusted access, Cloudflare Tunnel for share links only. /raw volume mounted read-only to all services except ingest pipeline to prevent source overwrite by bugs or compromised services."
       },
-      "community": 14,
+      "community": 15,
       "norm_label": "security architecture",
       "id": "archivum_prd_v1_0_security_model"
     },
@@ -4833,7 +4860,7 @@
           "granular page permissions"
         ]
       },
-      "community": 14,
+      "community": 15,
       "norm_label": "share links",
       "id": "archivum_prd_v1_0_share_links"
     },
@@ -4857,7 +4884,7 @@
         "implementation": "custom CM6 extension",
         "open_question": "use page slug or title as identifier?"
       },
-      "community": 6,
+      "community": 7,
       "norm_label": "wikilinks ([[page name]])",
       "id": "archivum_prd_v1_0_wikilinks"
     },
@@ -4875,7 +4902,7 @@
         "guest_limit": "up to 3 users free on personal plan",
         "rationale": "Eliminates need for port forwarding or public exposure while giving trusted users full access from anywhere."
       },
-      "community": 14,
+      "community": 15,
       "norm_label": "tailscale",
       "id": "archivum_prd_v1_0_tailscale"
     },
@@ -4892,7 +4919,7 @@
         "role": "Exposes single subdomain for public share link rendering only \u2014 read-only, token-gated",
         "rationale": "Scoped to one read-only subdomain (share.archivum.madebypranav.dev) so public sharing is possible without exposing the wiki editor, search, or write endpoints."
       },
-      "community": 14,
+      "community": 15,
       "norm_label": "cloudflare tunnel",
       "id": "archivum_prd_v1_0_cloudflare_tunnel"
     },
@@ -4914,7 +4941,7 @@
         ],
         "role_in_doc": "primary competitor/replacement target"
       },
-      "community": 6,
+      "community": 7,
       "norm_label": "obsidian",
       "id": "archivum_prd_v1_0_obsidian"
     },
@@ -4931,7 +4958,7 @@
         "category": "LLM retrieval tool",
         "limitation": "treats every query as a clean slate \u2014 nothing accumulates"
       },
-      "community": 6,
+      "community": 7,
       "norm_label": "notebooklm",
       "id": "archivum_prd_v1_0_notebooklm"
     },
@@ -4947,7 +4974,7 @@
       "attributes": {
         "role": "Local LLM option \u2014 allows fully air-gapped operation without Anthropic API calls"
       },
-      "community": 6,
+      "community": 7,
       "norm_label": "ollama",
       "id": "archivum_prd_v1_0_ollama"
     },
@@ -4963,7 +4990,7 @@
       "attributes": {
         "role": "Local audio transcription \u2014 used for .mp3, .m4a, .wav, and audio stripped from video"
       },
-      "community": 6,
+      "community": 7,
       "norm_label": "whisper",
       "id": "archivum_prd_v1_0_whisper"
     },
@@ -4979,7 +5006,7 @@
       "attributes": {
         "role": "PDF parser \u2014 extracts text and basic metadata"
       },
-      "community": 6,
+      "community": 7,
       "norm_label": "pymupdf",
       "id": "archivum_prd_v1_0_pymupdf"
     },
@@ -4995,7 +5022,7 @@
       "attributes": {
         "role": "HTML parser \u2014 strips chrome, extracts body for .html/.htm and fetched URLs"
       },
-      "community": 6,
+      "community": 7,
       "norm_label": "beautifulsoup",
       "id": "archivum_prd_v1_0_beautifulsoup"
     },
@@ -5011,7 +5038,7 @@
       "attributes": {
         "role": "Fetches JS-heavy web pages for URL ingest"
       },
-      "community": 6,
+      "community": 7,
       "norm_label": "playwright",
       "id": "archivum_prd_v1_0_playwright"
     },
@@ -5027,7 +5054,7 @@
       "attributes": {
         "role": "Reverse proxy with automatic TLS \u2014 all traffic encrypted including on LAN"
       },
-      "community": 14,
+      "community": 15,
       "norm_label": "caddy reverse proxy",
       "id": "archivum_prd_v1_0_caddy"
     },
@@ -5048,7 +5075,7 @@
         ],
         "mcp_tool": "lint_wiki"
       },
-      "community": 6,
+      "community": 7,
       "norm_label": "wiki lint / health check",
       "id": "archivum_prd_v1_0_lint"
     },
@@ -5065,7 +5092,7 @@
         "prep_mechanism": "wiki_id field on all data models from day 1",
         "rationale": "Architected from day one so personal v1 can become a distributable multi-user product without a rewrite."
       },
-      "community": 6,
+      "community": 7,
       "norm_label": "multi-tenancy (future)",
       "id": "archivum_prd_v1_0_multi_tenancy"
     },
@@ -5087,7 +5114,7 @@
           "Anthropic MCP servers page"
         ]
       },
-      "community": 6,
+      "community": 7,
       "norm_label": "mcp (model context protocol)",
       "id": "archivum_prd_v1_0_mcp_protocol"
     },
@@ -5104,7 +5131,7 @@
         "description": "Historical concept by Vannevar Bush \u2014 a personal knowledge device that associates information the way the mind does. Referenced as intellectual precedent for Archivum.",
         "marketing_framing": "A persistent wiki maintained by an LLM \u2014 the Memex that Vannevar Bush couldn't build."
       },
-      "community": 6,
+      "community": 7,
       "norm_label": "memex (vannevar bush)",
       "id": "archivum_prd_v1_0_memex"
     }
@@ -5560,11 +5587,11 @@
       "source_file": "backend/archivum/db/graph.py",
       "source_location": "L16",
       "weight": 0.8,
-      "_src": "db_graph_rationale_337",
-      "_tgt": "archivum_config_settings",
+      "_src": "archivum_config_settings",
+      "_tgt": "db_graph_rationale_337",
+      "confidence_score": 0.5,
       "source": "archivum_config_settings",
-      "target": "db_graph_rationale_337",
-      "confidence_score": 0.5
+      "target": "db_graph_rationale_337"
     },
     {
       "relation": "uses",
@@ -11285,8 +11312,8 @@
       "source_file": "backend/archivum/api/pages.py",
       "source_location": "L278",
       "weight": 1.0,
-      "_src": "api_pages_delete_page",
-      "_tgt": "db_graph_cleanup_abandoned_nodes",
+      "_src": "db_graph_cleanup_abandoned_nodes",
+      "_tgt": "api_pages_delete_page",
       "source": "db_graph_cleanup_abandoned_nodes",
       "target": "api_pages_delete_page"
     },
@@ -12117,6 +12144,18 @@
       "source": "ingest_parsers_parse_file",
       "target": "ingest_parsers_rationale_64",
       "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "confidence_score": 0.8,
+      "source_file": "backend/archivum/ingest/parsers.py",
+      "source_location": "L303",
+      "weight": 1.0,
+      "_src": "ingest_parsers_parse_file",
+      "_tgt": "components_filetree_walk",
+      "source": "ingest_parsers_parse_file",
+      "target": "components_filetree_walk"
     },
     {
       "relation": "calls",
@@ -15518,7 +15557,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "frontend/src/components/FileTree.tsx",
-      "source_location": "L50",
+      "source_location": "L63",
       "weight": 1.0,
       "_src": "frontend_src_components_filetree_tsx",
       "_tgt": "components_filetree_handlecreatepage",
@@ -15530,7 +15569,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "frontend/src/components/FileTree.tsx",
-      "source_location": "L71",
+      "source_location": "L84",
       "weight": 1.0,
       "_src": "frontend_src_components_filetree_tsx",
       "_tgt": "components_filetree_handlefiledrop",
@@ -15542,7 +15581,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "frontend/src/components/FileTree.tsx",
-      "source_location": "L91",
+      "source_location": "L104",
       "weight": 1.0,
       "_src": "frontend_src_components_filetree_tsx",
       "_tgt": "components_filetree_ondragover",
@@ -15554,7 +15593,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "frontend/src/components/FileTree.tsx",
-      "source_location": "L96",
+      "source_location": "L109",
       "weight": 1.0,
       "_src": "frontend_src_components_filetree_tsx",
       "_tgt": "components_filetree_ondragleave",
@@ -15566,7 +15605,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "frontend/src/components/FileTree.tsx",
-      "source_location": "L100",
+      "source_location": "L113",
       "weight": 1.0,
       "_src": "frontend_src_components_filetree_tsx",
       "_tgt": "components_filetree_ondrop",
@@ -15578,31 +15617,19 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "frontend/src/components/FileTree.tsx",
-      "source_location": "L245",
+      "source_location": "L352",
       "weight": 1.0,
       "_src": "frontend_src_components_filetree_tsx",
-      "_tgt": "components_filetree_ensurefolder",
+      "_tgt": "components_filetree_walk",
       "source": "frontend_src_components_filetree_tsx",
-      "target": "components_filetree_ensurefolder",
-      "confidence_score": 1.0
-    },
-    {
-      "relation": "contains",
-      "confidence": "EXTRACTED",
-      "source_file": "frontend/src/components/FileTree.tsx",
-      "source_location": "L265",
-      "weight": 1.0,
-      "_src": "frontend_src_components_filetree_tsx",
-      "_tgt": "components_filetree_sortnode",
-      "source": "frontend_src_components_filetree_tsx",
-      "target": "components_filetree_sortnode",
+      "target": "components_filetree_walk",
       "confidence_score": 1.0
     },
     {
       "relation": "calls",
       "confidence": "EXTRACTED",
       "source_file": "frontend/src/components/FileTree.tsx",
-      "source_location": "L104",
+      "source_location": "L117",
       "weight": 1.0,
       "_src": "components_filetree_ondrop",
       "_tgt": "components_filetree_handlefiledrop",
@@ -15974,7 +16001,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "frontend/src/components/ui/Button.tsx",
-      "source_location": "L7",
+      "source_location": "L43",
       "weight": 1.0,
       "_src": "frontend_src_components_ui_button_tsx",
       "_tgt": "ui_button_button",
@@ -16022,7 +16049,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "frontend/src/components/ui/Card.tsx",
-      "source_location": "L17",
+      "source_location": "L16",
       "weight": 1.0,
       "_src": "frontend_src_components_ui_card_tsx",
       "_tgt": "ui_card_cardheader",
@@ -16034,7 +16061,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "frontend/src/components/ui/Card.tsx",
-      "source_location": "L21",
+      "source_location": "L20",
       "weight": 1.0,
       "_src": "frontend_src_components_ui_card_tsx",
       "_tgt": "ui_card_cardtitle",
@@ -16046,7 +16073,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "frontend/src/components/ui/Card.tsx",
-      "source_location": "L25",
+      "source_location": "L24",
       "weight": 1.0,
       "_src": "frontend_src_components_ui_card_tsx",
       "_tgt": "ui_card_carddescription",
@@ -16058,7 +16085,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "frontend/src/components/ui/Card.tsx",
-      "source_location": "L31",
+      "source_location": "L30",
       "weight": 1.0,
       "_src": "frontend_src_components_ui_card_tsx",
       "_tgt": "ui_card_cardcontent",
@@ -16069,25 +16096,25 @@
     {
       "relation": "contains",
       "confidence": "EXTRACTED",
-      "source_file": "frontend/src/components/ui/Badge.tsx",
-      "source_location": "L6",
+      "source_file": "frontend/src/components/ui/Card.tsx",
+      "source_location": "L34",
       "weight": 1.0,
-      "_src": "frontend_src_components_ui_badge_tsx",
-      "_tgt": "ui_badge_badge",
-      "source": "frontend_src_components_ui_badge_tsx",
-      "target": "ui_badge_badge",
+      "_src": "frontend_src_components_ui_card_tsx",
+      "_tgt": "ui_card_cardfooter",
+      "source": "frontend_src_components_ui_card_tsx",
+      "target": "ui_card_cardfooter",
       "confidence_score": 1.0
     },
     {
       "relation": "contains",
       "confidence": "EXTRACTED",
-      "source_file": "frontend/src/components/ui/Dialog.tsx",
-      "source_location": "L21",
+      "source_file": "frontend/src/components/ui/Badge.tsx",
+      "source_location": "L28",
       "weight": 1.0,
-      "_src": "frontend_src_components_ui_dialog_tsx",
-      "_tgt": "ui_dialog_onkeydown",
-      "source": "frontend_src_components_ui_dialog_tsx",
-      "target": "ui_dialog_onkeydown",
+      "_src": "frontend_src_components_ui_badge_tsx",
+      "_tgt": "ui_badge_badge",
+      "source": "frontend_src_components_ui_badge_tsx",
+      "target": "ui_badge_badge",
       "confidence_score": 1.0
     },
     {
@@ -16166,7 +16193,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "frontend/src/lib/cn.ts",
-      "source_location": "L1",
+      "source_location": "L4",
       "weight": 1.0,
       "_src": "frontend_src_lib_cn_ts",
       "_tgt": "lib_cn_cn",
