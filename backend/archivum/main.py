@@ -25,6 +25,7 @@ from archivum.db import graph
 from archivum.auth import hash_password
 from archivum.logging_config import setup_logging
 from archivum.observability import new_trace_id, set_trace_id
+from archivum.rate_limit import RateLimitMiddleware
 
 logger = logging.getLogger(__name__)
 
@@ -74,6 +75,7 @@ def create_app() -> FastAPI:
     app = FastAPI(title="Archivum API", version="0.1.0", lifespan=lifespan)
 
     app.add_middleware(_TraceMiddleware)
+    app.add_middleware(RateLimitMiddleware, settings=settings)
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.cors_origins,
