@@ -13,6 +13,7 @@ from starlette.responses import JSONResponse, Response
 from archivum.api import auth as auth_routes
 from archivum.api import ingest as ingest_routes
 from archivum.api import pages as pages_routes
+from archivum.api import share as share_routes
 from archivum.api.graph import router as graph_router
 from archivum.api.query import router as query_router
 from archivum.api.search import router as search_router
@@ -24,6 +25,7 @@ from archivum.db import graph
 from archivum.auth import hash_password
 from archivum.logging_config import setup_logging
 from archivum.observability import new_trace_id, set_trace_id
+from archivum.rate_limit import RateLimitMiddleware
 
 logger = logging.getLogger(__name__)
 
@@ -91,6 +93,7 @@ def create_app() -> FastAPI:
 
     app.add_middleware(_TraceMiddleware)
     app.add_middleware(_CSRFProtection)
+    app.add_middleware(RateLimitMiddleware, settings=settings)
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.cors_origins,
@@ -107,9 +110,9 @@ def create_app() -> FastAPI:
     app.include_router(query_router)
     app.include_router(graph_router)
     app.include_router(system_router)
+    app.include_router(share_routes.router)
 
     return app
 
 
 app = create_app()
-

@@ -1,5 +1,6 @@
 import { useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
+import DOMPurify from 'dompurify';
 import { useAppDispatch } from '../store';
 import { query, createPage } from '../api';
 import type { Page } from '../types';
@@ -163,7 +164,12 @@ export default function QueryPanel() {
             <div
               className="prose-custom text-text-secondary leading-relaxed"
               dangerouslySetInnerHTML={{
-                __html: `<p class="mb-3 text-text-secondary leading-relaxed">${renderMarkdown(answer)}</p>`,
+                __html: DOMPurify.sanitize(
+                  `<p class="mb-3 text-text-secondary leading-relaxed">${renderMarkdown(answer)}</p>`,
+                  {
+                    ALLOWED_ATTR: ['class', 'style', 'href', 'target', 'rel'],
+                  },
+                ),
               }}
             />
 

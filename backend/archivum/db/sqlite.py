@@ -293,7 +293,23 @@ async def get_share_link(token: str) -> dict[str, Any] | None:
             (token,),
         ) as cur:
             row = await cur.fetchone()
-            return dict(row) if row else None
+            if not row:
+                return None
+
+            data = dict(row)
+            expires_at = data.get("expires_at")
+            if expires_at:
+                try:
+                    exp = datetime.fromisoformat(str(expires_at).replace("Z", "+00:00"))
+                    if exp.tzinfo is None:
+                        exp = exp.replace(tzinfo=UTC)
+                    if exp <= datetime.now(UTC):
+                        return None
+                except Exception:
+                    # If we can't parse expires_at, fall back to serving it.
+                    pass
+
+            return data
 
 
 async def revoke_share_link(token: str) -> bool:

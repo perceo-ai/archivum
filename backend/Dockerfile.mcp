@@ -17,7 +17,12 @@ RUN uv sync --no-dev
 
 COPY archivum/ archivum/
 
+# Run as non-root
+RUN useradd -m -u 10001 app \
+  && chown -R app:app /app
+
 EXPOSE 8001
 
-CMD ["uv", "run", "python", "-m", "archivum.mcp.server", "--sse"]
+USER app
 
+CMD ["uv", "run", "python", "-m", "archivum.mcp.server", "--sse"]
