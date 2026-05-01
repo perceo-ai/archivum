@@ -95,6 +95,13 @@ class Settings(BaseSettings):
     # ── CORS ───────────────────────────────────────────────────────────────
     cors_origins: list[str] = ["http://localhost:3000", "http://127.0.0.1:3000"]
 
+    # ── Rate limiting (cap API costs) ─────────────────────────────────────
+    # Defaults are conservative; tune via env vars.
+    rate_limit_login_requests: int = 10
+    rate_limit_login_window_seconds: int = 600  # 10 minutes
+    rate_limit_api_requests: int = 120
+    rate_limit_api_window_seconds: int = 60
+
     # ── MCP ────────────────────────────────────────────────────────────────
     mcp_port: int = 8001
     mcp_api_key: str = ""
