@@ -6,6 +6,7 @@ import Layout from './components/Layout';
 import WikiPage from './pages/WikiPage';
 import LoginPage from './pages/LoginPage';
 import NotFoundPage from './pages/NotFoundPage';
+import SharePage from './pages/SharePage';
 import GraphView from './components/GraphView';
 import QueryPanel from './components/QueryPanel';
 import IngestPanel from './components/IngestPanel';
@@ -80,6 +81,7 @@ function AppRoutes() {
   return (
     <Routes>
       <Route path="/login" element={<LoginPage />} />
+      <Route path="/share/:token" element={<SharePage />} />
       <Route path="/*" element={<ProtectedRoutes />} />
     </Routes>
   );

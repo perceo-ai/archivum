@@ -90,6 +90,23 @@ export async function getBacklinks(slug: string): Promise<Page[]> {
   return res.json();
 }
 
+export type SharePage = {
+  type: string;
+  token: string;
+  wiki_id: string;
+  slug: string | null;
+  title: string | null;
+  content: string | null;
+  tags: string[];
+  expires_at: string | null;
+};
+
+export async function getShare(token: string): Promise<SharePage> {
+  // Share tokens are url-safe base64-ish; still encode defensively.
+  const res = await apiFetch(`/api/share/${encodeURIComponent(token)}`);
+  return res.json();
+}
+
 export async function search(query: string): Promise<SearchResult[]> {
   const res = await apiFetch(`/api/search?q=${encodeURIComponent(query)}`);
   return res.json();

@@ -13,6 +13,7 @@ from starlette.responses import Response
 from archivum.api import auth as auth_routes
 from archivum.api import ingest as ingest_routes
 from archivum.api import pages as pages_routes
+from archivum.api import share as share_routes
 from archivum.api.graph import router as graph_router
 from archivum.api.query import router as query_router
 from archivum.api.search import router as search_router
@@ -89,9 +90,9 @@ def create_app() -> FastAPI:
     app.include_router(query_router)
     app.include_router(graph_router)
     app.include_router(system_router)
+    app.include_router(share_routes.router)
 
     return app
 
 
 app = create_app()
-

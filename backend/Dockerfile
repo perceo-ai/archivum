@@ -17,8 +17,15 @@ RUN uv sync --no-dev
 
 COPY archivum/ archivum/
 
+# Run as non-root
+RUN useradd -m -u 10001 app \
+  && chown -R app:app /app
+
 # Create required data directories
-RUN mkdir -p /data/wiki /data/raw /data/kuzu
+RUN mkdir -p /data/wiki /data/raw /data/kuzu \
+  && chown -R app:app /data
+
+USER app
 
 EXPOSE 8000
 EXPOSE 8001
