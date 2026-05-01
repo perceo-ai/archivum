@@ -15,6 +15,7 @@ from archivum.auth import CurrentUser, get_current_user, require_writer
 from archivum.config import Settings, get_settings
 from archivum.db import sqlite, qdrant_client as qdrant, graph
 from archivum.ingest.agent import slugify
+from archivum.security.markdown import sanitize_markdown
 
 router = APIRouter(prefix="/api/pages", tags=["pages"])
 logger = logging.getLogger(__name__)
@@ -158,6 +159,9 @@ async def create_page(
         "API create_page",
         extra={"wiki_id": current_user.wiki_id, "title_chars": len(body.title or ""), "content_chars": len(body.content or "")},
     )
+    raw_content = body.content or ""
+    clean_content = sanitize_markdown(raw_content)
+
     # Derive slug
     slug = body.slug or slugify(body.title)
     if not slug:
@@ -177,20 +181,20 @@ async def create_page(
     # Write to disk
     wiki_path = settings.wiki_dir / f"{slug}.md"
     wiki_path.parent.mkdir(parents=True, exist_ok=True)
-    wiki_path.write_text(body.content, encoding="utf-8")
+    wiki_path.write_text(clean_content, encoding="utf-8")
 
     # SQLite
     page_id, _ = await sqlite.upsert_page(
         slug=slug,
         title=body.title,
-        content=body.content,
+        content=clean_content,
         tags=body.tags,
         authored_by="user",
         wiki_id=current_user.wiki_id,
     )
 
     # Qdrant
-    await qdrant.upsert_page(slug, body.title, body.content, current_user.wiki_id, settings)
+    await qdrant.upsert_page(slug, body.title, clean_content, current_user.wiki_id, settings)
 
     # Kuzu
     await graph.upsert_page(slug, body.title, current_user.wiki_id)
@@ -219,7 +223,8 @@ async def update_page(
         )
 
     new_title = body.title if body.title is not None else existing["title"]
-    new_content = body.content if body.content is not None else existing["content"]
+    new_content_raw = body.content if body.content is not None else existing["content"]
+    new_content = sanitize_markdown(new_content_raw)
     new_tags = body.tags if body.tags is not None else _deserialize_tags(existing["tags"])
 
     # Write to disk
