@@ -8,7 +8,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
-from starlette.responses import Response
+from starlette.responses import JSONResponse, Response
 
 from archivum.api import auth as auth_routes
 from archivum.api import ingest as ingest_routes
@@ -35,6 +35,23 @@ class _TraceMiddleware(BaseHTTPMiddleware):
         response = await call_next(request)
         response.headers["x-trace-id"] = trace_id
         return response
+
+
+class _CSRFProtection(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next) -> Response:  # type: ignore[override]
+        method = request.method.upper()
+        if method in {"POST", "PUT", "PATCH", "DELETE"} and request.url.path.startswith("/api/"):
+            auth_header = request.headers.get("authorization")
+            # Non-browser clients (MCP/CLI) use Bearer tokens; skip CSRF.
+            if not (auth_header and auth_header.startswith("Bearer ")):
+                has_cookie_auth = "access_token" in request.cookies or "refresh_token" in request.cookies
+                if has_cookie_auth:
+                    csrf_cookie = request.cookies.get("csrf_token")
+                    csrf_header = request.headers.get("x-csrf-token")
+                    if not csrf_cookie or not csrf_header or csrf_cookie != csrf_header:
+                        return JSONResponse({"detail": "Invalid CSRF token"}, status_code=403)
+
+        return await call_next(request)
 
 
 @asynccontextmanager
@@ -73,6 +90,7 @@ def create_app() -> FastAPI:
     app = FastAPI(title="Archivum API", version="0.1.0", lifespan=lifespan)
 
     app.add_middleware(_TraceMiddleware)
+    app.add_middleware(_CSRFProtection)
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.cors_origins,

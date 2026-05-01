@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import secrets
 from datetime import UTC, datetime, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
@@ -64,6 +65,19 @@ def _set_refresh_cookie(response: Response, token: str, settings: Settings) -> N
     )
 
 
+def _set_csrf_cookie(response: Response, token: str, settings: Settings) -> None:
+    # Double-submit cookie: frontend reads `csrf_token` and echoes it back via `X-CSRF-Token`.
+    response.set_cookie(
+        key="csrf_token",
+        value=token,
+        httponly=False,
+        samesite="strict",
+        secure=False,
+        max_age=settings.access_token_expire_minutes * 60,
+        path="/",
+    )
+
+
 @router.post("/login", response_model=AuthResponse)
 async def login(
     body: LoginRequest,
@@ -86,12 +100,15 @@ async def login(
         settings=settings,
     )
 
+    csrf_token = secrets.token_urlsafe(32)
+
     raw_refresh, hashed_refresh = create_refresh_token()
     expires_at = (datetime.now(UTC) + timedelta(days=settings.refresh_token_expire_days)).isoformat()
     await sqlite.store_refresh_token(user["id"], hashed_refresh, expires_at)
 
     _set_access_cookie(response, access_token, settings)
     _set_refresh_cookie(response, raw_refresh, settings)
+    _set_csrf_cookie(response, csrf_token, settings)
 
     return AuthResponse(username=user["username"], role=user["role"], wiki_id=user.get("wiki_id", "default"))
 
@@ -100,6 +117,7 @@ async def login(
 async def logout(response: Response) -> dict:
     response.delete_cookie("access_token", path="/")
     response.delete_cookie("refresh_token", path="/api/auth/refresh")
+    response.delete_cookie("csrf_token", path="/")
     return {"detail": "Logged out"}
 
 
@@ -137,8 +155,11 @@ async def refresh(
         settings=settings,
     )
 
+    csrf_token = secrets.token_urlsafe(32)
+
     _set_access_cookie(response, access_token, settings)
     _set_refresh_cookie(response, new_raw, settings)
+    _set_csrf_cookie(response, csrf_token, settings)
 
     return AuthResponse(username=record["username"], role=record["role"], wiki_id=record.get("wiki_id", "default"))
 
