@@ -108,22 +108,21 @@ async def query(
         extra={"wiki_id": current_user.wiki_id, "raw_hits": len(raw_hits), "contexts": len(contexts), "slugs": len(slugs)},
     )
 
-    # Build citations (full page summaries)
+    # Build citations (full page summaries) — batch to avoid N+1 sqlite calls.
     citations: list[dict[str, Any]] = []
-    for slug in slugs[:8]:
-        row = await sqlite.get_page(slug, current_user.wiki_id)
-        if row:
-            citations.append(
-                {
-                    "slug": row["slug"],
-                    "title": row["title"],
-                    "content": row["content"],
-                    "tags": json.loads(row["tags"]) if isinstance(row["tags"], str) else row["tags"],
-                    "created_at": row["created_at"],
-                    "updated_at": row["updated_at"],
-                    "authored_by": row["authored_by"],
-                }
-            )
+    citation_rows = await sqlite.get_pages(slugs[:8], current_user.wiki_id)
+    for row in citation_rows:
+        citations.append(
+            {
+                "slug": row["slug"],
+                "title": row["title"],
+                "content": row["content"],
+                "tags": json.loads(row["tags"]) if isinstance(row["tags"], str) else row["tags"],
+                "created_at": row["created_at"],
+                "updated_at": row["updated_at"],
+                "authored_by": row["authored_by"],
+            }
+        )
 
     prompt = _build_prompt(question, contexts)
 
