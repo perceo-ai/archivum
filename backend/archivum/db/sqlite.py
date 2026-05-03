@@ -201,6 +201,40 @@ async def get_page(slug: str, wiki_id: str = "default") -> dict[str, Any] | None
             return dict(row) if row else None
 
 
+async def get_pages(
+    slugs: list[str],
+    wiki_id: str = "default",
+) -> list[dict[str, Any]]:
+    """Batch-get pages by slug to avoid N+1 query patterns.
+
+    Returns results in the same order as `slugs` (deduplicated, first occurrence wins).
+    """
+
+    if not slugs:
+        return []
+
+    # Deduplicate while preserving order.
+    ordered_slugs: list[str] = []
+    seen: set[str] = set()
+    for s in slugs:
+        if s not in seen:
+            seen.add(s)
+            ordered_slugs.append(s)
+
+    placeholders = ",".join(["?" for _ in ordered_slugs])
+    sql = (
+        f"SELECT id, slug, title, content, tags, created_at, updated_at, authored_by "
+        f"FROM pages WHERE wiki_id=? AND slug IN ({placeholders})"
+    )
+
+    async with get_db() as db:
+        async with db.execute(sql, (wiki_id, *ordered_slugs)) as cur:
+            rows = await cur.fetchall()
+
+    by_slug: dict[str, dict[str, Any]] = {r["slug"]: dict(r) for r in rows}
+    return [by_slug[s] for s in ordered_slugs if s in by_slug]
+
+
 async def upsert_page(
     slug: str,
     title: str,

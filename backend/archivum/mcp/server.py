@@ -213,10 +213,9 @@ async def query(question: str, wiki_id: str = "default") -> dict[str, Any]:
     slugs = [c.get("slug") for c in contexts if c.get("slug")]
 
     citations = []
-    for slug in slugs[:8]:
-        row = await sqlite.get_page(slug, wiki_id)
-        if row:
-            citations.append({"slug": row["slug"], "title": row["title"]})
+    citation_rows = await sqlite.get_pages(slugs[:8], wiki_id)
+    for row in citation_rows:
+        citations.append({"slug": row["slug"], "title": row["title"]})
 
     ctx_lines = []
     for i, c in enumerate(contexts, start=1):
