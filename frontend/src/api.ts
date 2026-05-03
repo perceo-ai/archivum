@@ -2,6 +2,24 @@ import type { Page, SearchResult, GraphNode, GraphEdge, IngestProgress } from '.
 
 const BASE = '';
 
+function getCookie(name: string): string | undefined {
+  const match = document.cookie
+    .split(';')
+    .map((c) => c.trim())
+    .find((c) => c.startsWith(`${name}=`));
+  if (!match) return undefined;
+  return decodeURIComponent(match.substring(name.length + 1));
+}
+
+function csrfToken(): string | undefined {
+  return getCookie('csrf_token');
+}
+
+function shouldSendCsrf(method?: string): boolean {
+  const m = (method ?? 'GET').toUpperCase();
+  return m === 'POST' || m === 'PUT' || m === 'PATCH' || m === 'DELETE';
+}
+
 function encodeSlugPath(slug: string): string {
   // Keep '/' as path separators but encode each segment safely.
   return slug
@@ -11,12 +29,18 @@ function encodeSlugPath(slug: string): string {
 }
 
 async function apiFetch(path: string, init?: RequestInit): Promise<Response> {
+  const method = (init?.method ?? 'GET').toUpperCase();
   const res = await fetch(`${BASE}${path}`, {
     credentials: 'include',
     ...init,
     headers: {
       'Content-Type': 'application/json',
       ...(init?.headers ?? {}),
+      ...(shouldSendCsrf(method)
+        ? csrfToken()
+          ? { 'X-CSRF-Token': csrfToken() }
+          : {}
+        : {}),
     },
   });
   if (!res.ok) {
@@ -157,10 +181,12 @@ export async function ingestFile(
   const formData = new FormData();
   formData.append('file', file);
 
+  const csrf = csrfToken();
   const response = await fetch('/api/ingest/file', {
     method: 'POST',
     credentials: 'include',
     body: formData,
+    ...(csrf ? { headers: { 'X-CSRF-Token': csrf } } : {}),
   });
 
   if (!response.ok) {
@@ -175,10 +201,14 @@ export async function ingestUrl(
   url: string,
   onProgress: (p: IngestProgress) => void,
 ): Promise<void> {
+  const csrf = csrfToken();
   const response = await fetch('/api/ingest/url', {
     method: 'POST',
     credentials: 'include',
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json',
+      ...(csrf ? { 'X-CSRF-Token': csrf } : {}),
+    },
     body: JSON.stringify({ url }),
   });
 
@@ -195,10 +225,14 @@ export async function query(
   onToken: (t: string) => void,
   onCitations: (c: Page[]) => void,
 ): Promise<void> {
+  const csrf = csrfToken();
   const response = await fetch('/api/query', {
     method: 'POST',
     credentials: 'include',
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json',
+      ...(csrf ? { 'X-CSRF-Token': csrf } : {}),
+    },
     body: JSON.stringify({ question }),
   });
 
