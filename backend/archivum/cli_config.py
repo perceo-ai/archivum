@@ -11,7 +11,8 @@ from archivum.logging_config import setup_logging
 DEFAULTS: dict[str, str] = {
     "EMBED_PROVIDER": "local",
     "EMBED_MODEL": "BAAI/bge-small-en-v1.5",
-    "EMBED_DIM": "384",
+    # .env.example defaults to 0 (auto-detect embedding dimension).
+    "EMBED_DIM": "0",
     "EMBED_OPENAI_COMPAT_PROVIDER": "openai",
     "LLM_EXTRACTION_PROVIDER": "anthropic",
     "LLM_SYNTHESIS_PROVIDER": "anthropic",
@@ -21,6 +22,21 @@ DEFAULTS: dict[str, str] = {
     "OPENAI_COMPAT_PROVIDER": "openai",
     "OLLAMA_BASE_URL": "http://localhost:11434",
 }
+
+
+def _looks_like_placeholder(value: str) -> bool:
+    v = (value or "").strip()
+    if not v:
+        return True
+    v_l = v.lower()
+    # Keep this deliberately simple; we just want to catch obvious “edit me” values.
+    return (
+        "change-me" in v_l
+        or v_l == "changeme"
+        or v_l == "changeme-replace-in-production"
+        or v.startswith("sk-")
+        or "openssl rand" in v_l
+    )
 
 ANTHROPIC_MODEL_DEFAULTS = {
     "extraction": "claude-haiku-4-5-20251001",
@@ -126,6 +142,48 @@ def main(argv: list[str] | None = None) -> None:
     print(f"Configuring Archivum using: {repo_env}")
     print("")
 
+    # ── Required app secrets ───────────────────────────────────────────────
+    jwt_secret = get("JWT_SECRET")
+    if _looks_like_placeholder(jwt_secret):
+        jwt_secret = _prompt_secret("JWT signing secret (JWT_SECRET)", jwt_secret)
+    else:
+        print("JWT_SECRET looks set; leaving unchanged.")
+
+    owner_password = get("OWNER_PASSWORD")
+    if _looks_like_placeholder(owner_password):
+        owner_password = _prompt_secret("Owner password (OWNER_PASSWORD)", owner_password)
+    else:
+        print("OWNER_PASSWORD looks set; leaving unchanged.")
+
+    owner_username = get("OWNER_USERNAME") or "admin"
+    if not owner_username.strip():
+        owner_username = _prompt_text("Owner username (OWNER_USERNAME)", "admin")
+
+    mcp_api_key = get("MCP_API_KEY")
+    if _looks_like_placeholder(mcp_api_key):
+        mcp_api_key = _prompt_secret("MCP API key (MCP_API_KEY)", mcp_api_key)
+    else:
+        print("MCP_API_KEY looks set; leaving unchanged.")
+
+    if _looks_like_placeholder(jwt_secret):
+        raise SystemExit("JWT_SECRET must be set to a non-placeholder value.")
+    if _looks_like_placeholder(owner_password):
+        raise SystemExit("OWNER_PASSWORD must be set to a non-placeholder value.")
+    if _looks_like_placeholder(mcp_api_key):
+        raise SystemExit("MCP_API_KEY must be set to a non-placeholder value.")
+
+    archivum_host = get("ARCHIVUM_HOST")
+    host_choice_default = "localhost-only" if not (archivum_host or "").strip() else "custom-domain"
+    host_choice = _prompt_choice(
+        "Public host for Caddy TLS (optional)?",
+        ["localhost-only", "custom-domain"],
+        host_choice_default,
+    )
+    if host_choice == "localhost-only":
+        archivum_host = ""
+    else:
+        archivum_host = _prompt_text("Set ARCHIVUM_HOST (e.g. archivum.example.com)", archivum_host or "")
+
     # Embeddings (local or OpenAI-compatible)
     embed_provider = _prompt_choice(
         "Embeddings provider?",
@@ -213,6 +271,11 @@ def main(argv: list[str] | None = None) -> None:
 
     # Apply updates
     updates: list[tuple[str, str]] = [
+        ("JWT_SECRET", jwt_secret),
+        ("OWNER_PASSWORD", owner_password),
+        ("OWNER_USERNAME", owner_username),
+        ("MCP_API_KEY", mcp_api_key),
+        ("ARCHIVUM_HOST", archivum_host),
         ("EMBED_PROVIDER", embed_provider),
         ("EMBED_MODEL", embed_model),
         ("EMBED_DIM", embed_dim),
@@ -255,4 +318,3 @@ def main(argv: list[str] | None = None) -> None:
 
 if __name__ == "__main__":
     main()
-

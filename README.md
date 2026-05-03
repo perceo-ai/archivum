@@ -11,6 +11,13 @@ cp .env.example .env
 # edit .env (ANTHROPIC_API_KEY / OPENROUTER_API_KEY / JWT_SECRET / OWNER_PASSWORD / MCP_API_KEY)
 ```
 
+Or run the interactive config wizard:
+
+```bash
+make setup
+# (also available as ./setup.sh)
+```
+
 ### 2) Boot the stack
 
 ```bash

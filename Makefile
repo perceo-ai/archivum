@@ -1,4 +1,4 @@
-.PHONY: up down build logs shell-backend shell-frontend rebuild-indexes lint-wiki dev
+.PHONY: up down build logs shell-backend shell-frontend setup rebuild-indexes lint-wiki dev
 
 # ─── Docker ───────────────────────────────────────────────────────────────────
 
@@ -11,6 +11,10 @@ down:
 
 build:
 	docker compose build
+
+setup:
+	@if [ ! -f .env ]; then cp .env.example .env && echo "Created .env — fill in your values before continuing"; fi
+	@./setup.sh
 
 logs:
 	docker compose logs -f
@@ -29,12 +33,14 @@ dev-frontend:
 # ─── Maintenance ──────────────────────────────────────────────────────────────
 
 rebuild-indexes:
+	@if [ ! -f .env ]; then cp .env.example .env && echo "Created .env — fill in your values before continuing" && exit 1; fi
 	curl -s -X POST http://localhost:8000/api/rebuild-indexes \
-		-H "Authorization: Bearer $$(cat .mcp-key)" | jq .
+		-H "Authorization: Bearer $$(grep MCP_API_KEY .env | cut -d= -f2)" | jq .
 
 lint-wiki:
+	@if [ ! -f .env ]; then cp .env.example .env && echo "Created .env — fill in your values before continuing" && exit 1; fi
 	curl -s http://localhost:8000/api/lint \
-		-H "Authorization: Bearer $$(cat .mcp-key)" | jq .
+		-H "Authorization: Bearer $$(grep MCP_API_KEY .env | cut -d= -f2)" | jq .
 
 # ─── Shells ───────────────────────────────────────────────────────────────────
 
