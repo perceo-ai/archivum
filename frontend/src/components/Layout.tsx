@@ -1,7 +1,7 @@
 import { useAppState, useAppDispatch } from '../store';
 import { useNavigate, useLocation } from 'react-router-dom';
 import FileTree from './FileTree';
-import BacklinksPanel from './BacklinksPanel';
+import RightSidebar from './RightSidebar';
 import StatusBar from './StatusBar';
 import { Button } from './ui/Button';
 
@@ -106,7 +106,7 @@ export default function Layout({ children }: LayoutProps) {
           className="shrink-0 flex flex-col border-l border-border overflow-hidden transition-all duration-200 bg-panel/40 backdrop-blur supports-[backdrop-filter]:bg-panel/30"
           style={{ width: rightOpen ? '280px' : '0px' }}
         >
-          {rightOpen && <BacklinksPanel />}
+          {rightOpen && <RightSidebar />}
         </aside>
       </div>
 
