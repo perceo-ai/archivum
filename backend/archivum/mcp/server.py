@@ -261,6 +261,143 @@ async def query(question: str, wiki_id: str = "default") -> dict[str, Any]:
     return {"answer": answer, "citations": citations}
 
 
+@mcp.tool()
+async def dispatch_command(command: str, wiki_id: str = "default") -> dict[str, Any]:
+    """Run a text command and dispatch to existing Archivum actions.
+
+    Supported commands (case-insensitive):
+    - help
+    - ingest <source>
+    - search <query>
+    - query <question>
+    - pages
+    - open <slug>
+    - write <json>|<title> | <content>
+      - JSON form: write {"title":"...","content":"...","slug":"optional","tags":[...optional]}
+      - Pipe form: write <title> | <content>
+    - lint
+    - graph <node_id>
+    """
+    _require_key()
+    set_trace_id(new_trace_id("mcp-dispatch"))
+
+    raw = (command or "").strip()
+    if not raw:
+        return {"error": "empty_command"}
+
+    cmd, _, rest = raw.partition(" ")
+    cmd = cmd.strip().lower()
+    rest = rest.strip()
+
+    def _err(code: str, detail: str) -> dict[str, Any]:
+        return {"error": code, "detail": detail}
+
+    try:
+        if cmd in {"help", "?"}:
+            return {
+                "ok": True,
+                "command": raw,
+                "actions": [
+                    "ingest <source>",
+                    "search <query>",
+                    "query <question>",
+                    "pages",
+                    "open <slug>",
+                    "write <json> OR write <title> | <content>",
+                    "lint",
+                    "graph <node_id>",
+                ],
+            }
+
+        if cmd in {"ingest", "ingest_source"}:
+            if not rest:
+                return _err("missing_argument", "Usage: ingest <source>")
+            result = await ingest_source(rest, wiki_id=wiki_id)
+            return {"ok": True, "command": raw, "tool": "ingest_source", "result": result}
+
+        if cmd in {"search", "search_wiki"}:
+            if not rest:
+                return _err("missing_argument", "Usage: search <query>")
+            result = await search_wiki(rest, wiki_id=wiki_id)
+            return {"ok": True, "command": raw, "tool": "search_wiki", "result": result}
+
+        if cmd in {"query", "ask"}:
+            if not rest:
+                return _err("missing_argument", "Usage: query <question>")
+            result = await query(rest, wiki_id=wiki_id)
+            return {"ok": True, "command": raw, "tool": "query", "result": result}
+
+        if cmd in {"pages", "list_pages"}:
+            result = await list_pages(wiki_id=wiki_id)
+            return {"ok": True, "command": raw, "tool": "list_pages", "result": result}
+
+        if cmd in {"open", "get", "get_page"}:
+            if not rest:
+                return _err("missing_argument", "Usage: open <slug>")
+            result = await get_page(rest, wiki_id=wiki_id)
+            return {"ok": True, "command": raw, "tool": "get_page", "result": result}
+
+        if cmd in {"write", "edit", "write_page", "update"}:
+            if not rest:
+                return _err("missing_payload", "Usage: write <json> OR write <title> | <content>")
+
+            payload: dict[str, Any]
+            if rest.lstrip().startswith("{"):
+                payload = json.loads(rest)
+            else:
+                # Pipe form: write <title> | <content>
+                title, sep, content = rest.partition("|")
+                if not sep:
+                    return _err(
+                        "invalid_payload",
+                        "Expected JSON payload or pipe form: write <title> | <content>",
+                    )
+                payload = {"title": title.strip(), "content": content.strip()}
+
+            title = payload.get("title")
+            content = payload.get("content")
+            slug = payload.get("slug")
+            tags = payload.get("tags")
+
+            if isinstance(tags, str):
+                tags = [t.strip() for t in tags.split(",") if t.strip()]
+
+            if not isinstance(title, str) or not title.strip():
+                return _err("invalid_payload", "Missing/invalid 'title' for write")
+            if not isinstance(content, str):
+                return _err("invalid_payload", "Missing/invalid 'content' for write")
+
+            result = await write_page(
+                title=title,
+                content=content,
+                slug=slug if isinstance(slug, str) and slug.strip() else None,
+                tags=tags if isinstance(tags, list) else None,
+                wiki_id=wiki_id,
+            )
+            return {"ok": True, "command": raw, "tool": "write_page", "result": result}
+
+        if cmd in {"lint", "lint_wiki"}:
+            result = await lint_wiki(wiki_id=wiki_id)
+            return {"ok": True, "command": raw, "tool": "lint_wiki", "result": result}
+
+        if cmd in {"graph", "graph_neighbors", "neighbors"}:
+            if not rest:
+                return _err("missing_argument", "Usage: graph <node_id>")
+            result = await graph_neighbors(rest, wiki_id=wiki_id)
+            return {"ok": True, "command": raw, "tool": "graph_neighbors", "result": result}
+
+        return _err(
+            "unknown_command",
+            f"Unknown command '{cmd}'. Run 'help' for supported commands.",
+        )
+
+    except json.JSONDecodeError as e:
+        return _err("invalid_json", f"Failed to parse JSON payload: {e}")
+    except Exception as e:
+        logger.exception("dispatch_command failed", extra={"command": raw, "wiki_id": wiki_id})
+        return _err("command_failed", str(e))
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(prog="archivum-mcp")
     parser.add_argument("--stdio", action="store_true", help="Run MCP over stdio")
