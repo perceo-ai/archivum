@@ -139,6 +139,7 @@ After measurements, save the following so the integration is repeatable:
   - Rails installed and plumb
   - Dry-fit before final tightening
   - Final mounted assembly
+- [ ] Complete the full assembly/finish/power checklist: `docs/project/modular-wood-desk-organizer-glass-whiteboard-assembly.md`
 
 ---
 
