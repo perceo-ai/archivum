@@ -13,6 +13,7 @@ This folder contains human-readable documentation for Archivum. It is intentiona
 ### Product / Planning
 - [Product Requirements (PRD)](./prd/archivum-prd-v1.0.md)
 - [Build progress](./project/progress.md)
+- [Glass Whiteboard integration plan](./project/glass-whiteboard-integration-plan.md)
 
 ### LLM / Extraction
 - [Claude notes](./llm/claude.md)
