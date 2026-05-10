@@ -21,3 +21,6 @@ This folder contains human-readable documentation for Archivum. It is intentiona
 ### Graphify (knowledge graph)
 - [Graphify report snapshot](./graph/graph-report.md)
 
+### Ops / Runbooks
+- [OpenClaw cron management runbook](./ops/openclaw-cron-management-runbook.md)
+
