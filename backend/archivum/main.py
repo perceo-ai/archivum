@@ -111,6 +111,7 @@ def create_app() -> FastAPI:
     app.include_router(graph_router)
     app.include_router(system_router)
     app.include_router(share_routes.router)
+    app.include_router(share_routes.mgmt_router)
 
     return app
 

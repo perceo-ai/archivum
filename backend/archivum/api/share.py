@@ -1,6 +1,7 @@
-"""Public share routes: /api/share/*
+"""Share routes.
 
-Used by the read-only share page viewer (no auth required).
+- /api/share/*        — public read-only viewer (no auth required)
+- /api/share-links/*  — authenticated management (create / list / revoke)
 """
 
 from __future__ import annotations
@@ -8,16 +9,21 @@ from __future__ import annotations
 import json
 import logging
 import re
-from datetime import UTC, datetime
+import secrets
+from datetime import UTC, datetime, timedelta
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
 
+from archivum.auth import CurrentUser, require_writer
 from archivum.db import sqlite
 
 router = APIRouter(prefix="/api/share", tags=["share"])
+mgmt_router = APIRouter(prefix="/api/share-links", tags=["share-links"])
 logger = logging.getLogger(__name__)
 
+
+# ── Schemas ───────────────────────────────────────────────────────────────────
 
 class SharePageResponse(BaseModel):
     type: str
@@ -33,6 +39,31 @@ class SharePageResponse(BaseModel):
     # diagnostics
     expires_at: str | None = None
 
+
+class CreateShareLinkRequest(BaseModel):
+    type: str = "page"
+    target_id: str
+    expires_in_days: int | None = None
+
+
+class CreateShareLinkResponse(BaseModel):
+    token: str
+    url: str
+    expires_at: str | None = None
+
+
+class ShareLinkInfo(BaseModel):
+    id: int
+    wiki_id: str
+    token: str
+    type: str
+    target_id: str | None = None
+    created_at: str
+    expires_at: str | None = None
+    revoked: int
+
+
+# ── Helpers ───────────────────────────────────────────────────────────────────
 
 _TOKEN_RE = re.compile(r"^[A-Za-z0-9_-]{10,}$")
 
@@ -64,6 +95,8 @@ def _is_expired(expires_at: str | None) -> bool:
     except Exception:
         return False
 
+
+# ── Public read route ─────────────────────────────────────────────────────────
 
 @router.get("/{token}", response_model=SharePageResponse)
 async def get_share(token: str) -> SharePageResponse:
@@ -118,3 +151,53 @@ async def get_share(token: str) -> SharePageResponse:
         expires_at=link.get("expires_at"),
     )
 
+
+# ── Authenticated management routes ──────────────────────────────────────────
+
+@mgmt_router.post("", response_model=CreateShareLinkResponse, status_code=status.HTTP_201_CREATED)
+async def create_share_link(
+    body: CreateShareLinkRequest,
+    current_user: CurrentUser = Depends(require_writer),
+) -> CreateShareLinkResponse:
+    token = secrets.token_urlsafe(32)
+
+    expires_at: str | None = None
+    if body.expires_in_days is not None:
+        exp_dt = datetime.now(UTC) + timedelta(days=body.expires_in_days)
+        expires_at = exp_dt.isoformat()
+
+    await sqlite.create_share_link(
+        token=token,
+        link_type=body.type,
+        target_id=body.target_id,
+        expires_at=expires_at,
+        wiki_id=current_user.wiki_id,
+    )
+
+    return CreateShareLinkResponse(
+        token=token,
+        url=f"/share/{token}",
+        expires_at=expires_at,
+    )
+
+
+@mgmt_router.get("", response_model=list[ShareLinkInfo])
+async def list_share_links(
+    current_user: CurrentUser = Depends(require_writer),
+) -> list[ShareLinkInfo]:
+    rows = await sqlite.list_share_links(wiki_id=current_user.wiki_id)
+    return [ShareLinkInfo(**row) for row in rows]
+
+
+@mgmt_router.delete("/{token}")
+async def revoke_share_link(
+    token: str,
+    current_user: CurrentUser = Depends(require_writer),
+) -> dict[str, str]:
+    revoked = await sqlite.revoke_share_link(token)
+    if not revoked:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Share link not found",
+        )
+    return {"detail": "revoked"}
