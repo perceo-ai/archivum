@@ -255,6 +255,53 @@ export async function ingestUrl(
   await parseSSEStream(response, (data) => onProgress(data as IngestProgress));
 }
 
+export type InviteToken = {
+  id: number;
+  wiki_id: string;
+  token: string;
+  role: string;
+  created_by: string;
+  created_at: string;
+  expires_at: string | null;
+  used: number;
+};
+
+export type LintIssue = {
+  type: string;
+  page: string;
+  target?: string;
+  suggestion: string;
+};
+
+export async function createInvite(
+  role: 'viewer' | 'collaborator',
+  expires_in_days: number | null,
+): Promise<{ token: string; url: string; role: string; expires_at: string | null }> {
+  const res = await apiFetch('/api/auth/invites', {
+    method: 'POST',
+    body: JSON.stringify({ role, expires_in_days }),
+  });
+  return res.json();
+}
+
+export async function listInvites(): Promise<InviteToken[]> {
+  const res = await apiFetch('/api/auth/invites');
+  return res.json();
+}
+
+export async function lintWiki(): Promise<{ issues: LintIssue[]; counts: { issues: number } }> {
+  const res = await apiFetch('/api/lint');
+  return res.json();
+}
+
+export async function applyLintFix(fix: { type: string; [key: string]: string }): Promise<{ detail: string; message?: string }> {
+  const res = await apiFetch('/api/lint/fix', {
+    method: 'POST',
+    body: JSON.stringify(fix),
+  });
+  return res.json();
+}
+
 export async function query(
   question: string,
   onToken: (t: string) => void,
