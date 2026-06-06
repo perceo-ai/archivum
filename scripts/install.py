@@ -167,7 +167,7 @@ def parse_env(text: str) -> dict[str, str]:
         line = raw_line.strip()
         if not line or line.startswith("#"):
             continue
-        match = re.match(r"^([A-Za-z_][A-Za-z0-9_]*)=(.*)$", line)
+        match = re.match(r"^(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)$", line)
         if match:
             out[match.group(1)] = match.group(2)
     return out
@@ -187,7 +187,7 @@ def write_env(values: dict[str, str]) -> None:
     existing = ENV_FILE.read_text(encoding="utf-8").splitlines(keepends=True) if ENV_FILE.exists() else []
     seen: set[str] = set()
     output: list[str] = []
-    pattern = re.compile(r"^([A-Za-z_][A-Za-z0-9_]*)=.*$")
+    pattern = re.compile(r"^(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=.*$")
 
     for line_text in existing:
         match = pattern.match(line_text.strip())
@@ -196,6 +196,11 @@ def write_env(values: dict[str, str]) -> None:
             continue
         key = match.group(1)
         if key in values:
+            existing_value = parse_env(line_text).get(key, "")
+            if key.endswith("_API_KEY") and has_secret({"existing": existing_value}, "existing") and not has_secret(values, key):
+                output.append(line_text)
+                seen.add(key)
+                continue
             output.append(f"{key}={values[key]}\n")
             seen.add(key)
         else:
@@ -212,12 +217,81 @@ def write_env(values: dict[str, str]) -> None:
     ENV_FILE.write_text("".join(output), encoding="utf-8")
 
 
+def is_placeholder_secret(value: str) -> bool:
+    normalized = value.strip().lower()
+    if not normalized:
+        return True
+    return (
+        "change-me" in normalized
+        or normalized == "changeme"
+        or "replace-in-production" in normalized
+        or "openssl rand" in normalized
+        or normalized.endswith("...")
+    )
+
+
 def secret_default(value: str) -> str:
-    if not value or "change-me" in value.lower() or value.lower() == "changeme" or "openssl rand" in value.lower():
-        return ""
-    if value.startswith("sk-"):
+    if is_placeholder_secret(value):
         return ""
     return value
+
+
+def has_value(values: dict[str, str], key: str) -> bool:
+    return bool(values.get(key, "").strip())
+
+
+def has_secret(values: dict[str, str], key: str) -> bool:
+    return not is_placeholder_secret(values.get(key, ""))
+
+
+def env_needs_configuration(values: dict[str, str]) -> bool:
+    for key in ("OWNER_PASSWORD", "JWT_SECRET", "MCP_API_KEY"):
+        if not has_secret(values, key):
+            return True
+
+    extraction = values.get("LLM_EXTRACTION_PROVIDER", "")
+    synthesis = values.get("LLM_SYNTHESIS_PROVIDER", "")
+    selected_llms = {extraction, synthesis}
+    if not selected_llms <= set(PROVIDER_OPTIONS) or "" in selected_llms:
+        return True
+    if not has_value(values, "LLM_MODEL") or not has_value(values, "LLM_SYNTHESIS_MODEL"):
+        return True
+    if "anthropic" in selected_llms and not has_secret(values, "ANTHROPIC_API_KEY"):
+        return True
+    if "openrouter" in selected_llms and (
+        not has_value(values, "OPENROUTER_BASE_URL") or not has_secret(values, "OPENROUTER_API_KEY")
+    ):
+        return True
+    if "openai_compat" in selected_llms:
+        if values.get("OPENAI_COMPAT_PROVIDER") not in OPENAI_COMPAT_OPTIONS:
+            return True
+        if values.get("OPENAI_COMPAT_PROVIDER") in {"azure", "custom"} and not has_value(values, "OPENAI_COMPAT_BASE_URL"):
+            return True
+        if not has_secret(values, "OPENAI_COMPAT_API_KEY"):
+            return True
+    if "ollama" in selected_llms and not has_value(values, "OLLAMA_BASE_URL"):
+        return True
+
+    embed_provider = values.get("EMBED_PROVIDER", "")
+    if embed_provider not in EMBED_OPTIONS:
+        return True
+    if not has_value(values, "EMBED_MODEL") or not has_value(values, "EMBED_DIM"):
+        return True
+    if embed_provider == "openai_compat":
+        if values.get("EMBED_OPENAI_COMPAT_PROVIDER") not in OPENAI_COMPAT_OPTIONS:
+            return True
+        if values.get("EMBED_OPENAI_COMPAT_PROVIDER") in {"azure", "custom"} and not has_value(values, "EMBED_BASE_URL"):
+            return True
+        if not has_secret(values, "EMBED_API_KEY"):
+            return True
+    if embed_provider == "openrouter" and (
+        not has_value(values, "OPENROUTER_BASE_URL") or not has_secret(values, "OPENROUTER_API_KEY")
+    ):
+        return True
+    if embed_provider == "ollama" and not has_value(values, "OLLAMA_BASE_URL"):
+        return True
+
+    return False
 
 
 def mask(value: str) -> str:
@@ -527,15 +601,18 @@ def main(argv: list[str] | None = None) -> int:
         return 1
 
     values = read_env()
-    configure_access(values)
-    configure_llms(values)
-    configure_embeddings(values)
-    if not summary(values):
-        warn("Cancelled before writing changes.")
-        return 1
+    if env_needs_configuration(values) or ask_bool("Reconfigure existing .env?", default=False):
+        configure_access(values)
+        configure_llms(values)
+        configure_embeddings(values)
+        if not summary(values):
+            warn("Cancelled before writing changes.")
+            return 1
 
-    write_env(values)
-    ok(f"Wrote {ENV_FILE}")
+        write_env(values)
+        ok(f"Wrote {ENV_FILE}")
+    else:
+        ok("Keeping existing .env unchanged.")
 
     if ask_bool("Start Archivum now?", default=True):
         if not start_stack(compose, use_images=args["use_images"] or args["force_images"]):
