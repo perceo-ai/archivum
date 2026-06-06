@@ -13,11 +13,83 @@ Self-hosted, AI-powered knowledge base that ingests files and URLs, extracts str
 
 ## Quick Start
 
+### One-command server install
+
+Linux/macOS server:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/pranavkannepalli/archivum/main/scripts/bootstrap.sh | bash
+```
+
+Windows PowerShell:
+
+```powershell
+irm https://raw.githubusercontent.com/pranavkannepalli/archivum/main/scripts/bootstrap.ps1 | iex
+```
+
+This installs/checks Python and Docker, downloads Archivum's minimal runtime files into `~/archivum`, launches the guided setup, writes `.env`, pulls the published Docker images, and starts the containers.
+
+Override the install directory like this:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/pranavkannepalli/archivum/main/scripts/bootstrap.sh | ARCHIVUM_INSTALL_DIR=/srv/archivum bash
+```
+
+The one-command installer downloads only the runtime files needed for published images:
+
+```text
+.env.example
+docker-compose.yml
+docker-compose.images.yml
+caddy/Caddyfile
+scripts/install.py
+```
+
+It does not clone the whole repo unless you ask for that:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/pranavkannepalli/archivum/main/scripts/bootstrap.sh | ARCHIVUM_FULL_CLONE=1 bash
+```
+
+### Guided install
+
+The easiest path is the guided installer. It configures access, API keys, LLM providers, embeddings, public publishing, Docker startup, and then starts the stack.
+
+macOS / Linux:
+
+```bash
+./install.sh
+```
+
+Windows PowerShell:
+
+```powershell
+.\install.ps1
+```
+
+The installer uses only built-in shell/PowerShell plus Python's standard library. If Python or Docker is missing, it prints exact install steps for your OS and can open the Docker docs.
+
+By default the installer uses published images from GitHub Container Registry. Developers can build locally instead:
+
+```bash
+./install.sh --build
+```
+
+Published image defaults:
+
+| Service | Image |
+|---|---|
+| backend | `ghcr.io/pranavkannepalli/archivum-backend:latest` |
+| frontend | `ghcr.io/pranavkannepalli/archivum-frontend:latest` |
+| MCP | `ghcr.io/pranavkannepalli/archivum-mcp:latest` |
+
+### Manual install
+
 ```bash
 git clone https://github.com/pranavkannepalli/archivum.git
 cd archivum
 cp .env.example .env          # fill in ANTHROPIC_API_KEY, JWT_SECRET, OWNER_PASSWORD, MCP_API_KEY
-docker compose up -d --build
+docker compose -f docker-compose.yml -f docker-compose.images.yml up -d --no-build
 # Open http://localhost
 ```
 
@@ -25,7 +97,6 @@ Or use the interactive wizard:
 
 ```bash
 make setup
-docker compose up -d --build
 ```
 
 **Endpoints after boot:**
@@ -36,7 +107,7 @@ docker compose up -d --build
 | `http://localhost:8000` | REST API |
 | `http://localhost:8001/sse` | MCP server (SSE) |
 
-**Optional — TLS + public share subdomain:** set `ARCHIVUM_HOST` in `.env` and update the email in `caddy/Caddyfile`. Caddy will serve `https://$ARCHIVUM_HOST` and `https://share.$ARCHIVUM_HOST` automatically.
+**Optional — TLS + public share subdomain:** set `ARCHIVUM_HOST` in `.env` and update the email in `caddy/Caddyfile`. Caddy will serve `https://$ARCHIVUM_HOST` and `https://share.$ARCHIVUM_HOST` automatically. The share subdomain only serves `/share/*`, `/public*`, `/api/share/*`, and `/api/public/*`.
 
 ## Environment Variables
 
@@ -59,6 +130,64 @@ docker compose up -d --build
 | `OLLAMA_BASE_URL` | No | `http://localhost:11434` | Ollama endpoint for fully local LLM/embeddings. |
 | `OPENAI_COMPAT_API_KEY` | No | — | API key for any OpenAI-compatible endpoint. |
 | `OPENAI_COMPAT_BASE_URL` | No | — | Base URL for custom OpenAI-compatible endpoint. |
+| `PUBLIC_WIKI_ENABLED` | No | `false` | Exposes read-only public wiki pages at `/public` and `/api/public/pages`. |
+
+## Publishing
+
+Archivum supports three public publishing modes:
+
+| Mode | URL | Notes |
+|---|---|---|
+| Page share link | `/share/{token}` | Unguessable token URL for one page. Optional expiry and revocation. |
+| Query permalink | `/share/{token}` | Frozen question, answer, and citations captured when the link is created. |
+| Public wiki | `/public` | Whole-wiki read-only view. Requires `PUBLIC_WIKI_ENABLED=true`. |
+
+### Cloudflare Tunnel
+
+For external sharing without opening inbound firewall ports, run Caddy locally and point a Cloudflare Tunnel at it:
+
+```bash
+cloudflared tunnel login
+cloudflared tunnel create archivum
+cloudflared tunnel route dns archivum share.your-domain.com
+cloudflared tunnel run archivum --url http://localhost:80
+```
+
+Set `ARCHIVUM_HOST=your-domain.com` so Caddy recognizes both `your-domain.com` and `share.your-domain.com`. For a persistent service, create `~/.cloudflared/config.yml`:
+
+```yaml
+tunnel: archivum
+credentials-file: /Users/you/.cloudflared/<tunnel-id>.json
+
+ingress:
+  - hostname: share.your-domain.com
+    service: http://localhost:80
+  - hostname: your-domain.com
+    service: http://localhost:80
+  - service: http_status:404
+```
+
+Then run `cloudflared service install` on the host. Keep `PUBLIC_WIKI_ENABLED=false` if you only want token-gated share links.
+
+## Publishing Docker Images
+
+The repo includes a GitHub Actions workflow at `.github/workflows/docker-publish.yml`. On pushes to `main`, tags like `v1.2.3`, or manual workflow dispatch, it publishes multi-arch `linux/amd64` and `linux/arm64` images to GitHub Container Registry:
+
+```text
+ghcr.io/pranavkannepalli/archivum-backend
+ghcr.io/pranavkannepalli/archivum-frontend
+ghcr.io/pranavkannepalli/archivum-mcp
+```
+
+VS Code tasks are also included:
+
+| Task | What |
+|---|---|
+| `Archivum: compose up with published images` | Starts using GHCR images, no local build. |
+| `Archivum: build local images` | Builds local Docker images for development. |
+| `Archivum: publish backend image` | Buildx-pushes backend image. |
+| `Archivum: publish MCP image` | Buildx-pushes MCP image. |
+| `Archivum: publish frontend image` | Buildx-pushes frontend image. |
 
 ## Architecture
 
@@ -122,6 +251,24 @@ Use the HTTP/SSE endpoint directly:
 ```
 http://localhost:8001/sse
 Authorization: Bearer your-mcp-api-key
+```
+
+### MCP Inspector validation
+
+Validate tool schemas locally with:
+
+```bash
+cd backend
+UV_PYTHON=python3.12 npx @modelcontextprotocol/inspector --cli --method tools/list \
+  uv run python -m archivum.mcp.server --stdio
+```
+
+For SSE, start the MCP server and run Inspector against `/sse`:
+
+```bash
+cd backend
+UV_PYTHON=python3.12 uv run python -m archivum.mcp.server --sse
+npx @modelcontextprotocol/inspector --cli --method tools/list http://127.0.0.1:8001/sse
 ```
 
 ### Available MCP Tools

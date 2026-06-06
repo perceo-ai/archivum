@@ -14,6 +14,7 @@ from archivum.api import auth as auth_routes
 from archivum.api import export as export_routes
 from archivum.api import ingest as ingest_routes
 from archivum.api import pages as pages_routes
+from archivum.api import public as public_routes
 from archivum.api import share as share_routes
 from archivum.api.graph import router as graph_router
 from archivum.api.query import router as query_router
@@ -127,6 +128,7 @@ def create_app() -> FastAPI:
     app.include_router(auth_routes.router)
     app.include_router(export_routes.router)
     app.include_router(pages_routes.router)
+    app.include_router(public_routes.router)
     app.include_router(ingest_routes.router)
     app.include_router(search_router)
     app.include_router(query_router)

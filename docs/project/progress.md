@@ -99,7 +99,7 @@ _Last updated: 2026-06-05_
 | `query` tool | ✅ Done | LLM synthesis with citations |
 | `graph_neighbors` tool | ✅ Done | Kuzu neighbors |
 | `lint_wiki` tool | ✅ Done | Broken wikilinks + orphans |
-| MCP Inspector validation | ❌ Not confirmed | Needs manual run |
+| MCP Inspector validation | ✅ Done | `tools/list` passed for stdio and SSE via `@modelcontextprotocol/inspector` |
 | Client config snippets in README | ✅ Done | README.md |
 
 ---
@@ -161,12 +161,12 @@ _Last updated: 2026-06-05_
 | Share links (public page token URLs) | ✅ Done | `api/share.py` + Share button in WikiPage |
 | Share link management (create/list/revoke) | ✅ Done | `POST/GET/DELETE /api/share-links` |
 | Share link expiry + revocation | ✅ Done | `expires_in_days` param + revoke endpoint |
-| Query result sharing (frozen permalinks) | ❌ Not built | PRD Epic 11 |
+| Query result sharing (frozen permalinks) | ✅ Done | `type=query` share links store frozen question, answer, and citations |
 | Wiki invite (viewer / collaborator role) | ✅ Done | `api/auth.py` + SettingsPage.tsx |
 | PDF export (WeasyPrint) | ✅ Done | `api/export.py` + Export dropdown in WikiPage |
 | HTML export (self-contained bundle) | ✅ Done | `api/export.py` |
-| Public wiki mode | ❌ Not built | PRD Epic 11 |
-| Cloudflare Tunnel integration | ❌ Not built | PRD Section 10 |
+| Public wiki mode | ✅ Done | `PUBLIC_WIKI_ENABLED=true` exposes `/public` + `/api/public/pages` read-only |
+| Cloudflare Tunnel integration | ✅ Done | README docs + read-only Caddy share subdomain routing |
 
 ---
 
@@ -177,7 +177,7 @@ _Last updated: 2026-06-05_
 | KR1: `docker compose up` boots with zero manual steps beyond `.env` | ✅ Done |
 | KR2: Full ingest → query loop works end-to-end | ✅ Done |
 | KR3: CodeMirror 6 editor with `[[wikilink]]` autocomplete functional | ✅ Done |
-| KR4: MCP server connects from Claude Code (Inspector validation pending) | 🟡 Partial — README done, Inspector run needed |
+| KR4: MCP server passes Inspector validation and connects from Claude Code | ✅ Done — README config + Inspector `tools/list` passed for stdio/SSE |
 | KR5: Graph view renders from Kuzu | ✅ Done |
 
 ---
@@ -185,10 +185,6 @@ _Last updated: 2026-06-05_
 ## What to Build Next
 
 **To close out v1:**
-1. MCP Inspector validation — run `npx @modelcontextprotocol/inspector` against both transports to confirm KR4
-2. Query result sharing (frozen permalinks) — `type=query` share links
-3. Public wiki mode — make a wiki world-readable without a token
-4. Cloudflare Tunnel setup docs — instructions for external access via share subdomain
-5. `.mbox` email parser — last unimplemented parser from PRD
-6. Contradiction detection in lint — semantic detection of conflicting pages
-
+1. MCP transport smoke tests in CI — keep stdio and SSE validated after dependency updates
+2. `.mbox` email parser — last unimplemented parser from PRD
+3. Contradiction detection in lint — semantic detection of conflicting pages
