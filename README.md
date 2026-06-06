@@ -6,7 +6,7 @@ Self-hosted, AI-powered knowledge base that ingests files and URLs, extracts str
 
 ## What it does
 
-- **Self-hosted wiki that organizes itself** — drop in a PDF, paste a URL, or upload audio and Archivum writes the wiki page, links related concepts, and keeps everything searchable
+- **Self-hosted wiki that organizes itself** — drop in a PDF or paste a URL and Archivum writes the wiki page, links related concepts, and keeps everything searchable
 - **Background agent** — maintains wiki pages, vector embeddings, and a knowledge graph without you lifting a finger
 - **MCP server built-in** — connect Claude Desktop, Claude Code, Cursor, VS Code, or any MCP-compatible client and let your AI assistant read and write your wiki
 - **One command to start** — `docker compose up -d`; no cloud account, no SaaS, no data leaving your machine (unless you use the Anthropic API)
@@ -43,6 +43,8 @@ docker-compose.yml
 docker-compose.images.yml
 caddy/Caddyfile
 scripts/install.py
+scripts/uninstall.py
+uninstall.sh / uninstall.ps1
 ```
 
 It does not clone the whole repo unless you ask for that:
@@ -99,6 +101,39 @@ Or use the interactive wizard:
 make setup
 ```
 
+### Uninstall
+
+The default uninstaller stops and removes Archivum containers and the Docker network, but preserves local files, images, and data volumes:
+
+macOS / Linux:
+
+```bash
+./uninstall.sh
+```
+
+Windows PowerShell:
+
+```powershell
+.\uninstall.ps1
+```
+
+Optional cleanup flags:
+
+```bash
+./uninstall.sh --volumes   # also delete wiki data, raw uploads, SQLite, Kuzu, and Qdrant volumes
+./uninstall.sh --images    # also remove locally built Compose images
+./uninstall.sh --files     # also remove the local Archivum install directory
+./uninstall.sh --yes       # skip confirmation prompts
+```
+
+PowerShell uses the same options as switches, for example:
+
+```powershell
+.\uninstall.ps1 -Volumes -Images
+```
+
+Use `--dry-run` on macOS/Linux or `-DryRun` on PowerShell to print the actions without changing anything.
+
 **Endpoints after boot:**
 
 | URL | What |
@@ -108,6 +143,45 @@ make setup
 | `http://localhost:8001/sse` | MCP server (SSE) |
 
 **Optional — TLS + public share subdomain:** set `ARCHIVUM_HOST` in `.env` and update the email in `caddy/Caddyfile`. Caddy will serve `https://$ARCHIVUM_HOST` and `https://share.$ARCHIVUM_HOST` automatically. The share subdomain only serves `/share/*`, `/public*`, `/api/share/*`, and `/api/public/*`.
+
+### Local development without building images
+
+You can run the Python services directly with `uv` and only use Docker for Qdrant:
+
+```bash
+docker compose up -d qdrant
+
+cd backend
+uv sync
+
+WIKI_DIR=.data/wiki \
+RAW_DIR=.data/raw \
+DB_PATH=.data/archivum.db \
+KUZU_PATH=.data/kuzu \
+QDRANT_URL=http://localhost:6333 \
+uv run uvicorn archivum.main:app --reload --host 0.0.0.0 --port 8000
+```
+
+Run the MCP server in a second shell:
+
+```bash
+cd backend
+WIKI_DIR=.data/wiki \
+RAW_DIR=.data/raw \
+DB_PATH=.data/archivum.db \
+KUZU_PATH=.data/kuzu \
+QDRANT_URL=http://localhost:6333 \
+MCP_PORT=8001 \
+uv run python -m archivum.mcp.server --sse
+```
+
+For frontend-only work:
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
 
 ## Environment Variables
 
@@ -199,7 +273,19 @@ VS Code tasks are also included:
 | `qdrant` | `archivum-qdrant` | 6333, 6334 | Vector database for semantic search |
 | `caddy` | `archivum-caddy` | 80, 443 | Reverse proxy, TLS termination |
 
-Data is persisted in Docker named volumes (`wiki_data`, `raw_data`, `db_data`, `kuzu_data`, `qdrant_data`). Markdown files in `wiki_data` are the canonical source of truth — Qdrant and the Kuzu graph are derived indexes that can be rebuilt.
+Storage is local-first:
+
+| Store | Default path / volume | Purpose |
+|---|---|---|
+| Markdown wiki | `wiki_data` mounted at `/data/wiki` | Canonical page content |
+| Raw uploads | `raw_data` mounted at `/data/raw` | Original ingested source files |
+| SQLite | `db_data` mounted at `/data/archivum.db` | Users, auth state, page metadata, share links, ingest log, keyword FTS |
+| Kuzu | `kuzu_data` mounted at `/data/kuzu` | Embedded graph database for page/entity relationships |
+| Qdrant | `qdrant_data` mounted in the Qdrant container | Vector index for semantic search |
+
+Markdown files are the canonical source of truth. SQLite stores operational metadata. Qdrant and Kuzu are derived indexes and can be rebuilt from the wiki content.
+
+See [docs/architecture/infra.md](docs/architecture/infra.md) for the full deployment and storage breakdown.
 
 ## MCP Client Setup
 
@@ -294,12 +380,20 @@ npx @modelcontextprotocol/inspector --cli --method tools/list http://127.0.0.1:8
 | Code | Most languages (syntax-aware chunking) |
 | Web | URLs (fetched + extracted) |
 | Media — images | JPEG, PNG, WebP, GIF (vision extraction) |
-| Media — audio | MP3, WAV, M4A, OGG (transcription) |
-| Media — video | MP4, MKV, WebM (audio track extracted) |
+| Media — audio | MP3, WAV, M4A, OGG (optional local Whisper transcription) |
+| Media — video | MP4, MKV, WebM (optional ffmpeg audio extraction + local Whisper transcription) |
 | Email | EML, MBOX |
 | Subtitles | SRT, VTT |
 
 ## Performance Targets
+
+Audio and video transcription require the optional `audio` Python extra plus `ffmpeg` for video extraction. The default Docker images omit Whisper/Torch/ffmpeg so the backend and MCP images stay small. For local media transcription outside the published images:
+
+```bash
+cd backend
+uv sync --extra audio
+# Also install ffmpeg with your OS package manager if you need video extraction.
+```
 
 | Operation | Target |
 |---|---|

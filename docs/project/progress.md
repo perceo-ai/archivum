@@ -32,8 +32,8 @@ _Last updated: 2026-06-05_
 | Parser: `.srt`, `.vtt` (subtitles/transcripts) | ✅ Done | Native, strips timestamps |
 | Parser: `.eml` | ✅ Done | stdlib email |
 | Parser: images (`.png`, `.jpg`, `.webp`, `.gif`) — Claude vision | ✅ Done | `ingest/parsers.py` |
-| Parser: audio (`.mp3`, `.m4a`, `.wav`, `.ogg`, `.flac`) — Whisper | ✅ Done | `ingest/parsers.py` |
-| Parser: video (`.mp4`, `.mov`, `.avi`, `.mkv`) — ffmpeg → Whisper | ✅ Done | `ingest/parsers.py` |
+| Parser: audio (`.mp3`, `.m4a`, `.wav`, `.ogg`, `.flac`) — optional Whisper | ✅ Done | `ingest/parsers.py`; packaged behind the `audio` extra |
+| Parser: video (`.mp4`, `.mov`, `.avi`, `.mkv`) — optional ffmpeg → Whisper | ✅ Done | `ingest/parsers.py`; packaged behind the `audio` extra |
 | Parser: `.mbox` | ❌ Not built | PRD listed, not implemented |
 
 ---

@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import json
 import re
+import shutil
 from typing import Any
+from importlib.util import find_spec
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
@@ -15,6 +17,42 @@ router = APIRouter(prefix="/api", tags=["system"])
 
 
 WIKILINK_RE = re.compile(r"\[\[([^\]|]+)(?:\|[^\]]+)?\]\]")
+
+
+def get_audio_feature_status() -> dict[str, Any]:
+    whisper_available = find_spec("whisper") is not None
+    ffmpeg_path = shutil.which("ffmpeg")
+    ffmpeg_available = ffmpeg_path is not None
+    missing = []
+    if not whisper_available:
+        missing.append("openai-whisper")
+    if not ffmpeg_available:
+        missing.append("ffmpeg")
+
+    return {
+        "available": whisper_available and ffmpeg_available,
+        "dependencies": {
+            "openai_whisper": whisper_available,
+            "ffmpeg": ffmpeg_available,
+        },
+        "missing": missing,
+        "commands": {
+            "local": "cd backend && uv sync --extra audio",
+            "ffmpeg": "Install ffmpeg with your OS package manager for video extraction.",
+            "docker": "Use a derived audio-enabled image or rebuild the backend image with the audio extra and ffmpeg.",
+        },
+        "notes": [
+            "The default published Docker images omit Whisper, Torch, and ffmpeg to keep installs smaller.",
+            "Installing packages inside a running Docker container is not durable across upgrades.",
+        ],
+    }
+
+
+@router.get("/audio-support")
+async def audio_support(
+    current_user: CurrentUser = Depends(require_owner),
+) -> dict[str, Any]:
+    return get_audio_feature_status()
 
 
 @router.post("/rebuild-indexes")
@@ -155,4 +193,3 @@ async def apply_lint_fix(
         status_code=status.HTTP_400_BAD_REQUEST,
         detail=f"Unknown fix type: {body.type}",
     )
-

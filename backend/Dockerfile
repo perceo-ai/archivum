@@ -1,30 +1,25 @@
 FROM python:3.12-slim
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PATH="/app/.venv/bin:$PATH"
 WORKDIR /app
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    gcc \
-    libffi-dev \
-    libssl-dev \
-    libxml2-dev \
-    libxslt1-dev \
-    zlib1g-dev \
-    ffmpeg \
+    libgomp1 \
     libpango-1.0-0 \
     libpangocairo-1.0-0 \
     libgdk-pixbuf-2.0-0 \
     libcairo2 \
     && rm -rf /var/lib/apt/lists/*
 
-RUN pip install uv
+RUN pip install --no-cache-dir uv
 
-COPY pyproject.toml .
-RUN uv sync --no-dev
+COPY pyproject.toml uv.lock .
+RUN uv sync --no-dev --frozen --no-cache
 
 COPY archivum/ archivum/
 
 # Run as non-root
-RUN useradd -m -u 10001 app \
-  && chown -R app:app /app
+RUN useradd -m -u 10001 app
 
 # Create required data directories
 RUN mkdir -p /data/wiki /data/raw /data/kuzu \
@@ -35,4 +30,4 @@ USER app
 EXPOSE 8000
 EXPOSE 8001
 
-CMD ["uv", "run", "uvicorn", "archivum.main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["uvicorn", "archivum.main:app", "--host", "0.0.0.0", "--port", "8000"]

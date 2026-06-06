@@ -411,12 +411,11 @@ def main() -> None:
         mcp.run(transport="stdio")
         return
 
-    # Default to SSE for container usage
-    # Host/port are configured via FASTMCP_HOST / FASTMCP_PORT env vars.
+    # Default to SSE for container usage. Host is set when FastMCP is created;
+    # port is configured via MCP_PORT.
     logger.info("Starting MCP server (sse)", extra={"port": settings.mcp_port})
     mcp.run(transport="sse", mount_path="/")
 
 
 if __name__ == "__main__":
     main()
-

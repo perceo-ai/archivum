@@ -84,6 +84,8 @@ if ($FullClone -eq "1") {
   Download-File "docker-compose.images.yml" (Join-Path $InstallDir "docker-compose.images.yml")
   Download-File "caddy/Caddyfile" (Join-Path $InstallDir "caddy/Caddyfile")
   Download-File "scripts/install.py" (Join-Path $InstallDir "scripts/install.py")
+  Download-File "scripts/uninstall.py" (Join-Path $InstallDir "scripts/uninstall.py")
+  Download-File "uninstall.ps1" (Join-Path $InstallDir "uninstall.ps1")
 }
 
 Set-Location $InstallDir
