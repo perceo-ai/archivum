@@ -51,6 +51,8 @@ services:
     build: ./frontend
     container_name: archivum-frontend
     restart: unless-stopped
+    ports:
+      - "127.0.0.1:${ARCHIVUM_FRONTEND_PORT:-8473}:8080"
     networks:
       - archivum-net
 

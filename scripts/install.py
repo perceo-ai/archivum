@@ -47,6 +47,7 @@ DEFAULTS = {
     "OWNER_USERNAME": "admin",
     "MCP_API_KEY": "",
     "ARCHIVUM_HOST": "",
+    "ARCHIVUM_FRONTEND_PORT": "8473",
     "PUBLIC_WIKI_ENABLED": "false",
     "EMBED_PROVIDER": "local",
     "EMBED_MODEL": "BAAI/bge-small-en-v1.5",
@@ -530,6 +531,7 @@ def summary(values: dict[str, str]) -> bool:
         ("Owner", values["OWNER_USERNAME"]),
         ("Public wiki", values["PUBLIC_WIKI_ENABLED"]),
         ("Host", values["ARCHIVUM_HOST"] or "localhost"),
+        ("Frontend port", values["ARCHIVUM_FRONTEND_PORT"]),
         ("Extraction", f"{values['LLM_EXTRACTION_PROVIDER']} / {values['LLM_MODEL']}"),
         ("Synthesis", f"{values['LLM_SYNTHESIS_PROVIDER']} / {values['LLM_SYNTHESIS_MODEL']}"),
         ("Embeddings", f"{values['EMBED_PROVIDER']} / {values['EMBED_MODEL']}"),
@@ -569,6 +571,7 @@ def print_finish(values: dict[str, str]) -> None:
     scheme = "https"
     header("Done", "Archivum is installed and running.")
     print(f"Web UI:       {color(f'{scheme}://{host}', GREEN)}")
+    print(f"Frontend:     http://localhost:{values['ARCHIVUM_FRONTEND_PORT']}")
     print(f"Public wiki:  {scheme}://{host}/public")
     print(f"MCP SSE:      http://localhost:8001/sse")
     print(f"MCP bearer:   {mask(values['MCP_API_KEY'])}")
