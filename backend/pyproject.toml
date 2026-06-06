@@ -25,6 +25,7 @@ dependencies = [
     "openpyxl>=3.1",
     "pandas>=2.2",
     "ebooklib>=0.18",
+    "openai-whisper>=20231117",
     "mcp>=1.0",
 ]
 
