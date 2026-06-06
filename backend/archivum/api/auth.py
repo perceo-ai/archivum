@@ -15,6 +15,7 @@ from archivum.auth import (
     create_refresh_token,
     get_current_user,
     hash_password,
+    require_owner,
     verify_password,
 )
 from archivum.config import Settings, get_settings
@@ -188,3 +189,84 @@ async def register(
 @router.get("/me", response_model=AuthResponse)
 async def me(current_user: CurrentUser = Depends(get_current_user)) -> AuthResponse:
     return AuthResponse(username=current_user.username, role=current_user.role, wiki_id=current_user.wiki_id)
+
+
+# ── Invite token endpoints ─────────────────────────────────────────────────────
+
+class CreateInviteRequest(BaseModel):
+    role: str = "viewer"  # collaborator|viewer
+    expires_in_days: int | None = 7
+
+
+@router.post("/invites", status_code=status.HTTP_201_CREATED)
+async def create_invite(
+    body: CreateInviteRequest,
+    current_user: CurrentUser = Depends(require_owner),
+) -> dict:
+    if body.role not in {"collaborator", "viewer"}:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="role must be 'collaborator' or 'viewer'")
+
+    token = secrets.token_urlsafe(32)
+    expires_at: str | None = None
+    if body.expires_in_days is not None:
+        expires_at = (datetime.now(UTC) + timedelta(days=body.expires_in_days)).isoformat()
+
+    await sqlite.create_invite_token(
+        wiki_id=current_user.wiki_id,
+        token=token,
+        role=body.role,
+        created_by=current_user.username,
+        expires_at=expires_at,
+    )
+
+    return {
+        "token": token,
+        "url": f"/register?invite={token}",
+        "role": body.role,
+        "expires_at": expires_at,
+    }
+
+
+@router.get("/invites")
+async def list_invites(
+    current_user: CurrentUser = Depends(require_owner),
+) -> list[dict]:
+    return await sqlite.list_invite_tokens(current_user.wiki_id)
+
+
+class RegisterWithInviteRequest(BaseModel):
+    invite_token: str
+    username: str
+    password: str
+
+
+@router.post("/register-with-invite", status_code=status.HTTP_201_CREATED)
+async def register_with_invite(body: RegisterWithInviteRequest) -> dict:
+    record = await sqlite.get_invite_token(body.invite_token)
+    if not record:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid invite token")
+
+    if record["used"]:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invite token has already been used")
+
+    if record["expires_at"]:
+        expires_at = datetime.fromisoformat(str(record["expires_at"]).replace("Z", "+00:00"))
+        if expires_at.tzinfo is None:
+            expires_at = expires_at.replace(tzinfo=UTC)
+        if expires_at < datetime.now(UTC):
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invite token has expired")
+
+    existing = await sqlite.get_user_by_username(body.username)
+    if existing:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Username already exists")
+
+    hashed = hash_password(body.password)
+    await sqlite.create_user(
+        username=body.username,
+        password_hash=hashed,
+        role=record["role"],
+        wiki_id=record["wiki_id"],
+    )
+    await sqlite.mark_invite_used(body.invite_token)
+
+    return {"detail": "registered"}

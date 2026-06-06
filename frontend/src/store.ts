@@ -2,7 +2,7 @@ import React, { createContext, useContext, useReducer } from 'react';
 import type { Page } from './types';
 
 export type SaveStatus = 'idle' | 'saving' | 'saved' | 'error';
-export type ActiveView = 'editor' | 'graph' | 'query' | 'ingest' | 'search';
+export type ActiveView = 'editor' | 'graph' | 'query' | 'ingest' | 'search' | 'lint' | 'settings';
 
 interface AppState {
   pages: Page[];

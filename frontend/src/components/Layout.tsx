@@ -12,7 +12,7 @@ interface LayoutProps {
 type NavItem = {
   label: string;
   path: string;
-  view: 'editor' | 'graph' | 'query' | 'ingest' | 'search';
+  view: 'editor' | 'graph' | 'query' | 'ingest' | 'search' | 'lint' | 'settings';
 };
 
 const NAV_ITEMS: NavItem[] = [
@@ -21,6 +21,8 @@ const NAV_ITEMS: NavItem[] = [
   { label: 'Query', path: '/query', view: 'query' },
   { label: 'Ingest', path: '/ingest', view: 'ingest' },
   { label: 'Search', path: '/search', view: 'search' },
+  { label: 'Lint', path: '/lint', view: 'lint' },
+  { label: 'Settings', path: '/settings', view: 'settings' },
 ];
 
 export default function Layout({ children }: LayoutProps) {

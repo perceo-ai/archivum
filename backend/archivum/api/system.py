@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import json
 import re
 from typing import Any
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException, status
+from pydantic import BaseModel
 
 from archivum.auth import CurrentUser, require_owner
 from archivum.config import Settings, get_settings
@@ -86,4 +88,71 @@ async def lint_wiki(
 
     issues = broken + orphan_pages
     return {"issues": issues, "counts": {"issues": len(issues)}}
+
+
+class LintFixRequest(BaseModel):
+    type: str  # broken_wikilink | orphan
+    source_slug: str | None = None
+    link_target: str | None = None
+    slug: str | None = None
+
+
+@router.post("/lint/fix")
+async def apply_lint_fix(
+    body: LintFixRequest,
+    current_user: CurrentUser = Depends(require_owner),
+) -> dict[str, Any]:
+    if body.type == "orphan":
+        return {
+            "detail": "no_auto_fix",
+            "message": "Orphan pages cannot be auto-fixed; delete manually or add a wikilink to them.",
+        }
+
+    if body.type == "broken_wikilink":
+        if not body.source_slug or not body.link_target:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="source_slug and link_target are required for broken_wikilink fixes",
+            )
+
+        page = await sqlite.get_page(body.source_slug, current_user.wiki_id)
+        if not page:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Page '{body.source_slug}' not found",
+            )
+
+        content = page.get("content", "") or ""
+        # Replace [[broken-link]] and [[broken-link|alias]] with plain text (the target slug)
+        pattern = re.compile(
+            r"\[\[" + re.escape(body.link_target) + r"(?:\|[^\]]+)?\]\]"
+        )
+        new_content = pattern.sub(body.link_target, content)
+
+        if new_content == content:
+            return {"detail": "no_change", "message": "Link not found in page content"}
+
+        raw_tags = page.get("tags", "[]")
+        if isinstance(raw_tags, list):
+            tags: list[str] = raw_tags
+        else:
+            try:
+                tags = json.loads(raw_tags)
+            except Exception:
+                tags = []
+
+        await sqlite.upsert_page(
+            slug=body.source_slug,
+            title=page["title"],
+            content=new_content,
+            tags=tags,
+            authored_by=page.get("authored_by", "agent"),
+            wiki_id=current_user.wiki_id,
+        )
+        return {"detail": "fixed", "source_slug": body.source_slug, "link_target": body.link_target}
+
+    raise HTTPException(
+        status_code=status.HTTP_400_BAD_REQUEST,
+        detail=f"Unknown fix type: {body.type}",
+    )
 
