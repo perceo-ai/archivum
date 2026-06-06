@@ -39,6 +39,25 @@ class _TraceMiddleware(BaseHTTPMiddleware):
         return response
 
 
+class _SecurityHeadersMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next) -> Response:  # type: ignore[override]
+        response = await call_next(request)
+        response.headers["Content-Security-Policy"] = (
+            "default-src 'self'; "
+            "script-src 'self' 'unsafe-inline'; "
+            "style-src 'self' 'unsafe-inline'; "
+            "img-src 'self' data: blob:; "
+            "connect-src 'self'; "
+            "font-src 'self'; "
+            "object-src 'none'; "
+            "frame-ancestors 'none'"
+        )
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["X-Frame-Options"] = "DENY"
+        response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+        return response
+
+
 class _CSRFProtection(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next) -> Response:  # type: ignore[override]
         method = request.method.upper()
@@ -92,6 +111,7 @@ def create_app() -> FastAPI:
     app = FastAPI(title="Archivum API", version="0.1.0", lifespan=lifespan)
 
     app.add_middleware(_TraceMiddleware)
+    app.add_middleware(_SecurityHeadersMiddleware)
     app.add_middleware(_CSRFProtection)
     app.add_middleware(RateLimitMiddleware, settings=settings)
     app.add_middleware(
