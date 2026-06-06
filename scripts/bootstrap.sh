@@ -151,7 +151,11 @@ fetch_minimal_files() {
   download_file "docker-compose.images.yml" "$INSTALL_DIR/docker-compose.images.yml"
   download_file "caddy/Caddyfile" "$INSTALL_DIR/caddy/Caddyfile"
   download_file "scripts/install.py" "$INSTALL_DIR/scripts/install.py"
+  download_file "scripts/uninstall.py" "$INSTALL_DIR/scripts/uninstall.py"
+  download_file "uninstall.sh" "$INSTALL_DIR/uninstall.sh"
   chmod +x "$INSTALL_DIR/scripts/install.py"
+  chmod +x "$INSTALL_DIR/scripts/uninstall.py"
+  chmod +x "$INSTALL_DIR/uninstall.sh"
 }
 
 fetch_full_repo() {

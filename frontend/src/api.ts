@@ -300,6 +300,21 @@ export type LintIssue = {
   suggestion: string;
 };
 
+export type AudioSupportStatus = {
+  available: boolean;
+  dependencies: {
+    openai_whisper: boolean;
+    ffmpeg: boolean;
+  };
+  missing: string[];
+  commands: {
+    local: string;
+    ffmpeg: string;
+    docker: string;
+  };
+  notes: string[];
+};
+
 export async function createInvite(
   role: 'viewer' | 'collaborator',
   expires_in_days: number | null,
@@ -313,6 +328,11 @@ export async function createInvite(
 
 export async function listInvites(): Promise<InviteToken[]> {
   const res = await apiFetch('/api/auth/invites');
+  return res.json();
+}
+
+export async function getAudioSupport(): Promise<AudioSupportStatus> {
+  const res = await apiFetch('/api/audio-support');
   return res.json();
 }
 

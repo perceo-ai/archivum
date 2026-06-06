@@ -76,8 +76,7 @@ services:
       - DB_PATH=/data/archivum.db
       - KUZU_PATH=/data/kuzu
       - MCP_API_KEY=${MCP_API_KEY:-}
-      - FASTMCP_HOST=0.0.0.0
-      - FASTMCP_PORT=8001
+      - MCP_PORT=8001
       - EMBED_PROVIDER=${EMBED_PROVIDER:-local}
       - EMBED_MODEL=${EMBED_MODEL:-BAAI/bge-small-en-v1.5}
       - EMBED_DIM=${EMBED_DIM:-0}
