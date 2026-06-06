@@ -132,6 +132,78 @@ openclaw cron show --json "$id" > /tmp/cron-${id}.after-enable.json
 openclaw cron runs "$id"   # optional: confirm no immediate failures
 ```
 
+### Worked example: end-to-end maintenance (disable -> edit -> verify -> enable)
+
+Goal: change only the cron schedule for an existing job while keeping everything else intact.
+
+Example job:
+- `id=<id>`
+
+1) Snapshot + disable (so you never edit an active job)
+```bash
+id=<id>
+
+openclaw cron show --json "$id" > /tmp/cron-${id}.before.json
+openclaw cron disable "$id"
+openclaw cron show --json "$id" > /tmp/cron-${id}.disabled.json
+```
+
+2) Edit the cron schedule (leave delivery/agent/session untouched)
+```bash
+# Example change: expr (update to your intended value)
+openclaw cron edit "$id" \
+  --cron "<new expr>" \
+  --tz <IANA> \
+  --exact
+```
+
+3) Verify config while still disabled (diff against before)
+```bash
+openclaw cron show --json "$id" > /tmp/cron-${id}.after-edit.json
+openclaw cron status
+
+# Compare the key fields operators should expect to remain stable:
+jq -S '{
+  id,
+  name,
+  agentId,
+  enabled,
+  sessionTarget,
+  schedule,          # {expr, tz}
+  delivery,          # {mode, channel, to, bestEffort}
+  payload: {toolsAllow}
+}' /tmp/cron-${id}.before.json > /tmp/cron-${id}.before.fields.json
+jq -S '{
+  id,
+  name,
+  agentId,
+  enabled,
+  sessionTarget,
+  schedule,
+  delivery,
+  payload: {toolsAllow}
+}' /tmp/cron-${id}.after-edit.json > /tmp/cron-${id}.after-edit.fields.json
+
+diff -u /tmp/cron-${id}.before.fields.json /tmp/cron-${id}.after-edit.fields.json | head -n 200 || true
+```
+
+Minimum checklist:
+- `enabled` is still `false` in `after-edit.json`
+- `agentId`, `sessionTarget`, and `delivery` match `before.json`
+- Only `schedule.expr` / `schedule.tz` changed (plus any incidental ordering)
+
+4) Enable + confirm (still using `show --json` snapshots)
+```bash
+openclaw cron enable "$id"
+openclaw cron show --json "$id" > /tmp/cron-${id}.after-enable.json
+
+# Optional: confirm the job isn’t failing immediately
+openclaw cron runs "$id"
+
+# Quick sanity check (what you changed + that it’s enabled)
+jq -S '{enabled, schedule, nextRunAtMs: .state.nextRunAtMs}' /tmp/cron-${id}.after-enable.json
+```
+
 ## Rollback procedure (including partial/failed edits)
 Rollback is easiest if you captured `openclaw cron show --json` output before the edit.
 
@@ -152,12 +224,38 @@ openclaw cron show --json "$id" > /tmp/cron-${id}.rollback-disabled.json
 Practical tip:
 - Don’t try to “re-import” JSON blindly—**prefer extracting the specific values you need** and passing them into `openclaw cron edit` flags (field names can vary by Gateway version).
 
-4) Validate restored config
+4) Validate restored config (compare specific fields from JSON snapshots)
 ```bash
 openclaw cron show "$id"
 openclaw cron show --json "$id" > /tmp/cron-${id}.after-rollback.json
 openclaw cron status
+
+# Compare only the operator-relevant fields you care about restoring.
+jq -S '{
+  id,
+  name,
+  agentId,
+  enabled,
+  sessionTarget,
+  schedule,          # {expr, tz}
+  delivery,          # {mode, channel, to, bestEffort}
+  payload: {toolsAllow}
+}' /tmp/cron-${id}.before.json > /tmp/cron-${id}.before.fields.json
+
+jq -S '{
+  id,
+  name,
+  agentId,
+  enabled,
+  sessionTarget,
+  schedule,
+  delivery,
+  payload: {toolsAllow}
+}' /tmp/cron-${id}.after-rollback.json > /tmp/cron-${id}.after-rollback.fields.json
+
+diff -u /tmp/cron-${id}.before.fields.json /tmp/cron-${id}.after-rollback.fields.json | head -n 200 || true
 ```
+
 
 5) Enable again (only if you’re confident)
 ```bash
