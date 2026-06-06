@@ -193,6 +193,7 @@ npm run dev
 | `OWNER_USERNAME` | No | `admin` | Username for the owner account. |
 | `MCP_API_KEY` | Yes | — | Bearer token for MCP server access. Generate with `openssl rand -hex 32`. |
 | `ARCHIVUM_HOST` | No | `localhost` | Public hostname. When set, Caddy provisions TLS via Let's Encrypt. |
+| `ARCHIVUM_FRONTEND_PORT` | No | `8473` | Local-only host port for direct access to the frontend container. |
 | `LLM_MODEL` | No | `claude-haiku-4-5-20251001` | Model for extraction (entity/relationship parsing). |
 | `LLM_SYNTHESIS_MODEL` | No | `claude-sonnet-4-6` | Model for query synthesis (answers with citations). |
 | `LLM_EXTRACTION_PROVIDER` | No | `anthropic` | LLM provider for extraction. Options: `anthropic`, `openrouter`, `openai_compat`, `ollama`. |
@@ -268,7 +269,7 @@ VS Code tasks are also included:
 | Service | Container | Exposes | Role |
 |---|---|---|---|
 | `backend` | `archivum-backend` | 8000 (internal) | FastAPI — ingestion, search, wiki CRUD, auth |
-| `frontend` | `archivum-frontend` | 3000 (internal) | React + Vite — web UI |
+| `frontend` | `archivum-frontend` | 8080 internal, localhost:8473 default | React + Vite — web UI |
 | `mcp` | `archivum-mcp` | 8001 | MCP server (stdio + HTTP/SSE) |
 | `qdrant` | `archivum-qdrant` | 6333, 6334 | Vector database for semantic search |
 | `caddy` | `archivum-caddy` | 80, 443 | Reverse proxy, TLS termination |
