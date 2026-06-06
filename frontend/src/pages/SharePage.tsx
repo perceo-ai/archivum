@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useParams } from 'react-router-dom';
+import DOMPurify from 'dompurify';
 import { getShare } from '../api';
 import type { SharePage as SharePageType } from '../api';
 
@@ -51,10 +52,13 @@ export default function SharePage() {
       .finally(() => setLoading(false));
   }, [token]);
 
-  const html = useMemo(() => {
+  const sanitizedHtml = useMemo(() => {
     if (!share?.content) return '';
     // Re-wrap as a single HTML blob to keep styling consistent.
-    return `<p class="mb-3 text-text-secondary leading-relaxed">${renderMarkdown(share.content)}</p>`;
+    const html = `<p class="mb-3 text-text-secondary leading-relaxed">${renderMarkdown(share.content)}</p>`;
+    return DOMPurify.sanitize(html, {
+      ALLOWED_ATTR: ['class', 'style', 'href', 'target', 'rel'],
+    });
   }, [share?.content]);
 
   return (
@@ -90,7 +94,7 @@ export default function SharePage() {
 
             <div
               className="prose-custom text-text-secondary leading-relaxed"
-              dangerouslySetInnerHTML={{ __html: html }}
+              dangerouslySetInnerHTML={{ __html: sanitizedHtml }}
             />
 
             {share.expires_at && (
