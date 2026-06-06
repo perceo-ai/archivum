@@ -3,12 +3,16 @@
 from __future__ import annotations
 
 import asyncio
+import base64
 import csv
 import email
 import io
 import json
 import logging
+import os
 import re
+import subprocess
+import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -16,6 +20,28 @@ from typing import Any
 import httpx
 
 logger = logging.getLogger(__name__)
+
+# ── Lazy-loaded optional dependencies ────────────────────────────────────────
+
+_whisper_model = None  # cached whisper model (loading is slow)
+
+try:
+    import whisper as _whisper_lib  # type: ignore[import]
+    _whisper_available = True
+except ImportError:
+    _whisper_lib = None
+    _whisper_available = False
+
+
+def _get_whisper_model():
+    global _whisper_model
+    if not _whisper_available:
+        raise UnsupportedFileTypeError(
+            "whisper not installed; install openai-whisper to parse audio/video files"
+        )
+    if _whisper_model is None:
+        _whisper_model = _whisper_lib.load_model("base")
+    return _whisper_model
 
 
 # ── Data model ────────────────────────────────────────────────────────────────
@@ -315,6 +341,110 @@ def parse_file(path: Path) -> ParsedDoc:
             text="\n".join(parts),
             source=str(path),
             metadata={"type": "eml", "subject": msg.get("Subject", "")},
+        )
+
+    # ── Images ────────────────────────────────────────────────────────────────
+    if suffix in {".png", ".jpg", ".jpeg", ".webp", ".gif"}:
+        # Map extension to MIME type for the Anthropic vision API
+        _mime_map = {
+            ".png": "image/png",
+            ".jpg": "image/jpeg",
+            ".jpeg": "image/jpeg",
+            ".webp": "image/webp",
+            ".gif": "image/gif",
+        }
+        media_type = _mime_map[suffix]
+        image_data = base64.standard_b64encode(path.read_bytes()).decode("utf-8")
+
+        try:
+            import anthropic as _anthropic
+            from archivum.config import get_settings
+
+            settings = get_settings()
+            if not settings.anthropic_api_key:
+                raise UnsupportedFileTypeError(
+                    "ANTHROPIC_API_KEY is not set; cannot parse images without a valid API key"
+                )
+
+            client = _anthropic.Anthropic(api_key=settings.anthropic_api_key)
+            response = client.messages.create(
+                model="claude-haiku-4-5-20251001",
+                max_tokens=1024,
+                messages=[
+                    {
+                        "role": "user",
+                        "content": [
+                            {
+                                "type": "image",
+                                "source": {
+                                    "type": "base64",
+                                    "media_type": media_type,
+                                    "data": image_data,
+                                },
+                            },
+                            {
+                                "type": "text",
+                                "text": (
+                                    "Describe this image in detail. If it contains text, transcribe all text verbatim. "
+                                    "Include: what the image shows, any text present, any diagrams or charts described in words."
+                                ),
+                            },
+                        ],
+                    }
+                ],
+            )
+            description = response.content[0].text
+        except _anthropic.APIError as exc:
+            logger.error("Anthropic vision API error for %s: %s", path.name, exc)
+            raise UnsupportedFileTypeError(f"Anthropic vision API error: {exc}") from exc
+
+        return ParsedDoc(
+            text=description,
+            source=str(path),
+            metadata={"type": "image", "format": suffix.lstrip(".")},
+        )
+
+    # ── Audio ─────────────────────────────────────────────────────────────────
+    if suffix in {".mp3", ".m4a", ".wav", ".ogg", ".flac"}:
+        model = _get_whisper_model()
+        result = model.transcribe(str(path))
+        text = result["text"]
+        return ParsedDoc(
+            text=text,
+            source=str(path),
+            metadata={
+                "type": "audio",
+                "duration_seconds": result.get("duration"),
+            },
+        )
+
+    # ── Video ─────────────────────────────────────────────────────────────────
+    if suffix in {".mp4", ".mov", ".avi", ".mkv", ".webm"}:
+        model = _get_whisper_model()
+        with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
+            audio_path = tmp.name
+        try:
+            subprocess.run(
+                [
+                    "ffmpeg", "-i", str(path),
+                    "-vn", "-acodec", "pcm_s16le",
+                    "-ar", "16000", "-ac", "1",
+                    audio_path, "-y",
+                ],
+                check=True,
+                capture_output=True,
+            )
+            result = model.transcribe(audio_path)
+            text = result["text"]
+        finally:
+            try:
+                os.unlink(audio_path)
+            except OSError:
+                pass
+        return ParsedDoc(
+            text=text,
+            source=str(path),
+            metadata={"type": "video"},
         )
 
     raise UnsupportedFileTypeError(
