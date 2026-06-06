@@ -131,6 +131,41 @@ export async function getShare(token: string): Promise<SharePage> {
   return res.json();
 }
 
+export type ShareLinkInfo = {
+  id: number;
+  token: string;
+  type: string;
+  target_id: string | null;
+  created_at: string;
+  expires_at: string | null;
+  revoked: number;
+};
+
+export type CreateShareLinkInput = {
+  type: 'page';
+  target_id: string;
+  expires_in_days?: number | null;
+};
+
+export async function createShareLink(
+  input: CreateShareLinkInput,
+): Promise<{ token: string; url: string; expires_at: string | null }> {
+  const res = await apiFetch('/api/share-links', {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+  return res.json();
+}
+
+export async function listShareLinks(): Promise<ShareLinkInfo[]> {
+  const res = await apiFetch('/api/share-links');
+  return res.json();
+}
+
+export async function revokeShareLink(token: string): Promise<void> {
+  await apiFetch(`/api/share-links/${token}`, { method: 'DELETE' });
+}
+
 export async function search(query: string): Promise<SearchResult[]> {
   const res = await apiFetch(`/api/search?q=${encodeURIComponent(query)}`);
   return res.json();

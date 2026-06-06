@@ -1,13 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { useAppDispatch } from '../store';
-import { createPage, deletePage, getPage, updatePage } from '../api';
+import { createPage, createShareLink, deletePage, getPage, updatePage } from '../api';
 import type { Page } from '../types';
 import Editor, { type EditorHandle } from '../components/Editor/Editor';
 import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
 import { Badge } from '../components/ui/Badge';
 import { Dialog } from '../components/ui/Dialog';
+import { Popover, PopoverContent, PopoverTrigger } from '../components/ui/Popover';
 import { useToast } from '../components/ui/Toast';
 
 export default function WikiPage() {
@@ -25,6 +26,9 @@ export default function WikiPage() {
   const [createOpen, setCreateOpen] = useState(false);
   const [createTitle, setCreateTitle] = useState('');
   const [createFolder, setCreateFolder] = useState('');
+  const [shareUrl, setShareUrl] = useState<string | null>(null);
+  const [shareLoading, setShareLoading] = useState(false);
+  const [sharePopoverOpen, setSharePopoverOpen] = useState(false);
   const editorRef = useRef<EditorHandle | null>(null);
   const metaSaveTimer = useRef<ReturnType<typeof setTimeout>>();
 
@@ -54,6 +58,12 @@ export default function WikiPage() {
         setLoading(false);
       });
   }, [slug, dispatch]);
+
+  // Reset share URL when navigating to a different page
+  useEffect(() => {
+    setShareUrl(null);
+    setSharePopoverOpen(false);
+  }, [slug]);
 
   if (!slug) return null;
   const slugStr = slug;
@@ -139,6 +149,35 @@ export default function WikiPage() {
     }
   }
 
+  async function handleShare() {
+    if (shareUrl) {
+      // Already have a URL — just open the popover to show it
+      setSharePopoverOpen(true);
+      return;
+    }
+    setShareLoading(true);
+    try {
+      const result = await createShareLink({ type: 'page', target_id: slugStr });
+      const fullUrl = window.location.origin + result.url;
+      setShareUrl(fullUrl);
+      setSharePopoverOpen(true);
+    } catch (e) {
+      push({ kind: 'error', title: 'Share failed', description: (e as Error).message });
+    } finally {
+      setShareLoading(false);
+    }
+  }
+
+  async function handleCopyShareUrl() {
+    if (!shareUrl) return;
+    try {
+      await navigator.clipboard.writeText(shareUrl);
+      push({ kind: 'success', title: 'Copied', description: 'Share link copied to clipboard' });
+    } catch {
+      push({ kind: 'error', title: 'Copy failed', description: 'Could not write to clipboard' });
+    }
+  }
+
   return (
     <div className="flex flex-col h-full">
       {/* Title bar */}
@@ -180,6 +219,34 @@ export default function WikiPage() {
             <Button variant="ghost" size="sm" onClick={() => setCreateOpen(true)}>
               New
             </Button>
+            <Popover open={sharePopoverOpen} onOpenChange={setSharePopoverOpen}>
+              <PopoverTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={handleShare}
+                  disabled={!page || shareLoading}
+                >
+                  {shareLoading ? 'Sharing…' : 'Share'}
+                </Button>
+              </PopoverTrigger>
+              {shareUrl && (
+                <PopoverContent align="end" className="w-80">
+                  <p className="text-xs text-muted-foreground mb-2">Share link</p>
+                  <div className="flex items-center gap-2">
+                    <input
+                      readOnly
+                      value={shareUrl}
+                      className="flex-1 min-w-0 rounded-md border border-input bg-background px-2 py-1 text-xs text-foreground font-mono truncate focus:outline-none"
+                      onClick={(e) => (e.target as HTMLInputElement).select()}
+                    />
+                    <Button variant="secondary" size="sm" onClick={handleCopyShareUrl}>
+                      Copy
+                    </Button>
+                  </div>
+                </PopoverContent>
+              )}
+            </Popover>
             <Button variant="secondary" size="sm" onClick={handleSaveNow} disabled={!page}>
               Save
             </Button>
@@ -282,4 +349,3 @@ function slugifyFolder(folder: string): string | undefined {
     .join('/');
   return normalized || undefined;
 }
-
