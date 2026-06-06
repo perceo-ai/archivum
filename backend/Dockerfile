@@ -9,6 +9,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libxslt1-dev \
     zlib1g-dev \
     ffmpeg \
+    libpango-1.0-0 \
+    libpangocairo-1.0-0 \
+    libgdk-pixbuf2.0-0 \
+    libcairo2 \
     && rm -rf /var/lib/apt/lists/*
 
 RUN pip install uv
