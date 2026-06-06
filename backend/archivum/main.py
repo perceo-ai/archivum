@@ -11,6 +11,7 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 
 from archivum.api import auth as auth_routes
+from archivum.api import export as export_routes
 from archivum.api import ingest as ingest_routes
 from archivum.api import pages as pages_routes
 from archivum.api import share as share_routes
@@ -104,6 +105,7 @@ def create_app() -> FastAPI:
 
     # Routes
     app.include_router(auth_routes.router)
+    app.include_router(export_routes.router)
     app.include_router(pages_routes.router)
     app.include_router(ingest_routes.router)
     app.include_router(search_router)

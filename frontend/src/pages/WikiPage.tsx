@@ -10,6 +10,51 @@ import { Badge } from '../components/ui/Badge';
 import { Dialog } from '../components/ui/Dialog';
 import { useToast } from '../components/ui/Toast';
 
+function ExportMenu({ slug }: { slug: string }) {
+  const [open, setOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    function handleClick(e: MouseEvent) {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClick);
+    return () => document.removeEventListener('mousedown', handleClick);
+  }, [open]);
+
+  function handleExport(format: 'html' | 'pdf') {
+    window.open(`/api/export?slug=${encodeURIComponent(slug)}&format=${format}`, '_blank');
+    setOpen(false);
+  }
+
+  return (
+    <div ref={menuRef} className="relative">
+      <Button variant="ghost" size="sm" onClick={() => setOpen((v) => !v)} aria-haspopup="true" aria-expanded={open}>
+        Export
+      </Button>
+      {open && (
+        <div className="absolute right-0 top-full mt-1 z-50 min-w-[9rem] rounded-md border border-border bg-panel shadow-lg py-1">
+          <button
+            className="w-full text-left px-3 py-1.5 text-sm hover:bg-surface transition-colors"
+            onClick={() => handleExport('html')}
+          >
+            Export as HTML
+          </button>
+          <button
+            className="w-full text-left px-3 py-1.5 text-sm hover:bg-surface transition-colors"
+            onClick={() => handleExport('pdf')}
+          >
+            Export as PDF
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function WikiPage() {
   const params = useParams();
   const slug = params['*'];
@@ -180,6 +225,7 @@ export default function WikiPage() {
             <Button variant="ghost" size="sm" onClick={() => setCreateOpen(true)}>
               New
             </Button>
+            {page && <ExportMenu slug={slugStr} />}
             <Button variant="secondary" size="sm" onClick={handleSaveNow} disabled={!page}>
               Save
             </Button>
