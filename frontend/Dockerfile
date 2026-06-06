@@ -25,7 +25,8 @@ RUN printf '%s\n' \
 
 # Ensure runtime paths are writable and run as non-root
 RUN chown -R nginx:nginx /usr/share/nginx/html \
-  /var/cache/nginx /var/run
+  /var/cache/nginx /var/run \
+  && sed -i 's#/run/nginx.pid#/tmp/nginx.pid#' /etc/nginx/nginx.conf
 
 USER nginx
 

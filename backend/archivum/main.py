@@ -11,8 +11,10 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 
 from archivum.api import auth as auth_routes
+from archivum.api import export as export_routes
 from archivum.api import ingest as ingest_routes
 from archivum.api import pages as pages_routes
+from archivum.api import public as public_routes
 from archivum.api import share as share_routes
 from archivum.api.graph import router as graph_router
 from archivum.api.query import router as query_router
@@ -36,6 +38,25 @@ class _TraceMiddleware(BaseHTTPMiddleware):
         set_trace_id(trace_id)
         response = await call_next(request)
         response.headers["x-trace-id"] = trace_id
+        return response
+
+
+class _SecurityHeadersMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next) -> Response:  # type: ignore[override]
+        response = await call_next(request)
+        response.headers["Content-Security-Policy"] = (
+            "default-src 'self'; "
+            "script-src 'self' 'unsafe-inline'; "
+            "style-src 'self' 'unsafe-inline'; "
+            "img-src 'self' data: blob:; "
+            "connect-src 'self'; "
+            "font-src 'self'; "
+            "object-src 'none'; "
+            "frame-ancestors 'none'"
+        )
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["X-Frame-Options"] = "DENY"
+        response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
         return response
 
 
@@ -92,6 +113,7 @@ def create_app() -> FastAPI:
     app = FastAPI(title="Archivum API", version="0.1.0", lifespan=lifespan)
 
     app.add_middleware(_TraceMiddleware)
+    app.add_middleware(_SecurityHeadersMiddleware)
     app.add_middleware(_CSRFProtection)
     app.add_middleware(RateLimitMiddleware, settings=settings)
     app.add_middleware(
@@ -104,13 +126,16 @@ def create_app() -> FastAPI:
 
     # Routes
     app.include_router(auth_routes.router)
+    app.include_router(export_routes.router)
     app.include_router(pages_routes.router)
+    app.include_router(public_routes.router)
     app.include_router(ingest_routes.router)
     app.include_router(search_router)
     app.include_router(query_router)
     app.include_router(graph_router)
     app.include_router(system_router)
     app.include_router(share_routes.router)
+    app.include_router(share_routes.mgmt_router)
 
     return app
 

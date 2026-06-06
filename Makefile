@@ -14,7 +14,7 @@ build:
 
 setup:
 	@if [ ! -f .env ]; then cp .env.example .env && echo "Created .env — fill in your values before continuing"; fi
-	@./setup.sh
+	@./install.sh
 
 logs:
 	docker compose logs -f

@@ -7,6 +7,9 @@ import WikiPage from './pages/WikiPage';
 import LoginPage from './pages/LoginPage';
 import NotFoundPage from './pages/NotFoundPage';
 import SharePage from './pages/SharePage';
+import PublicWikiPage from './pages/PublicWikiPage';
+import SettingsPage from './pages/SettingsPage';
+import LintPage from './pages/LintPage';
 import GraphView from './components/GraphView';
 import QueryPanel from './components/QueryPanel';
 import IngestPanel from './components/IngestPanel';
@@ -71,6 +74,16 @@ function ProtectedRoutes() {
           <SearchBar />
         </Layout>
       } />
+      <Route path="/lint" element={
+        <Layout>
+          <LintPage />
+        </Layout>
+      } />
+      <Route path="/settings" element={
+        <Layout>
+          <SettingsPage />
+        </Layout>
+      } />
       <Route path="*" element={<NotFoundPage />} />
     </Routes>
   );
@@ -82,6 +95,8 @@ function AppRoutes() {
     <Routes>
       <Route path="/login" element={<LoginPage />} />
       <Route path="/share/:token" element={<SharePage />} />
+      <Route path="/public" element={<PublicWikiPage />} />
+      <Route path="/public/wiki/*" element={<PublicWikiPage />} />
       <Route path="/*" element={<ProtectedRoutes />} />
     </Routes>
   );

@@ -7,13 +7,15 @@ services:
       # On Linux, this maps `host.docker.internal` to the Docker host gateway.
       - "host.docker.internal:host-gateway"
     environment:
-      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
-      - OPENROUTER_API_KEY=${OPENROUTER_API_KEY}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - OPENROUTER_API_KEY=${OPENROUTER_API_KEY:-}
       - OPENROUTER_BASE_URL=${OPENROUTER_BASE_URL:-https://openrouter.ai/api/v1}
       - LLM_EXTRACTION_PROVIDER=${LLM_EXTRACTION_PROVIDER:-anthropic}
       - LLM_SYNTHESIS_PROVIDER=${LLM_SYNTHESIS_PROVIDER:-anthropic}
-      - JWT_SECRET=${JWT_SECRET}
-      - OWNER_PASSWORD=${OWNER_PASSWORD}
+      - JWT_SECRET=${JWT_SECRET:-}
+      - OWNER_PASSWORD=${OWNER_PASSWORD:-}
+      - OWNER_USERNAME=${OWNER_USERNAME:-admin}
+      - PUBLIC_WIKI_ENABLED=${PUBLIC_WIKI_ENABLED:-false}
       - QDRANT_URL=http://qdrant:6333
       - QDRANT_RECREATE_COLLECTION_ON_DIM_MISMATCH=true
       - WIKI_DIR=/data/wiki
@@ -22,12 +24,12 @@ services:
       - KUZU_PATH=/data/kuzu
       - EMBED_PROVIDER=${EMBED_PROVIDER:-local}
       - EMBED_MODEL=${EMBED_MODEL:-BAAI/bge-small-en-v1.5}
-      - EMBED_DIM=0
+      - EMBED_DIM=${EMBED_DIM:-0}
       - EMBED_OPENAI_COMPAT_PROVIDER=${EMBED_OPENAI_COMPAT_PROVIDER:-openai}
       - EMBED_BASE_URL=${EMBED_BASE_URL:-}
       - EMBED_API_KEY=${EMBED_API_KEY:-}
       - EMBED_AZURE_API_VERSION=${EMBED_AZURE_API_VERSION:-2024-02-15-preview}
-      - OLLAMA_BASE_URL=http://host.docker.internal:11434
+      - OLLAMA_BASE_URL=${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
       - LLM_MODEL=${LLM_MODEL:-claude-haiku-4-5-20251001}
       - LLM_SYNTHESIS_MODEL=${LLM_SYNTHESIS_MODEL:-claude-sonnet-4-6}
       - OPENAI_COMPAT_PROVIDER=${OPENAI_COMPAT_PROVIDER:-openai}
@@ -61,29 +63,29 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
     environment:
-      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
-      - OPENROUTER_API_KEY=${OPENROUTER_API_KEY}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - OPENROUTER_API_KEY=${OPENROUTER_API_KEY:-}
       - OPENROUTER_BASE_URL=${OPENROUTER_BASE_URL:-https://openrouter.ai/api/v1}
       - LLM_EXTRACTION_PROVIDER=${LLM_EXTRACTION_PROVIDER:-anthropic}
       - LLM_SYNTHESIS_PROVIDER=${LLM_SYNTHESIS_PROVIDER:-anthropic}
-      - JWT_SECRET=${JWT_SECRET}
+      - JWT_SECRET=${JWT_SECRET:-}
       - QDRANT_URL=http://qdrant:6333
       - QDRANT_RECREATE_COLLECTION_ON_DIM_MISMATCH=true
       - WIKI_DIR=/data/wiki
       - RAW_DIR=/data/raw
       - DB_PATH=/data/archivum.db
       - KUZU_PATH=/data/kuzu
-      - MCP_API_KEY=${MCP_API_KEY}
+      - MCP_API_KEY=${MCP_API_KEY:-}
       - FASTMCP_HOST=0.0.0.0
       - FASTMCP_PORT=8001
       - EMBED_PROVIDER=${EMBED_PROVIDER:-local}
       - EMBED_MODEL=${EMBED_MODEL:-BAAI/bge-small-en-v1.5}
-      - EMBED_DIM=0
+      - EMBED_DIM=${EMBED_DIM:-0}
       - EMBED_OPENAI_COMPAT_PROVIDER=${EMBED_OPENAI_COMPAT_PROVIDER:-openai}
       - EMBED_BASE_URL=${EMBED_BASE_URL:-}
       - EMBED_API_KEY=${EMBED_API_KEY:-}
       - EMBED_AZURE_API_VERSION=${EMBED_AZURE_API_VERSION:-2024-02-15-preview}
-      - OLLAMA_BASE_URL=http://host.docker.internal:11434
+      - OLLAMA_BASE_URL=${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
       - LLM_MODEL=${LLM_MODEL:-claude-haiku-4-5-20251001}
       - LLM_SYNTHESIS_MODEL=${LLM_SYNTHESIS_MODEL:-claude-sonnet-4-6}
       - OPENAI_COMPAT_PROVIDER=${OPENAI_COMPAT_PROVIDER:-openai}

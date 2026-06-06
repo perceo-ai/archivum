@@ -2,11 +2,12 @@ import { useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import DOMPurify from 'dompurify';
 import { useAppDispatch } from '../store';
-import { query, createPage } from '../api';
+import { query, createPage, createShareLink } from '../api';
 import type { Page } from '../types';
 import { Button } from './ui/Button';
 import { Card } from './ui/Card';
 import { Textarea } from './ui/Textarea';
+import { useToast } from './ui/Toast';
 
 // Simple markdown renderer (no external deps)
 function renderMarkdown(text: string): string {
@@ -44,13 +45,16 @@ function renderMarkdown(text: string): string {
 export default function QueryPanel() {
   const dispatch = useAppDispatch();
   const navigate = useNavigate();
+  const { push } = useToast();
   const [question, setQuestion] = useState('');
   const [answer, setAnswer] = useState('');
   const [citations, setCitations] = useState<Page[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [sharing, setSharing] = useState(false);
   const [savedSlug, setSavedSlug] = useState<string | null>(null);
+  const [shareUrl, setShareUrl] = useState<string | null>(null);
   const answerRef = useRef('');
 
   async function handleSubmit(e: React.FormEvent) {
@@ -61,6 +65,7 @@ export default function QueryPanel() {
     setCitations([]);
     setError(null);
     setSavedSlug(null);
+    setShareUrl(null);
     answerRef.current = '';
     setLoading(true);
 
@@ -96,6 +101,35 @@ export default function QueryPanel() {
       setError((err as Error).message);
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function handleShareQuery() {
+    if (!answer || sharing) return;
+    if (shareUrl) {
+      await navigator.clipboard.writeText(shareUrl);
+      push({ kind: 'success', title: 'Copied', description: 'Query permalink copied to clipboard' });
+      return;
+    }
+
+    setSharing(true);
+    try {
+      const result = await createShareLink({
+        type: 'query',
+        question: question.trim(),
+        answer,
+        citations: citations.map((c) => ({ slug: c.slug, title: c.title })),
+      });
+      const fullUrl = window.location.origin + result.url;
+      setShareUrl(fullUrl);
+      await navigator.clipboard.writeText(fullUrl);
+      push({ kind: 'success', title: 'Copied', description: 'Query permalink copied to clipboard' });
+    } catch (err) {
+      const message = (err as Error).message;
+      setError(message);
+      push({ kind: 'error', title: 'Share failed', description: message });
+    } finally {
+      setSharing(false);
     }
   }
 
@@ -193,6 +227,14 @@ export default function QueryPanel() {
                     {saving ? 'Saving...' : 'Save as page'}
                   </Button>
                 )}
+                <Button
+                  onClick={handleShareQuery}
+                  disabled={sharing}
+                  variant="secondary"
+                  size="sm"
+                >
+                  {sharing ? 'Sharing...' : shareUrl ? 'Copy link' : 'Share result'}
+                </Button>
               </div>
             )}
 

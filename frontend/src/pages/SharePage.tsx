@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useParams } from 'react-router-dom';
+import DOMPurify from 'dompurify';
 import { getShare } from '../api';
 import type { SharePage as SharePageType } from '../api';
 
@@ -51,11 +52,15 @@ export default function SharePage() {
       .finally(() => setLoading(false));
   }, [token]);
 
-  const html = useMemo(() => {
-    if (!share?.content) return '';
+  const body = share?.type === 'query' ? share.answer : share?.content;
+  const sanitizedHtml = useMemo(() => {
+    if (!body) return '';
     // Re-wrap as a single HTML blob to keep styling consistent.
-    return `<p class="mb-3 text-text-secondary leading-relaxed">${renderMarkdown(share.content)}</p>`;
-  }, [share?.content]);
+    const html = `<p class="mb-3 text-text-secondary leading-relaxed">${renderMarkdown(body)}</p>`;
+    return DOMPurify.sanitize(html, {
+      ALLOWED_ATTR: ['class', 'style', 'href', 'target', 'rel'],
+    });
+  }, [body]);
 
   return (
     <div className="min-h-screen bg-bg">
@@ -76,7 +81,9 @@ export default function SharePage() {
 
         {!loading && share && (
           <article>
-            <h1 className="text-2xl font-bold text-text-primary mb-4">{share.title ?? 'Untitled'}</h1>
+            <h1 className="text-2xl font-bold text-text-primary mb-4">
+              {share.type === 'query' ? share.question : share.title ?? 'Untitled'}
+            </h1>
 
             {share.tags.length > 0 && (
               <div className="flex flex-wrap gap-2 mb-5">
@@ -90,8 +97,27 @@ export default function SharePage() {
 
             <div
               className="prose-custom text-text-secondary leading-relaxed"
-              dangerouslySetInnerHTML={{ __html: html }}
+              dangerouslySetInnerHTML={{ __html: sanitizedHtml }}
             />
+
+            {share.type === 'query' && share.citations.length > 0 && (
+              <div className="mt-6 pt-4 border-t border-border">
+                <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">
+                  Sources
+                </h2>
+                <div className="space-y-1">
+                  {share.citations.map((citation) => (
+                    <a
+                      key={citation.slug}
+                      href={`/wiki/${citation.slug}`}
+                      className="block text-sm text-accent hover:underline"
+                    >
+                      {citation.title}
+                    </a>
+                  ))}
+                </div>
+              </div>
+            )}
 
             {share.expires_at && (
               <div className="mt-8 text-xs text-muted-foreground">
@@ -104,4 +130,3 @@ export default function SharePage() {
     </div>
   );
 }
-

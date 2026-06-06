@@ -103,6 +103,17 @@ CREATE TABLE IF NOT EXISTS refresh_tokens (
 );
 
 CREATE INDEX IF NOT EXISTS idx_refresh_tokens_hash ON refresh_tokens(token_hash);
+
+CREATE TABLE IF NOT EXISTS invite_tokens (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    wiki_id    TEXT    NOT NULL DEFAULT 'default',
+    token      TEXT    NOT NULL UNIQUE,
+    role       TEXT    NOT NULL DEFAULT 'viewer',  -- collaborator|viewer
+    created_by TEXT    NOT NULL,
+    created_at TEXT    NOT NULL DEFAULT (datetime('now')),
+    expires_at TEXT,
+    used       INTEGER NOT NULL DEFAULT 0
+);
 """
 
 
@@ -447,3 +458,47 @@ async def revoke_all_refresh_tokens(user_id: int) -> None:
             "UPDATE refresh_tokens SET revoked=1 WHERE user_id=?", (user_id,)
         )
         await db.commit()
+
+
+# ── Invite tokens ─────────────────────────────────────────────────────────────
+
+async def create_invite_token(
+    wiki_id: str,
+    token: str,
+    role: str,
+    created_by: str,
+    expires_at: str | None,
+) -> None:
+    async with get_db() as db:
+        await db.execute(
+            "INSERT INTO invite_tokens (wiki_id, token, role, created_by, expires_at) VALUES (?,?,?,?,?)",
+            (wiki_id, token, role, created_by, expires_at),
+        )
+        await db.commit()
+
+
+async def get_invite_token(token: str) -> dict[str, Any] | None:
+    async with get_db() as db:
+        async with db.execute(
+            "SELECT * FROM invite_tokens WHERE token=?", (token,)
+        ) as cur:
+            row = await cur.fetchone()
+            return dict(row) if row else None
+
+
+async def mark_invite_used(token: str) -> None:
+    async with get_db() as db:
+        await db.execute(
+            "UPDATE invite_tokens SET used=1 WHERE token=?", (token,)
+        )
+        await db.commit()
+
+
+async def list_invite_tokens(wiki_id: str = "default") -> list[dict[str, Any]]:
+    async with get_db() as db:
+        async with db.execute(
+            "SELECT * FROM invite_tokens WHERE wiki_id=? ORDER BY created_at DESC",
+            (wiki_id,),
+        ) as cur:
+            rows = await cur.fetchall()
+            return [dict(r) for r in rows]

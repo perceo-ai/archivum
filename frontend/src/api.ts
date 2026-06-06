@@ -122,12 +122,74 @@ export type SharePage = {
   title: string | null;
   content: string | null;
   tags: string[];
+  question: string | null;
+  answer: string | null;
+  citations: Array<{ slug: string; title: string }>;
   expires_at: string | null;
 };
 
 export async function getShare(token: string): Promise<SharePage> {
   // Share tokens are url-safe base64-ish; still encode defensively.
   const res = await apiFetch(`/api/share/${encodeURIComponent(token)}`);
+  return res.json();
+}
+
+export type ShareLinkInfo = {
+  id: number;
+  token: string;
+  type: string;
+  target_id: string | null;
+  created_at: string;
+  expires_at: string | null;
+  revoked: number;
+};
+
+export type CreateShareLinkInput = {
+  type: 'page' | 'query';
+  target_id?: string | null;
+  question?: string;
+  answer?: string;
+  citations?: Array<{ slug: string; title: string }>;
+  expires_in_days?: number | null;
+};
+
+export async function createShareLink(
+  input: CreateShareLinkInput,
+): Promise<{ token: string; url: string; expires_at: string | null }> {
+  const res = await apiFetch('/api/share-links', {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+  return res.json();
+}
+
+export async function listShareLinks(): Promise<ShareLinkInfo[]> {
+  const res = await apiFetch('/api/share-links');
+  return res.json();
+}
+
+export async function revokeShareLink(token: string): Promise<void> {
+  await apiFetch(`/api/share-links/${token}`, { method: 'DELETE' });
+}
+
+export type PublicPageSummary = {
+  slug: string;
+  title: string;
+  tags: string[];
+  updated_at: string;
+};
+
+export type PublicPage = PublicPageSummary & {
+  content: string;
+};
+
+export async function listPublicPages(): Promise<PublicPageSummary[]> {
+  const res = await apiFetch('/api/public/pages');
+  return res.json();
+}
+
+export async function getPublicPage(slug: string): Promise<PublicPage> {
+  const res = await apiFetch(`/api/public/pages/${encodeSlugPath(slug)}`);
   return res.json();
 }
 
@@ -218,6 +280,53 @@ export async function ingestUrl(
   }
 
   await parseSSEStream(response, (data) => onProgress(data as IngestProgress));
+}
+
+export type InviteToken = {
+  id: number;
+  wiki_id: string;
+  token: string;
+  role: string;
+  created_by: string;
+  created_at: string;
+  expires_at: string | null;
+  used: number;
+};
+
+export type LintIssue = {
+  type: string;
+  page: string;
+  target?: string;
+  suggestion: string;
+};
+
+export async function createInvite(
+  role: 'viewer' | 'collaborator',
+  expires_in_days: number | null,
+): Promise<{ token: string; url: string; role: string; expires_at: string | null }> {
+  const res = await apiFetch('/api/auth/invites', {
+    method: 'POST',
+    body: JSON.stringify({ role, expires_in_days }),
+  });
+  return res.json();
+}
+
+export async function listInvites(): Promise<InviteToken[]> {
+  const res = await apiFetch('/api/auth/invites');
+  return res.json();
+}
+
+export async function lintWiki(): Promise<{ issues: LintIssue[]; counts: { issues: number } }> {
+  const res = await apiFetch('/api/lint');
+  return res.json();
+}
+
+export async function applyLintFix(fix: { type: string; [key: string]: string }): Promise<{ detail: string; message?: string }> {
+  const res = await apiFetch('/api/lint/fix', {
+    method: 'POST',
+    body: JSON.stringify(fix),
+  });
+  return res.json();
 }
 
 export async function query(
