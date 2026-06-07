@@ -164,24 +164,20 @@ openclaw cron status
 
 # Compare the key fields operators should expect to remain stable:
 jq -S '{
-  id,
-  name,
   agentId,
   enabled,
   sessionTarget,
-  schedule,          # {expr, tz}
-  delivery,          # {mode, channel, to, bestEffort}
-  payload: {toolsAllow}
+  schedule: {kind, expr, tz},
+  delivery: {mode, channel, to, bestEffort},
+  payload: {toolsAllow: (.payload.toolsAllow // null)}
 }' /tmp/cron-${id}.before.json > /tmp/cron-${id}.before.fields.json
 jq -S '{
-  id,
-  name,
   agentId,
   enabled,
   sessionTarget,
-  schedule,
-  delivery,
-  payload: {toolsAllow}
+  schedule: {kind, expr, tz},
+  delivery: {mode, channel, to, bestEffort},
+  payload: {toolsAllow: (.payload.toolsAllow // null)}
 }' /tmp/cron-${id}.after-edit.json > /tmp/cron-${id}.after-edit.fields.json
 
 diff -u /tmp/cron-${id}.before.fields.json /tmp/cron-${id}.after-edit.fields.json | head -n 200 || true
@@ -218,11 +214,55 @@ openclaw cron show --json "$id" > /tmp/cron-${id}.rollback-disabled.json
 ```
 
 3) Restore previous fields
-- Re-apply the prior schedule/agent/session/delivery fields using `openclaw cron edit <id> ...`.
-- Use `/tmp/cron-${id}.before.json` to restore the exact cron expression + timezone + delivery fields.
+- First, record whether this job was enabled before you started:
+  ```bash
+  wasEnabled=$(jq -r '.enabled' /tmp/cron-${id}.before.json)
+  ```
 
-Practical tip:
-- Don’t try to “re-import” JSON blindly—**prefer extracting the specific values you need** and passing them into `openclaw cron edit` flags (field names can vary by Gateway version).
+- Then restore only the operator-relevant fields (schedule/agent/session/delivery) while keeping the job disabled.
+
+Practical restore pattern (extract from the snapshot + re-apply via flags):
+```bash
+before=/tmp/cron-${id}.before.json
+
+agentId=$(jq -r '.agentId' "$before")
+sessionTarget=$(jq -r '.sessionTarget' "$before")
+cronExpr=$(jq -r '.schedule.expr' "$before")
+tz=$(jq -r '.schedule.tz' "$before")
+channel=$(jq -r '.delivery.channel' "$before")
+to=$(jq -r '.delivery.to' "$before")
+bestEffort=$(jq -r '.delivery.bestEffort' "$before")
+
+if [[ "$bestEffort" == "false" ]]; then
+  openclaw cron edit "$id" \
+    --agent "$agentId" \
+    --session "$sessionTarget" \
+    --cron "$cronExpr" \
+    --tz "$tz" \
+    --channel "$channel" \
+    --to "$to" \
+    --no-best-effort-deliver \
+    --exact
+else
+  openclaw cron edit "$id" \
+    --agent "$agentId" \
+    --session "$sessionTarget" \
+    --cron "$cronExpr" \
+    --tz "$tz" \
+    --channel "$channel" \
+    --to "$to" \
+    --best-effort-deliver \
+    --exact
+fi
+
+# Optional: restore tool allow-list if it exists in the snapshot
+toolsAllow=$(jq -r '.payload.toolsAllow // empty | join(",")' "$before")
+if [[ -n "$toolsAllow" ]]; then
+  openclaw cron edit "$id" --tools "$toolsAllow"
+fi
+```
+
+Note: Don’t try to “re-import” raw JSON—**extract values and re-apply via `openclaw cron edit` flags** (field names/availability can vary across Gateway versions).
 
 4) Validate restored config (compare specific fields from JSON snapshots)
 ```bash
@@ -232,34 +272,34 @@ openclaw cron status
 
 # Compare only the operator-relevant fields you care about restoring.
 jq -S '{
-  id,
-  name,
   agentId,
   enabled,
   sessionTarget,
-  schedule,          # {expr, tz}
-  delivery,          # {mode, channel, to, bestEffort}
-  payload: {toolsAllow}
+  schedule: {kind, expr, tz},
+  delivery: {mode, channel, to, bestEffort},
+  payload: {toolsAllow: (.payload.toolsAllow // null)}
 }' /tmp/cron-${id}.before.json > /tmp/cron-${id}.before.fields.json
 
 jq -S '{
-  id,
-  name,
   agentId,
   enabled,
   sessionTarget,
-  schedule,
-  delivery,
-  payload: {toolsAllow}
+  schedule: {kind, expr, tz},
+  delivery: {mode, channel, to, bestEffort},
+  payload: {toolsAllow: (.payload.toolsAllow // null)}
 }' /tmp/cron-${id}.after-rollback.json > /tmp/cron-${id}.after-rollback.fields.json
 
 diff -u /tmp/cron-${id}.before.fields.json /tmp/cron-${id}.after-rollback.fields.json | head -n 200 || true
 ```
 
 
-5) Enable again (only if you’re confident)
+5) Enable again (only if it was enabled before)
 ```bash
-openclaw cron enable "$id"
+if [[ "$wasEnabled" == "true" ]]; then
+  openclaw cron enable "$id"
+else
+  openclaw cron disable "$id"
+fi
 ```
 
 If the job was failing due to delivery or tools allow-list, also check the immediate run history:
@@ -315,7 +355,8 @@ Minimum checklist:
 7) Tool allow-list too restrictive
 - Symptom: job fails with "tool not allowed" errors
 - Check:
-  - `openclaw cron show --json <id>` (`toolsAllow`)
+  - `openclaw cron show --json <id> | jq '.payload.toolsAllow // null'`
+  - If `null`, the job likely isn’t configured with an allow-list (or the field isn’t present in that Gateway version).
 
 8) Agent/workflow mismatch
 - Symptom: agent returns errors or no-ops
@@ -326,24 +367,61 @@ Minimum checklist:
 9) Wrong job ID (high impact)
 - Failure: disabling/enabling the wrong job, or editing a similarly-shaped cron
 - Quick checks:
-  - Always run `openclaw cron show --json <id>` and sanity-check `name` + `agent` + `enabled` before disabling.
+  - Always run `openclaw cron show --json <id>` and sanity-check `name`, `agentId`, and `enabled` before disabling.
   - Keep the before snapshot file next to the ID so you don’t mix outputs.
+
+Concrete example (safe pre-flight):
+```bash
+candidate=<id>
+openclaw cron show --json "$candidate" | jq -S '{name,agentId,sessionTarget,enabled,schedule}'
+# only proceed if this matches what you intended
+```
+
+If you see `enabled` or `agentId` doesn’t match, stop and re-check the ID from `openclaw cron list`.
 
 10) Edited schedule vs enable flag (one changed, the other didn’t)
 - Failure patterns:
   - You updated `--cron` but forgot to enable (job stays disabled).
   - You enabled the job but didn’t apply the intended schedule/agent/delivery edits.
 - Quick checks:
-  - Compare `enabled` in:
-    - `/tmp/cron-${id}.disabled.json` (should be false)
-    - `/tmp/cron-${id}.after-enable.json` (should be true)
-  - Confirm schedule/delivery in `openclaw cron show --json <id>` after edits but before enabling.
+  - After edits, verify `enabled` didn’t change unless you explicitly enabled:
+    - `openclaw cron show --json <id> | jq -r '.enabled'`
+  - Compare config snapshots:
+    - `/tmp/cron-${id}.disabled.json` (should show `enabled: false`)
+    - `/tmp/cron-${id}.after-enable.json` (should show `enabled: true`)
+
+Concrete evidence patterns:
+- "I edited, but it still won’t run":
+  ```bash
+  openclaw cron edit "$id" --cron '<expr>' --tz <IANA> --exact
+  openclaw cron show --json "$id" | jq -r '.enabled'  # prints false
+  ```
+- "I enabled, but I didn’t actually apply edits":
+  ```bash
+  openclaw cron enable "$id"
+  openclaw cron show --json "$id" | jq -S '{schedule,delivery,agentId,sessionTarget}'
+  ```
 
 11) Inconsistent/changed JSON fields across versions
 - Failure: copying values from JSON fields that don’t exist (or moved) in the Gateway version you’re using
 - Fix:
   - Extract only the specific values you need (cron/tz, agent, session, delivery destination) and re-apply using `openclaw cron edit` flags.
   - Don’t assume the JSON keys you saw yesterday still match today.
+
+Concrete field-drift check (what actually exists right now):
+```bash
+openclaw cron show --json "$id" | jq -S '{schedule,delivery,sessionTarget,agentId,payload}'
+```
+
+Typical gotcha: some Gateway versions include `payload.toolsAllow`, others might omit it. For rollback/restore, always do:
+```bash
+before=/tmp/cron-${id}.before.json
+cronExpr=$(jq -r '.schedule.expr' "$before")
+tz=$(jq -r '.schedule.tz' "$before")
+openclaw cron edit "$id" --cron "$cronExpr" --tz "$tz" --exact
+```
+
+(And similarly extract/restore agent/session/delivery from the snapshot.)
 
 12) Run vs runs/status confusion
 - Failure:
@@ -355,6 +433,24 @@ Minimum checklist:
     - `openclaw cron runs` for history
     - `openclaw cron run` to force a one-off execution
     - `openclaw cron status` for scheduler health
+
+Concrete example:
+```bash
+# 1) Edit config (does not create a new run by itself)
+openclaw cron edit "$id" --cron '<new expr>' --tz <IANA> --exact
+
+# 2) Check config changed
+openclaw cron show --json "$id" | jq -S '.schedule'
+
+# 3) If you need to actually run now, force a one-off execution
+openclaw cron run "$id"
+
+# 4) Then inspect run history
+openclaw cron runs "$id"
+
+# 5) Finally, scheduler health is separate from run history
+openclaw cron status
+```
 
 ## Worked example: diagnosing an actively running job
 1) Identify job:
