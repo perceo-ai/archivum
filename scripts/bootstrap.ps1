@@ -86,6 +86,7 @@ if ($FullClone -eq "1") {
   Download-File "scripts/install.py" (Join-Path $InstallDir "scripts/install.py")
   Download-File "scripts/uninstall.py" (Join-Path $InstallDir "scripts/uninstall.py")
   Download-File "uninstall.ps1" (Join-Path $InstallDir "uninstall.ps1")
+  Download-File "update.sh" (Join-Path $InstallDir "update.sh")
 }
 
 Set-Location $InstallDir

@@ -45,6 +45,7 @@ caddy/Caddyfile
 scripts/install.py
 scripts/uninstall.py
 uninstall.sh / uninstall.ps1
+update.sh
 ```
 
 It does not clone the whole repo unless you ask for that:
@@ -133,6 +134,20 @@ PowerShell uses the same options as switches, for example:
 ```
 
 Use `--dry-run` on macOS/Linux or `-DryRun` on PowerShell to print the actions without changing anything.
+
+### Update
+
+macOS / Linux:
+
+```bash
+./update.sh
+```
+
+This refreshes the runtime files, pulls the latest published Docker images, and restarts the stack while preserving `.env` and Docker volumes. Developers can rebuild from source instead:
+
+```bash
+./update.sh --build
+```
 
 **Endpoints after boot:**
 
