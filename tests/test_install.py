@@ -1,4 +1,5 @@
 import importlib.util
+import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import patch
@@ -65,34 +66,34 @@ class InstallerEnvTests(unittest.TestCase):
         self.assertFalse(install.env_needs_configuration(values))
 
     def test_write_env_never_wipes_existing_api_key_with_blank_value(self) -> None:
-        env_path = ROOT / ".context" / "test-install.env"
-        original_env_file = install.ENV_FILE
-        env_path.write_text("OPENROUTER_API_KEY=sk-or-existing\n", encoding="utf-8")
-        self.addCleanup(lambda: env_path.unlink(missing_ok=True))
+        with tempfile.TemporaryDirectory() as tmpdir:
+            env_path = Path(tmpdir) / "test-install.env"
+            original_env_file = install.ENV_FILE
+            env_path.write_text("OPENROUTER_API_KEY=sk-or-existing\n", encoding="utf-8")
 
-        try:
-            install.ENV_FILE = env_path
-            install.write_env({"OPENROUTER_API_KEY": ""})
-        finally:
-            install.ENV_FILE = original_env_file
+            try:
+                install.ENV_FILE = env_path
+                install.write_env({"OPENROUTER_API_KEY": ""})
+            finally:
+                install.ENV_FILE = original_env_file
 
-        self.assertIn("OPENROUTER_API_KEY=sk-or-existing\n", env_path.read_text(encoding="utf-8"))
+            self.assertIn("OPENROUTER_API_KEY=sk-or-existing\n", env_path.read_text(encoding="utf-8"))
 
     def test_write_env_never_appends_blank_duplicate_for_exported_api_key(self) -> None:
-        env_path = ROOT / ".context" / "test-install-export.env"
-        original_env_file = install.ENV_FILE
-        env_path.write_text("export OPENROUTER_API_KEY=sk-or-existing\n", encoding="utf-8")
-        self.addCleanup(lambda: env_path.unlink(missing_ok=True))
+        with tempfile.TemporaryDirectory() as tmpdir:
+            env_path = Path(tmpdir) / "test-install-export.env"
+            original_env_file = install.ENV_FILE
+            env_path.write_text("export OPENROUTER_API_KEY=sk-or-existing\n", encoding="utf-8")
 
-        try:
-            install.ENV_FILE = env_path
-            install.write_env({"OPENROUTER_API_KEY": ""})
-        finally:
-            install.ENV_FILE = original_env_file
+            try:
+                install.ENV_FILE = env_path
+                install.write_env({"OPENROUTER_API_KEY": ""})
+            finally:
+                install.ENV_FILE = original_env_file
 
-        text = env_path.read_text(encoding="utf-8")
-        self.assertIn("export OPENROUTER_API_KEY=sk-or-existing\n", text)
-        self.assertNotIn("OPENROUTER_API_KEY=\n", text)
+            text = env_path.read_text(encoding="utf-8")
+            self.assertIn("export OPENROUTER_API_KEY=sk-or-existing\n", text)
+            self.assertNotIn("OPENROUTER_API_KEY=\n", text)
 
     def test_secret_default_preserves_existing_api_keys(self) -> None:
         self.assertEqual(install.secret_default("sk-ant-existing"), "sk-ant-existing")
