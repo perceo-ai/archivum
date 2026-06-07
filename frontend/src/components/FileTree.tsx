@@ -2,7 +2,6 @@ import { useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAppState, useAppDispatch } from '../store';
 import { createPage, ingestFile } from '../api';
-import type { IngestProgress } from '../types';
 import { cn } from '../lib/cn';
 import { Button } from './ui/Button';
 import { Input } from './ui/Input';
@@ -84,17 +83,7 @@ export default function FileTree() {
   async function handleFileDrop(files: FileList) {
     for (const file of Array.from(files)) {
       try {
-        const events: IngestProgress[] = [];
-        await ingestFile(file, (progress) => {
-          events.push(progress);
-          if (progress.type === 'page_created' || progress.type === 'page_updated') {
-            // Reload pages list after ingest
-          }
-        });
-        // Refresh pages
-        const { listPages } = await import('../api');
-        const updatedPages = await listPages();
-        dispatch({ type: 'SET_PAGES', pages: updatedPages });
+        await ingestFile(file);
       } catch (err) {
         console.error('Ingest failed:', err);
       }

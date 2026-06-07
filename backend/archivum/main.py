@@ -49,7 +49,7 @@ class _SecurityHeadersMiddleware(BaseHTTPMiddleware):
             "script-src 'self' 'unsafe-inline'; "
             "style-src 'self' 'unsafe-inline'; "
             "img-src 'self' data: blob:; "
-            "connect-src 'self'; "
+            "connect-src 'self' ws: wss:; "
             "font-src 'self'; "
             "object-src 'none'; "
             "frame-ancestors 'none'"

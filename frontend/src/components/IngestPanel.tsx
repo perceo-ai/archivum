@@ -1,18 +1,20 @@
-import { useState, useRef, useCallback } from 'react';
+import { useState, useRef, useCallback, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAppDispatch } from '../store';
-import { ingestFile, ingestUrl, listPages } from '../api';
-import type { IngestProgress } from '../types';
+import { ingestFile, ingestUrl, listPages, openIngestSocket } from '../api';
+import type { IngestLog, IngestProgress, IngestSocketMessage } from '../types';
 import { Button } from './ui/Button';
 import { Card } from './ui/Card';
 import { Input } from './ui/Input';
 import { cn } from '../lib/cn';
 
 interface FileStatus {
+  ingestId?: number;
   name: string;
   events: IngestProgress[];
   done: boolean;
   error: string | null;
+  fromHistory?: boolean;
 }
 
 const ACCEPTED_TYPES = ['.md', '.txt', '.pdf', '.html', '.docx'];
@@ -26,20 +28,126 @@ export default function IngestPanel() {
   const [processing, setProcessing] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  function updateFileStatus(name: string, event: IngestProgress) {
+  const updateFileStatus = useCallback((name: string, event: IngestProgress) => {
     setFileStatuses((prev) =>
-      prev.map((fs) =>
-        fs.name === name
-          ? {
-              ...fs,
-              events: [...fs.events, event],
-              done: event.type === 'done' || event.type === 'error',
-              error: event.type === 'error' ? (event.message ?? 'Unknown error') : fs.error,
-            }
-          : fs,
-      ),
+      {
+        const sourceName = event.file ?? event.source ?? name;
+        let matched = false;
+        const next = prev.map((fs) => {
+          if (fs.name !== name && fs.name !== sourceName && (event.log_id === undefined || fs.ingestId !== event.log_id)) {
+            return fs;
+          }
+          matched = true;
+          return {
+            ...fs,
+            ingestId: event.log_id ?? fs.ingestId,
+            name: sourceName,
+            events: [...fs.events, event],
+            done: event.type === 'done' || event.type === 'error',
+            error: event.type === 'error' ? (event.message ?? 'Unknown error') : fs.error,
+          };
+        });
+
+        if (matched) return next;
+
+        return [
+          ...next,
+          {
+            ingestId: event.log_id,
+            name: sourceName,
+            events: [event],
+            done: event.type === 'done' || event.type === 'error',
+            error: event.type === 'error' ? (event.message ?? 'Unknown error') : null,
+            fromHistory: true,
+          },
+        ];
+      },
     );
-  }
+  }, []);
+
+  const mergeIngestLogs = useCallback((logs: IngestLog[]) => {
+    setFileStatuses((prev) => {
+      const next = [...prev];
+
+      for (const log of logs) {
+        const existingIndex = next.findIndex(
+          (fs) => fs.ingestId === log.id || fs.name === log.source_path,
+        );
+        const isDone = log.status === 'done' || log.status === 'error';
+        const finalEvent: IngestProgress | null =
+          log.status === 'done'
+            ? {
+                type: 'done',
+                file: log.source_path,
+                log_id: log.id,
+                pages_created: log.pages_created,
+                pages_updated: log.pages_updated,
+              }
+            : log.status === 'error'
+              ? {
+                  type: 'error',
+                  file: log.source_path,
+                  log_id: log.id,
+                  message: log.error ?? 'Unknown error',
+                }
+              : null;
+
+        if (existingIndex === -1) {
+          next.push({
+            ingestId: log.id,
+            name: log.source_path,
+            events: finalEvent
+              ? [
+                  { type: 'start', file: log.source_path, log_id: log.id },
+                  finalEvent,
+                ]
+              : [{ type: 'start', file: log.source_path, log_id: log.id }],
+            done: isDone,
+            error: log.status === 'error' ? (log.error ?? 'Unknown error') : null,
+            fromHistory: true,
+          });
+          continue;
+        }
+
+        const existing = next[existingIndex];
+        const hasFinalEvent = existing.events.some((event) =>
+          log.status === 'done' ? event.type === 'done' : event.type === 'error',
+        );
+
+        next[existingIndex] = {
+          ...existing,
+          ingestId: log.id,
+          name: log.source_path,
+          done: isDone ? true : existing.done,
+          error: log.status === 'error' ? (log.error ?? 'Unknown error') : existing.error,
+          events: finalEvent && !hasFinalEvent
+            ? [...existing.events, finalEvent]
+            : existing.events,
+        };
+      }
+
+      return next;
+    });
+  }, []);
+
+  useEffect(() => {
+    function handleSocketMessage(message: IngestSocketMessage) {
+      if (message.type === 'snapshot') {
+        mergeIngestLogs(message.logs);
+      } else if (message.type === 'event') {
+        const event = message.event;
+        updateFileStatus(event.file ?? event.source ?? 'Ingest task', event);
+        if (event.type === 'done') {
+          listPages()
+            .then((pages) => dispatch({ type: 'SET_PAGES', pages }))
+            .catch(() => undefined);
+        }
+      }
+    }
+
+    const socket = openIngestSocket(handleSocketMessage);
+    return () => socket.close();
+  }, [dispatch, mergeIngestLogs, updateFileStatus]);
 
   const processFiles = useCallback(
     async (files: File[]) => {
@@ -48,13 +156,18 @@ export default function IngestPanel() {
       // Initialize statuses
       setFileStatuses((prev) => [
         ...prev,
-        ...files.map((f) => ({ name: f.name, events: [], done: false, error: null })),
+        ...files.map((f) => ({
+          name: f.name,
+          events: [{ type: 'start' as const, file: f.name, message: 'Uploading' }],
+          done: false,
+          error: null,
+        })),
       ]);
 
       await Promise.allSettled(
         files.map(async (file) => {
           try {
-            await ingestFile(file, (progress) => updateFileStatus(file.name, progress));
+            await ingestFile(file);
           } catch (err) {
             updateFileStatus(file.name, {
               type: 'error',
@@ -75,7 +188,7 @@ export default function IngestPanel() {
 
       setProcessing(false);
     },
-    [dispatch],
+    [dispatch, updateFileStatus],
   );
 
   async function handleUrlIngest(e: React.FormEvent) {
@@ -88,13 +201,11 @@ export default function IngestPanel() {
     setProcessing(true);
     setFileStatuses((prev) => [
       ...prev,
-      { name, events: [], done: false, error: null },
+      { name, events: [{ type: 'start', file: name }], done: false, error: null },
     ]);
 
     try {
-      await ingestUrl(url, (progress) => updateFileStatus(name, progress));
-      const pages = await listPages();
-      dispatch({ type: 'SET_PAGES', pages });
+      await ingestUrl(url);
     } catch (err) {
       updateFileStatus(name, {
         type: 'error',
@@ -220,7 +331,7 @@ export default function IngestPanel() {
             >
               {fileStatuses.map((fs, i) => (
                 <FileStatusRow
-                  key={i}
+                  key={fs.ingestId ?? `${fs.name}-${i}`}
                   status={fs}
                   onNavigate={(slug) => navigate(`/wiki/${slug}`)}
                 />
@@ -280,9 +391,25 @@ function EventLine({
 
   switch (event.type) {
     case 'start':
-      return <p className={`${base} text-text-muted`}>Starting...</p>;
+      return <p className={`${base} text-text-muted`}>{event.message ?? 'Starting...'}</p>;
     case 'parsed':
-      return <p className={`${base} text-text-muted`}>Parsed content</p>;
+      return (
+        <p className={`${base} text-text-muted`}>
+          Parsed content{event.chars ? ` · ${event.chars.toLocaleString()} chars` : ''}
+        </p>
+      );
+    case 'extracting':
+      return (
+        <p className={`${base} text-text-muted`}>
+          {event.message ?? 'Running LLM extraction...'}
+        </p>
+      );
+    case 'extracted':
+      return (
+        <p className={`${base} text-text-muted`}>
+          Extracted {event.pages ?? 0} pages and {event.entities ?? 0} entities
+        </p>
+      );
     case 'page_created':
       return (
         <p className={`${base} text-green-400`}>
