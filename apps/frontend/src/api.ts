@@ -1,4 +1,13 @@
-import type { Page, SearchResult, GraphNode, GraphEdge, IngestLog, IngestSocketMessage } from './types';
+import type {
+  Page,
+  Folder,
+  FolderMutationResult,
+  SearchResult,
+  GraphNode,
+  GraphEdge,
+  IngestLog,
+  IngestSocketMessage,
+} from './types';
 
 const BASE = '';
 
@@ -118,6 +127,71 @@ export async function createPage(input: CreatePageInput): Promise<Page> {
 
 export async function deletePage(slug: string): Promise<void> {
   await apiFetch(`/api/pages/${encodeSlugPath(slug)}`, { method: 'DELETE' });
+}
+
+export async function movePage(slug: string, input: { new_slug: string }): Promise<Page> {
+  const res = await apiFetch(`/api/pages/${encodeSlugPath(slug)}/move`, {
+    method: 'PATCH',
+    body: JSON.stringify(input),
+  });
+  return res.json();
+}
+
+export async function duplicatePage(
+  slug: string,
+  input: { new_slug: string; title?: string },
+): Promise<Page> {
+  const res = await apiFetch(`/api/pages/${encodeSlugPath(slug)}/duplicate`, {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+  return res.json();
+}
+
+export async function listFolders(): Promise<Folder[]> {
+  const res = await apiFetch('/api/folders');
+  return res.json();
+}
+
+export async function createFolder(input: { path: string }): Promise<Folder> {
+  const res = await apiFetch('/api/folders', {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+  return res.json();
+}
+
+export async function renameFolder(
+  path: string,
+  input: { name: string; recursive?: boolean },
+): Promise<FolderMutationResult> {
+  const res = await apiFetch(`/api/folders/${encodeSlugPath(path)}`, {
+    method: 'PATCH',
+    body: JSON.stringify(input),
+  });
+  return res.json();
+}
+
+export async function moveFolder(
+  path: string,
+  input: { new_path: string; recursive?: boolean },
+): Promise<FolderMutationResult> {
+  const res = await apiFetch(`/api/folders/${encodeSlugPath(path)}`, {
+    method: 'PATCH',
+    body: JSON.stringify(input),
+  });
+  return res.json();
+}
+
+export async function deleteFolder(
+  path: string,
+  input: { recursive?: boolean } = {},
+): Promise<FolderMutationResult> {
+  const recursive = input.recursive ? 'true' : 'false';
+  const res = await apiFetch(`/api/folders/${encodeSlugPath(path)}?recursive=${recursive}`, {
+    method: 'DELETE',
+  });
+  return res.json();
 }
 
 export async function getBacklinks(slug: string): Promise<Page[]> {

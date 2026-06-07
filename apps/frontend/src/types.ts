@@ -8,6 +8,19 @@ export interface Page {
   authored_by: 'user' | 'agent';
 }
 
+export interface Folder {
+  path: string;
+  name: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface FolderMutationResult {
+  path: string;
+  pages: number;
+  folders: number;
+}
+
 export interface SearchResult {
   slug: string;
   title: string;
