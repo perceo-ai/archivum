@@ -90,3 +90,5 @@ export function useAppDispatch(): React.Dispatch<Action> {
   if (!ctx) throw new Error('useAppDispatch must be used within AppProvider');
   return ctx.dispatch;
 }
+
+export { reducer };
