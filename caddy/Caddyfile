@@ -1,6 +1,5 @@
 {
-	# Email for Let's Encrypt notifications — change this
-	email admin@example.com
+	email pranav.kannepalli@gmail.com
 }
 
 # ─── Production (ARCHIVUM_HOST set) ──────────────────────────────────────────

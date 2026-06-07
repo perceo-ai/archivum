@@ -142,7 +142,7 @@ Use `--dry-run` on macOS/Linux or `-DryRun` on PowerShell to print the actions w
 | `http://localhost:8000` | REST API |
 | `http://localhost:8001/sse` | MCP server (SSE) |
 
-**Optional — TLS + public share subdomain:** set `ARCHIVUM_HOST` in `.env` and update the email in `caddy/Caddyfile`. Caddy will serve `https://$ARCHIVUM_HOST` and `https://share.$ARCHIVUM_HOST` automatically. The share subdomain only serves `/share/*`, `/public*`, `/api/share/*`, and `/api/public/*`.
+**Optional — TLS + public share subdomain:** see [Custom Domain & HTTPS](#custom-domain--https) below.
 
 ### Local development without building images
 
@@ -206,6 +206,67 @@ npm run dev
 | `OPENAI_COMPAT_API_KEY` | No | — | API key for any OpenAI-compatible endpoint. |
 | `OPENAI_COMPAT_BASE_URL` | No | — | Base URL for custom OpenAI-compatible endpoint. |
 | `PUBLIC_WIKI_ENABLED` | No | `false` | Exposes read-only public wiki pages at `/public` and `/api/public/pages`. |
+
+## Custom Domain & HTTPS
+
+Caddy handles TLS automatically via Let's Encrypt once your domain points at the machine. There are three things you must do before it works.
+
+### 1. Set your hostname and fix the Caddyfile email
+
+In `.env`:
+
+```
+ARCHIVUM_HOST=yourdomain.com
+```
+
+In `caddy/Caddyfile`, replace the placeholder email with your real address:
+
+```
+{
+    email you@youremail.com
+}
+```
+
+> **Why?** Let's Encrypt explicitly blocks `example.com` as a contact address and will reject the certificate request with a 400 error. Caddy may fall back to ZeroSSL, but the safest path is a real email on a real domain.
+
+### 2. Create DNS records
+
+At your DNS provider (wherever your domain is registered), add two **A records** pointing to your machine's public IP:
+
+| Name | Type | Value |
+|---|---|---|
+| `yourdomain.com` | A | `<your public IP>` |
+| `share.yourdomain.com` | A | `<your public IP>` |
+
+The `share` subdomain is required if you want to use share links or the public wiki on its own hostname.
+
+Find your machine's public IP with:
+
+```bash
+curl -s https://api.ipify.org
+```
+
+DNS changes can take a few minutes to an hour to propagate. You can check with `dig yourdomain.com` or an online DNS lookup tool.
+
+> **Cloudflare users — Proxy vs DNS-only:** If your domain is on Cloudflare, set the A records to **DNS only (grey cloud)**, not Proxied (orange cloud). With Proxy enabled, Cloudflare terminates TLS at the edge and forwards requests to your origin — but Caddy's ACME http-01 challenge also goes through Cloudflare, which requires your machine to be reachable from Cloudflare's servers on port 80. If that's not the case (e.g., you're on a home network without port forwarding), the challenge silently fails and connections time out. DNS-only lets Caddy talk directly to Let's Encrypt without any proxy in the way. If you want to keep the Cloudflare Proxy for CDN/DDoS benefits, use a [Cloudflare Tunnel](#cloudflare-tunnel) instead — it bypasses this entirely.
+
+### 3. Make sure ports 80 and 443 are reachable
+
+Caddy proves domain ownership by answering an HTTP challenge on port 80, then serves HTTPS on 443. Both ports must be reachable from the internet.
+
+- **Cloud VPS / dedicated server:** check that your firewall or security group allows inbound TCP 80 and 443.
+- **Home network / NAT router:** add port-forward rules in your router admin panel pointing external ports 80 and 443 to the local IP of the machine running Archivum.
+- **Can't open ports at all?** Use a [Cloudflare Tunnel](#cloudflare-tunnel) instead — it punches through NAT without any port forwarding.
+
+### 4. Apply the changes
+
+```bash
+docker compose restart caddy
+```
+
+Caddy will fetch certificates for `yourdomain.com` and `share.yourdomain.com` on startup and renew them automatically. The share subdomain only serves `/share/*`, `/public*`, `/api/share/*`, and `/api/public/*`; all other paths return 404.
+
+---
 
 ## Publishing
 
