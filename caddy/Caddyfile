@@ -4,17 +4,17 @@
 
 # ─── Production (ARCHIVUM_HOST set) ──────────────────────────────────────────
 {$ARCHIVUM_HOST:localhost} {
-	# Proxy API to backend
-	handle /api/* {
-		reverse_proxy backend:8000
-	}
-
-	# WebSocket for editor auto-save
-	handle /ws/* {
+	# WebSocket for ingest progress — must come before /api/* to get upgrade headers
+	handle /api/ingest/ws {
 		reverse_proxy backend:8000 {
 			header_up Upgrade websocket
 			header_up Connection Upgrade
 		}
+	}
+
+	# Proxy API to backend
+	handle /api/* {
+		reverse_proxy backend:8000
 	}
 
 	# Serve frontend

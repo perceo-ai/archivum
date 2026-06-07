@@ -43,6 +43,14 @@ class IngestWebSocketTests(unittest.TestCase):
                 pong = ws.receive_json()
                 self.assertEqual(pong, {"type": "control_ack", "action": "ping"})
 
+    def test_ingest_websocket_rejects_unauthenticated(self):
+        app = create_app()
+        client = TestClient(app)
+        # No cookie set — connection should be closed with code 1008
+        with self.assertRaises(Exception):
+            with client.websocket_connect("/api/ingest/ws") as ws:
+                ws.receive_json()  # Should never reach here
+
 
 if __name__ == "__main__":
     unittest.main()
