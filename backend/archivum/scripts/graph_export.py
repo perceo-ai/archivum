@@ -49,6 +49,37 @@ def _repo_root() -> Path:
     return Path(__file__).resolve().parents[3]
 
 
+def default_output_dir() -> Path:
+    """Repo-owned location where demo exports are written."""
+    return _repo_root() / "graph-export-out"
+
+
+def export_demo(output_dir: Path) -> dict[str, Any]:
+    """Generate a self-contained demo graph export (no DB required)."""
+    notes = [
+        "Generated from DEMO_GRAPH fixtures (no Kuzu DB required).",
+        "Nodes/edges format matches Archivum frontend expectations: {nodes:[...], edges:[{from,to,label/type}]}",
+    ]
+
+    write_export(
+        DEMO_GRAPH,
+        output_dir=output_dir,
+        mode="demo",
+        notes=notes,
+    )
+
+    manifest_path = output_dir / "manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8")) if manifest_path.exists() else None
+
+    return {
+        "mode": "demo",
+        "output_dir": str(output_dir),
+        "files_written": ["graph.json", "graph.html", "manifest.json"],
+        "manifest": manifest,
+        "notes": notes,
+    }
+
+
 def render_html(graph: dict[str, Any], title: str) -> str:
     graph_json = json.dumps(graph, ensure_ascii=False)
 
@@ -158,15 +189,7 @@ def main() -> None:
     output_dir = Path(args.output_dir)
 
     if args.demo:
-        write_export(
-            DEMO_GRAPH,
-            output_dir=output_dir,
-            mode="demo",
-            notes=[
-                "Generated from DEMO_GRAPH fixtures (no Kuzu DB required).",
-                "Nodes/edges format matches Archivum frontend expectations: {nodes:[...], edges:[{from,to,label/type}]}",
-            ],
-        )
+        export_demo(output_dir=output_dir)
         print(f"OK: wrote {output_dir / 'graph.json'} and {output_dir / 'graph.html'}")
         return
 
