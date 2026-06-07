@@ -1,4 +1,4 @@
-.PHONY: up down build logs shell-backend shell-frontend setup rebuild-indexes lint-wiki dev
+.PHONY: up down build logs shell-backend shell-frontend setup rebuild-indexes lint-wiki dev graph-export-demo
 
 # ─── Docker ───────────────────────────────────────────────────────────────────
 
@@ -41,6 +41,10 @@ lint-wiki:
 	@if [ ! -f .env ]; then cp .env.example .env && echo "Created .env — fill in your values before continuing" && exit 1; fi
 	curl -s http://localhost:8000/api/lint \
 		-H "Authorization: Bearer $$(grep MCP_API_KEY .env | cut -d= -f2)" | jq .
+
+graph-export-demo:
+	cd backend && python3 -m archivum.scripts.graph_export --demo --output-dir ../graph-export-out
+	@echo "OK: graph-export-out/graph.json and graph-export-out/graph.html written"
 
 # ─── Shells ───────────────────────────────────────────────────────────────────
 
