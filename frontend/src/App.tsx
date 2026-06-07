@@ -14,7 +14,7 @@ import GraphView from './components/GraphView';
 import QueryPanel from './components/QueryPanel';
 import IngestPanel from './components/IngestPanel';
 import SearchBar from './components/SearchBar';
-import { listPages } from './api';
+import { listPages, refreshSession } from './api';
 
 function ProtectedRoutes() {
   const { isAuthenticated, pages, pagesLoaded } = useAppState();
@@ -23,15 +23,25 @@ function ProtectedRoutes() {
   useLocation();
 
   useEffect(() => {
-    listPages()
-      .then((pages) => {
+    async function loadPages() {
+      try {
+        const pages = await listPages();
         dispatch({ type: 'SET_AUTH', value: true });
         dispatch({ type: 'SET_PAGES', pages });
-      })
-      .catch(() => {
-        dispatch({ type: 'SET_AUTH', value: false });
-        navigate('/login', { replace: true });
-      });
+      } catch {
+        try {
+          await refreshSession();
+          const pages = await listPages();
+          dispatch({ type: 'SET_AUTH', value: true });
+          dispatch({ type: 'SET_PAGES', pages });
+        } catch {
+          dispatch({ type: 'SET_AUTH', value: false });
+          navigate('/login', { replace: true });
+        }
+      }
+    }
+
+    loadPages();
   }, [dispatch, navigate]);
 
   if (!pagesLoaded && !isAuthenticated) {

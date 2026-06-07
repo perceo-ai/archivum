@@ -74,7 +74,7 @@ def _set_csrf_cookie(response: Response, token: str, settings: Settings) -> None
         httponly=False,
         samesite="strict",
         secure=False,
-        max_age=settings.access_token_expire_minutes * 60,
+        max_age=settings.refresh_token_expire_days * 86400,
         path="/",
     )
 

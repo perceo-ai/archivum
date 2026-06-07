@@ -64,6 +64,9 @@ class _CSRFProtection(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next) -> Response:  # type: ignore[override]
         method = request.method.upper()
         if method in {"POST", "PUT", "PATCH", "DELETE"} and request.url.path.startswith("/api/"):
+            if request.url.path == "/api/auth/refresh":
+                return await call_next(request)
+
             auth_header = request.headers.get("authorization")
             # Non-browser clients (MCP/CLI) use Bearer tokens; skip CSRF.
             if not (auth_header and auth_header.startswith("Bearer ")):

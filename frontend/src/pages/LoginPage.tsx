@@ -1,7 +1,7 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAppDispatch } from '../store';
-import { login, listPages } from '../api';
+import { login, listPages, refreshSession } from '../api';
 import { Button } from '../components/ui/Button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/Card';
 import { Input } from '../components/ui/Input';
@@ -12,6 +12,31 @@ export default function LoginPage() {
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function restoreSession() {
+      try {
+        await refreshSession();
+        const pages = await listPages();
+        if (cancelled) return;
+        dispatch({ type: 'SET_AUTH', value: true });
+        dispatch({ type: 'SET_PAGES', pages });
+        navigate('/', { replace: true });
+      } catch {
+        if (!cancelled) {
+          dispatch({ type: 'SET_AUTH', value: false });
+        }
+      }
+    }
+
+    restoreSession();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [dispatch, navigate]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -73,4 +98,3 @@ export default function LoginPage() {
     </div>
   );
 }
-
