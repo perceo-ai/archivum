@@ -8,6 +8,12 @@ import {
   createPage,
   updatePage,
   deletePage,
+  duplicatePage,
+  listFolders,
+  createFolder,
+  moveFolder,
+  deleteFolder,
+  movePage,
   getBacklinks,
   search,
   getGraph,
@@ -204,6 +210,115 @@ describe('deletePage', () => {
       method: 'DELETE',
       credentials: 'include',
     }));
+  });
+});
+
+describe('folders api', () => {
+  it('fetches folders', async () => {
+    const folders = [{ path: 'projects', name: 'projects', created_at: '2026-01-01', updated_at: '2026-01-01' }];
+    fetchMock.mockResolvedValueOnce(new Response(
+      JSON.stringify(folders),
+      { status: 200, headers: { 'Content-Type': 'application/json' } },
+    ));
+
+    await expect(listFolders()).resolves.toEqual(folders);
+
+    expect(fetchMock).toHaveBeenCalledWith('/api/folders', expect.objectContaining({
+      credentials: 'include',
+    }));
+  });
+
+  it('creates folders', async () => {
+    const folder = { path: 'projects', name: 'projects', created_at: '2026-01-01', updated_at: '2026-01-01' };
+    fetchMock.mockResolvedValueOnce(new Response(
+      JSON.stringify(folder),
+      { status: 201, headers: { 'Content-Type': 'application/json' } },
+    ));
+
+    await expect(createFolder({ path: 'projects' })).resolves.toEqual(folder);
+
+    expect(fetchMock).toHaveBeenCalledWith('/api/folders', expect.objectContaining({
+      method: 'POST',
+      credentials: 'include',
+    }));
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toEqual({ path: 'projects' });
+  });
+
+  it('moves folders with recursive intent', async () => {
+    fetchMock.mockResolvedValueOnce(new Response(
+      JSON.stringify({ path: 'archive/projects', pages: 2, folders: 1 }),
+      { status: 200, headers: { 'Content-Type': 'application/json' } },
+    ));
+
+    await expect(moveFolder('projects', { new_path: 'archive/projects', recursive: true })).resolves.toEqual({
+      path: 'archive/projects',
+      pages: 2,
+      folders: 1,
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith('/api/folders/projects', expect.objectContaining({
+      method: 'PATCH',
+      credentials: 'include',
+    }));
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toEqual({
+      new_path: 'archive/projects',
+      recursive: true,
+    });
+  });
+
+  it('deletes folders with recursive intent', async () => {
+    fetchMock.mockResolvedValueOnce(new Response(
+      JSON.stringify({ path: 'projects', pages: 2, folders: 1 }),
+      { status: 200, headers: { 'Content-Type': 'application/json' } },
+    ));
+
+    await expect(deleteFolder('projects', { recursive: true })).resolves.toEqual({
+      path: 'projects',
+      pages: 2,
+      folders: 1,
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith('/api/folders/projects?recursive=true', expect.objectContaining({
+      method: 'DELETE',
+      credentials: 'include',
+    }));
+  });
+});
+
+describe('page move helpers', () => {
+  it('moves a page to a new slug', async () => {
+    const page = makePage({ slug: 'archive/note' });
+    fetchMock.mockResolvedValueOnce(new Response(
+      JSON.stringify(page),
+      { status: 200, headers: { 'Content-Type': 'application/json' } },
+    ));
+
+    await expect(movePage('projects/note', { new_slug: 'archive/note' })).resolves.toEqual(page);
+
+    expect(fetchMock).toHaveBeenCalledWith('/api/pages/projects/note/move', expect.objectContaining({
+      method: 'PATCH',
+      credentials: 'include',
+    }));
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toEqual({ new_slug: 'archive/note' });
+  });
+
+  it('duplicates a page to a new slug', async () => {
+    const page = makePage({ slug: 'projects/note-copy' });
+    fetchMock.mockResolvedValueOnce(new Response(
+      JSON.stringify(page),
+      { status: 201, headers: { 'Content-Type': 'application/json' } },
+    ));
+
+    await expect(duplicatePage('projects/note', { new_slug: 'projects/note-copy', title: 'Note copy' })).resolves.toEqual(page);
+
+    expect(fetchMock).toHaveBeenCalledWith('/api/pages/projects/note/duplicate', expect.objectContaining({
+      method: 'POST',
+      credentials: 'include',
+    }));
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toEqual({
+      new_slug: 'projects/note-copy',
+      title: 'Note copy',
+    });
   });
 });
 

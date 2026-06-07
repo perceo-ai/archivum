@@ -1,60 +1,22 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { useAppDispatch } from '../store';
-import { createPage, createShareLink, deletePage, getPage, updatePage } from '../api';
+import { createShareLink, deletePage, getPage, listPages, updatePage } from '../api';
 import type { Page } from '../types';
 import Editor, { type EditorHandle } from '../components/Editor/Editor';
 import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
 import { Badge } from '../components/ui/Badge';
 import { Dialog } from '../components/ui/Dialog';
-import { Popover, PopoverContent, PopoverTrigger } from '../components/ui/Popover';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '../components/ui/DropdownMenu';
 import { useToast } from '../components/ui/Toast';
-
-function ExportMenu({ slug }: { slug: string }) {
-  const [open, setOpen] = useState(false);
-  const menuRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (!open) return;
-    function handleClick(e: MouseEvent) {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
-        setOpen(false);
-      }
-    }
-    document.addEventListener('mousedown', handleClick);
-    return () => document.removeEventListener('mousedown', handleClick);
-  }, [open]);
-
-  function handleExport(format: 'html' | 'pdf') {
-    window.open(`/api/export?slug=${encodeURIComponent(slug)}&format=${format}`, '_blank');
-    setOpen(false);
-  }
-
-  return (
-    <div ref={menuRef} className="relative">
-      <Button variant="ghost" size="sm" onClick={() => setOpen((v) => !v)} aria-haspopup="true" aria-expanded={open}>
-        Export
-      </Button>
-      {open && (
-        <div className="absolute right-0 top-full mt-1 z-50 min-w-[9rem] rounded-md border border-border bg-panel shadow-lg py-1">
-          <button
-            className="w-full text-left px-3 py-1.5 text-sm hover:bg-surface transition-colors"
-            onClick={() => handleExport('html')}
-          >
-            Export as HTML
-          </button>
-          <button
-            className="w-full text-left px-3 py-1.5 text-sm hover:bg-surface transition-colors"
-            onClick={() => handleExport('pdf')}
-          >
-            Export as PDF
-          </button>
-        </div>
-      )}
-    </div>
-  );
-}
+import { Download, MoreHorizontal, Share2, Trash2 } from 'lucide-react';
 
 export default function WikiPage() {
   const params = useParams();
@@ -68,12 +30,9 @@ export default function WikiPage() {
   const [tagsDraft, setTagsDraft] = useState('');
   const [contentDraft, setContentDraft] = useState<string | null>(null);
   const [deleteOpen, setDeleteOpen] = useState(false);
-  const [createOpen, setCreateOpen] = useState(false);
-  const [createTitle, setCreateTitle] = useState('');
-  const [createFolder, setCreateFolder] = useState('');
   const [shareUrl, setShareUrl] = useState<string | null>(null);
   const [shareLoading, setShareLoading] = useState(false);
-  const [sharePopoverOpen, setSharePopoverOpen] = useState(false);
+  const [shareDialogOpen, setShareDialogOpen] = useState(false);
   const editorRef = useRef<EditorHandle | null>(null);
   const metaSaveTimer = useRef<ReturnType<typeof setTimeout>>();
 
@@ -107,7 +66,7 @@ export default function WikiPage() {
   // Reset share URL when navigating to a different page
   useEffect(() => {
     setShareUrl(null);
-    setSharePopoverOpen(false);
+    setShareDialogOpen(false);
   }, [slug]);
 
   if (!slug) return null;
@@ -158,7 +117,6 @@ export default function WikiPage() {
       push({ kind: 'success', title: 'Deleted page', description: page.title });
       setDeleteOpen(false);
       // Pick a next page if available; otherwise go to ingest
-      const { listPages } = await import('../api');
       const pages = await listPages().catch(() => null);
       if (pages && pages.length > 0) {
         dispatch({ type: 'SET_PAGES', pages });
@@ -173,31 +131,9 @@ export default function WikiPage() {
     }
   }
 
-  async function handleCreate() {
-    if (!createTitle.trim()) return;
-    try {
-      const folder = slugifyFolder(createFolder);
-      const titleSlug = slugifySegment(createTitle) || 'untitled';
-      const created = await createPage({
-        title: createTitle.trim(),
-        slug: folder ? `${folder}/${titleSlug}` : undefined,
-        content: `# ${createTitle.trim()}\n\n`,
-      });
-      dispatch({ type: 'UPSERT_PAGE', page: created });
-      push({ kind: 'success', title: 'Created page', description: created.title });
-      setCreateOpen(false);
-      setCreateTitle('');
-      setCreateFolder('');
-      window.location.assign(`/wiki/${created.slug}`);
-    } catch (e) {
-      push({ kind: 'error', title: 'Create failed', description: (e as Error).message });
-    }
-  }
-
   async function handleShare() {
     if (shareUrl) {
-      // Already have a URL — just open the popover to show it
-      setSharePopoverOpen(true);
+      setShareDialogOpen(true);
       return;
     }
     setShareLoading(true);
@@ -205,7 +141,7 @@ export default function WikiPage() {
       const result = await createShareLink({ type: 'page', target_id: slugStr });
       const fullUrl = window.location.origin + result.url;
       setShareUrl(fullUrl);
-      setSharePopoverOpen(true);
+      setShareDialogOpen(true);
     } catch (e) {
       push({ kind: 'error', title: 'Share failed', description: (e as Error).message });
     } finally {
@@ -261,44 +197,16 @@ export default function WikiPage() {
             </div>
           </div>
           <div className="flex items-center gap-2 shrink-0">
-            <Button variant="ghost" size="sm" onClick={() => setCreateOpen(true)}>
-              New
-            </Button>
-            <Popover open={sharePopoverOpen} onOpenChange={setSharePopoverOpen}>
-              <PopoverTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={handleShare}
-                  disabled={!page || shareLoading}
-                >
-                  {shareLoading ? 'Sharing…' : 'Share'}
-                </Button>
-              </PopoverTrigger>
-              {shareUrl && (
-                <PopoverContent align="end" className="w-80">
-                  <p className="text-xs text-muted-foreground mb-2">Share link</p>
-                  <div className="flex items-center gap-2">
-                    <input
-                      readOnly
-                      value={shareUrl}
-                      className="flex-1 min-w-0 rounded-md border border-input bg-background px-2 py-1 text-xs text-foreground font-mono truncate focus:outline-none"
-                      onClick={(e) => (e.target as HTMLInputElement).select()}
-                    />
-                    <Button variant="secondary" size="sm" onClick={handleCopyShareUrl}>
-                      Copy
-                    </Button>
-                  </div>
-                </PopoverContent>
-              )}
-            </Popover>
-            {page && <ExportMenu slug={slugStr} />}
             <Button variant="secondary" size="sm" onClick={handleSaveNow} disabled={!page}>
               Save
             </Button>
-            <Button variant="danger" size="sm" onClick={() => setDeleteOpen(true)} disabled={!page}>
-              Delete
-            </Button>
+            <PageMenu
+              slug={slugStr}
+              disabled={!page}
+              shareLoading={shareLoading}
+              onShare={handleShare}
+              onDelete={() => setDeleteOpen(true)}
+            />
           </div>
         </div>
         {error && <div className="text-xs text-red-400 mt-1">{error}</div>}
@@ -343,55 +251,76 @@ export default function WikiPage() {
       />
 
       <Dialog
-        open={createOpen}
-        onOpenChange={setCreateOpen}
-        title="Create a new page"
-        description="Optionally choose a folder — the slug will be generated automatically."
+        open={shareDialogOpen}
+        onOpenChange={setShareDialogOpen}
+        title="Share link"
         footer={
           <div className="flex items-center justify-end gap-2">
-            <Button variant="ghost" onClick={() => setCreateOpen(false)}>
-              Cancel
+            <Button variant="ghost" onClick={() => setShareDialogOpen(false)}>
+              Close
             </Button>
-            <Button variant="primary" onClick={handleCreate} disabled={!createTitle.trim()}>
-              Create
+            <Button variant="secondary" onClick={handleCopyShareUrl} disabled={!shareUrl}>
+              Copy
             </Button>
           </div>
         }
       >
-        <div className="space-y-3">
-          <Input
-            value={createFolder}
-            onChange={(e) => setCreateFolder(e.target.value)}
-            placeholder="Folder (optional) e.g. work/meetings"
+        {shareUrl && (
+          <input
+            readOnly
+            value={shareUrl}
+            className="w-full rounded-md border border-input bg-background px-2 py-2 text-xs text-foreground font-mono truncate focus:outline-none"
+            onClick={(e) => (e.target as HTMLInputElement).select()}
           />
-          <Input
-            value={createTitle}
-            onChange={(e) => setCreateTitle(e.target.value)}
-            placeholder="e.g. Retrieval notes"
-            autoFocus
-          />
-        </div>
+        )}
       </Dialog>
     </div>
   );
 }
 
-function slugifySegment(input: string): string {
-  return input
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9._-]+/g, '-')
-    .replace(/^-+|-+$/g, '');
-}
+function PageMenu({
+  slug,
+  disabled,
+  shareLoading,
+  onShare,
+  onDelete,
+}: {
+  slug: string;
+  disabled: boolean;
+  shareLoading: boolean;
+  onShare: () => void;
+  onDelete: () => void;
+}) {
+  function handleExport(format: 'html' | 'pdf') {
+    window.open(`/api/export?slug=${encodeURIComponent(slug)}&format=${format}`, '_blank');
+  }
 
-function slugifyFolder(folder: string): string | undefined {
-  const trimmed = folder.trim();
-  if (!trimmed) return undefined;
-  const normalized = trimmed
-    .replace(/^\/+|\/+$/g, '')
-    .split('/')
-    .map((seg) => slugifySegment(seg))
-    .filter(Boolean)
-    .join('/');
-  return normalized || undefined;
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button variant="ghost" size="icon" disabled={disabled} aria-label="Page actions">
+          <MoreHorizontal className="h-4 w-4" />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end">
+        <DropdownMenuItem onSelect={onShare} disabled={shareLoading}>
+          <Share2 className="h-4 w-4" />
+          {shareLoading ? 'Sharing...' : 'Share'}
+        </DropdownMenuItem>
+        <DropdownMenuItem onSelect={() => handleExport('html')}>
+          <Download className="h-4 w-4" />
+          Export HTML
+        </DropdownMenuItem>
+        <DropdownMenuItem onSelect={() => handleExport('pdf')}>
+          <Download className="h-4 w-4" />
+          Export PDF
+        </DropdownMenuItem>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem onSelect={onDelete} className="text-destructive">
+          <Trash2 className="h-4 w-4" />
+          Delete
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
 }

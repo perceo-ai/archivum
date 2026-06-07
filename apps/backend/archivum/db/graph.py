@@ -333,6 +333,20 @@ async def delete_page_node(slug: str) -> None:
     await _run(_do)
 
 
+async def rename_page_node(old_slug: str, new_slug: str, wiki_id: str = "default") -> None:
+    """Rename a Page node while preserving graph edges where Kuzu supports SET."""
+    def _do():
+        conn = _get_conn()
+        try:
+            conn.execute(
+                "MATCH (p:Page {slug: $old_slug}) SET p.slug = $new_slug, p.wiki_id = $wiki_id",
+                {"old_slug": old_slug, "new_slug": new_slug, "wiki_id": wiki_id},
+            )
+        except Exception as exc:
+            logger.debug("rename_page_node error: %s", exc)
+    await _run(_do)
+
+
 async def cleanup_abandoned_nodes(wiki_id: str = "default") -> dict[str, int]:
     """
     Delete graph nodes that no longer have any backing Page.

@@ -43,6 +43,19 @@ CREATE TABLE IF NOT EXISTS pages (
 CREATE INDEX IF NOT EXISTS idx_pages_wiki ON pages(wiki_id);
 CREATE INDEX IF NOT EXISTS idx_pages_slug ON pages(slug);
 
+CREATE TABLE IF NOT EXISTS folders (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    wiki_id     TEXT    NOT NULL DEFAULT 'default',
+    path        TEXT    NOT NULL,
+    name        TEXT    NOT NULL,
+    created_at  TEXT    NOT NULL DEFAULT (datetime('now')),
+    updated_at  TEXT    NOT NULL DEFAULT (datetime('now')),
+    UNIQUE(wiki_id, path)
+);
+
+CREATE INDEX IF NOT EXISTS idx_folders_wiki ON folders(wiki_id);
+CREATE INDEX IF NOT EXISTS idx_folders_path ON folders(path);
+
 -- FTS5 virtual table for keyword search
 CREATE VIRTUAL TABLE IF NOT EXISTS pages_fts USING fts5(
     slug,
@@ -288,6 +301,144 @@ async def delete_page(slug: str, wiki_id: str = "default") -> bool:
         )
         await db.commit()
         return cur.rowcount > 0
+
+
+async def update_page_slug(old_slug: str, new_slug: str, wiki_id: str = "default") -> bool:
+    now = datetime.now(UTC).isoformat()
+    async with get_db() as db:
+        cur = await db.execute(
+            "UPDATE pages SET slug=?, updated_at=? WHERE slug=? AND wiki_id=?",
+            (new_slug, now, old_slug, wiki_id),
+        )
+        await db.commit()
+        return cur.rowcount > 0
+
+
+async def list_pages_under(prefix: str, wiki_id: str = "default") -> list[dict[str, Any]]:
+    like_prefix = f"{prefix}/%"
+    async with get_db() as db:
+        async with db.execute(
+            "SELECT * FROM pages WHERE wiki_id=? AND slug LIKE ? ORDER BY slug ASC",
+            (wiki_id, like_prefix),
+        ) as cur:
+            rows = await cur.fetchall()
+            return [dict(r) for r in rows]
+
+
+async def delete_pages_under(prefix: str, wiki_id: str = "default") -> list[dict[str, Any]]:
+    pages = await list_pages_under(prefix, wiki_id)
+    if not pages:
+        return []
+    like_prefix = f"{prefix}/%"
+    async with get_db() as db:
+        await db.execute(
+            "DELETE FROM pages WHERE wiki_id=? AND slug LIKE ?",
+            (wiki_id, like_prefix),
+        )
+        await db.commit()
+    return pages
+
+
+async def update_share_targets(mapping: dict[str, str], wiki_id: str = "default") -> None:
+    if not mapping:
+        return
+    async with get_db() as db:
+        for old, new in mapping.items():
+            await db.execute(
+                "UPDATE share_links SET target_id=? WHERE wiki_id=? AND type='page' AND target_id=?",
+                (new, wiki_id, old),
+            )
+        await db.commit()
+
+
+# ── Folders ───────────────────────────────────────────────────────────────────
+
+async def list_folders(wiki_id: str = "default") -> list[dict[str, Any]]:
+    async with get_db() as db:
+        async with db.execute(
+            "SELECT path, name, created_at, updated_at FROM folders WHERE wiki_id=? ORDER BY path ASC",
+            (wiki_id,),
+        ) as cur:
+            rows = await cur.fetchall()
+            return [dict(r) for r in rows]
+
+
+async def get_folder(path: str, wiki_id: str = "default") -> dict[str, Any] | None:
+    async with get_db() as db:
+        async with db.execute(
+            "SELECT path, name, created_at, updated_at FROM folders WHERE path=? AND wiki_id=?",
+            (path, wiki_id),
+        ) as cur:
+            row = await cur.fetchone()
+            return dict(row) if row else None
+
+
+async def create_folder(path: str, wiki_id: str = "default") -> dict[str, Any]:
+    name = path.split("/")[-1]
+    now = datetime.now(UTC).isoformat()
+    async with get_db() as db:
+        await db.execute(
+            "INSERT INTO folders (wiki_id, path, name, created_at, updated_at) VALUES (?,?,?,?,?)",
+            (wiki_id, path, name, now, now),
+        )
+        await db.commit()
+    folder = await get_folder(path, wiki_id)
+    return folder or {"path": path, "name": name, "created_at": now, "updated_at": now}
+
+
+async def upsert_folder(path: str, wiki_id: str = "default") -> dict[str, Any]:
+    existing = await get_folder(path, wiki_id)
+    if existing:
+        return existing
+    return await create_folder(path, wiki_id)
+
+
+async def list_folders_under(path: str, wiki_id: str = "default") -> list[dict[str, Any]]:
+    like_prefix = f"{path}/%"
+    async with get_db() as db:
+        async with db.execute(
+            "SELECT path, name, created_at, updated_at FROM folders "
+            "WHERE wiki_id=? AND (path=? OR path LIKE ?) ORDER BY path ASC",
+            (wiki_id, path, like_prefix),
+        ) as cur:
+            rows = await cur.fetchall()
+            return [dict(r) for r in rows]
+
+
+async def move_folder_paths(old_path: str, new_path: str, wiki_id: str = "default") -> int:
+    rows = await list_folders_under(old_path, wiki_id)
+    now = datetime.now(UTC).isoformat()
+    async with get_db() as db:
+        for row in sorted(rows, key=lambda r: len(r["path"])):
+            suffix = row["path"][len(old_path):]
+            path = f"{new_path}{suffix}"
+            await db.execute(
+                "UPDATE folders SET path=?, name=?, updated_at=? WHERE wiki_id=? AND path=?",
+                (path, path.split("/")[-1], now, wiki_id, row["path"]),
+            )
+        await db.commit()
+    return len(rows)
+
+
+async def delete_folder(path: str, wiki_id: str = "default") -> bool:
+    async with get_db() as db:
+        cur = await db.execute(
+            "DELETE FROM folders WHERE wiki_id=? AND path=?",
+            (wiki_id, path),
+        )
+        await db.commit()
+        return cur.rowcount > 0
+
+
+async def delete_folders_under(path: str, wiki_id: str = "default") -> int:
+    like_prefix = f"{path}/%"
+    async with get_db() as db:
+        cur = await db.execute(
+            "DELETE FROM folders WHERE wiki_id=? AND (path=? OR path LIKE ?)",
+            (wiki_id, path, like_prefix),
+        )
+        await db.commit()
+        return cur.rowcount
 
 
 async def search_pages_fts(
