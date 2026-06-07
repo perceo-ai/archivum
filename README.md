@@ -84,3 +84,21 @@ curl -s -X POST http://localhost:8000/api/rebuild-indexes \
 ```bash
 docker compose logs -f backend
 ```
+
+## Graph export (local mock-safe demo)
+
+Use the repo-owned mock graph fixtures (no DB required) and write inspectable artifacts to disk:
+
+```bash
+make graph-export-demo
+```
+
+This writes:
+- `graph-export-out/graph.json`
+- `graph-export-out/graph.html` (self-contained visualisation)
+- `graph-export-out/manifest.json`
+
+To open the HTML:
+- macOS/Linux: `open graph-export-out/graph.html` / `xdg-open graph-export-out/graph.html`
+- or just `file://.../graph-export-out/graph.html`
+
