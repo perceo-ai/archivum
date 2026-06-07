@@ -302,6 +302,111 @@ else
 fi
 ```
 
+## Rollback verification checkpoints (pass/fail)
+Assumes you captured `openclaw cron show --json <id>` into `/tmp/cron-${id}.before.json` before making any changes.
+
+Checkpoint 1 — Wrong job ID (STOP if this fails)
+- Pass:
+  - `name` and `agentId` match what you intended
+  - `enabled` matches the pre-rollback value you recorded as `wasEnabled`
+- Fail (examples):
+  - You disable/enable the wrong cron because the ID was copied incorrectly.
+
+Example pre-flight:
+```bash
+candidate=<id>
+openclaw cron show --json "$candidate" | jq -S '{id,name,agentId,enabled,schedule}'
+# Pass if this matches your intended job.
+# If name/agentId/schedule don't match: re-check with `openclaw cron list` and stop.
+```
+
+Checkpoint 2 — Disabled state really stuck (must be false)
+- Pass:
+  - after `openclaw cron disable "$id"`, `openclaw cron show --json "$id"` shows `enabled: false`
+- Fail:
+  - `enabled` is still `true` (you’re effectively rolling back an actively scheduled job mid-flight).
+
+Quick check:
+```bash
+openclaw cron show --json "$id" | jq -r '.enabled'  # should print false during rollback
+```
+
+Checkpoint 3 — Restore operator fields exactly (diff must be empty)
+- Pass:
+  - the operator-relevant fields you restore (agent/session/schedule/delivery/tools allow-list) are identical to `before.json`
+- Fail (examples):
+  - “JSON field drift” across Gateway versions means you restored the wrong keys, or your jq projection misses a field.
+
+Verification command (runbook-projected fields):
+```bash
+openclaw cron show --json "$id" > /tmp/cron-${id}.after-rollback.json
+jq -S '{
+  agentId,
+  enabled,
+  sessionTarget,
+  schedule: {kind, expr, tz},
+  delivery: {mode, channel, to, bestEffort},
+  payload: {toolsAllow: (.payload.toolsAllow // null)}
+}' /tmp/cron-${id}.before.json > /tmp/cron-${id}.before.fields.json
+
+jq -S '{
+  agentId,
+  enabled,
+  sessionTarget,
+  schedule: {kind, expr, tz},
+  delivery: {mode, channel, to, bestEffort},
+  payload: {toolsAllow: (.payload.toolsAllow // null)}
+}' /tmp/cron-${id}.after-rollback.json > /tmp/cron-${id}.after-rollback.fields.json
+
+diff -u /tmp/cron-${id}.before.fields.json /tmp/cron-${id}.after-rollback.fields.json
+# Pass if diff output is empty.
+```
+
+Concrete JSON field drift example:
+```bash
+# If this prints null for `payload.toolsAllow`, don’t diff blindly—first confirm what keys exist:
+openclaw cron show --json "$id" | jq '.payload | keys'
+
+# Restore via `openclaw cron edit --tools ...` using values extracted from before.json
+# (don’t try to re-import raw JSON).
+```
+
+Checkpoint 4 — Re-enable logic (final.enabled must equal wasEnabled)
+- Pass:
+  - if `wasEnabled=true`, final job shows `enabled: true`
+  - otherwise it stays `enabled: false`
+
+Concrete enable-vs-edit mistakes:
+```bash
+# Mistake A: you enabled, but you never applied the intended edits
+openclaw cron show --json "$id" | jq -r '{enabled, schedule, payload: {toolsAllow: .payload.toolsAllow}}'
+
+# Mistake B: you edited schedule, but forgot to enable
+openclaw cron show --json "$id" | jq -r '.enabled'  # expected true after enabling
+```
+
+Checkpoint 5 — “Config vs history” (run vs runs/status)
+- Pass:
+  - `openclaw cron show` reflects config changes
+  - `openclaw cron runs` reflects history (new entries only when you force a run)
+- Fail (example):
+  - expecting `openclaw cron edit/enable` to immediately create a new `runs` entry.
+
+Example:
+```bash
+# Config check
+openclaw cron show --json "$id" | jq -r '{enabled, schedule}'
+
+# Force immediate execution (one-off)
+openclaw cron run "$id"
+
+# History check (expect a new entry / updated timestamps)
+openclaw cron runs "$id"
+
+# Scheduler health remains separate
+openclaw cron status
+```
+
 If the job was failing due to delivery or tools allow-list, also check the immediate run history:
 - `openclaw cron runs "$id"`
 
