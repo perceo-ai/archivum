@@ -79,7 +79,7 @@ docker compose up -d qdrant
 Then run Python services from the repo:
 
 ```bash
-cd backend
+cd apps/backend
 uv sync
 
 WIKI_DIR=.data/wiki \
@@ -93,7 +93,7 @@ uv run uvicorn archivum.main:app --reload --port 8000
 Run MCP separately when needed:
 
 ```bash
-cd backend
+cd apps/backend
 WIKI_DIR=.data/wiki \
 RAW_DIR=.data/raw \
 DB_PATH=.data/archivum.db \
@@ -106,6 +106,6 @@ uv run python -m archivum.mcp.server --sse
 Build Docker images only when validating release packaging:
 
 ```bash
-docker build -t archivum-backend:local ./backend
-docker build -f backend/Dockerfile.mcp -t archivum-mcp:local ./backend
+docker build -t archivum-backend:local ./apps/backend
+docker build -f apps/backend/Dockerfile.mcp -t archivum-mcp:local ./apps/backend
 ```

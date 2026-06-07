@@ -59,7 +59,7 @@ ensure_basics() {
     Linux)
       local packages=()
       need_cmd curl || packages+=(curl)
-      need_cmd python3 || packages+=(python3)
+      need_cmd node || packages+=(nodejs npm)
       if [[ "$FULL_CLONE" == "1" ]]; then
         need_cmd git || packages+=(git)
       fi
@@ -70,7 +70,7 @@ ensure_basics() {
       ;;
     Darwin)
       needs_macos_packages=0
-      if ! need_cmd python3; then
+      if ! need_cmd node; then
         needs_macos_packages=1
       fi
       if [[ "$FULL_CLONE" == "1" ]] && ! need_cmd git; then
@@ -80,12 +80,12 @@ ensure_basics() {
         if need_cmd brew; then
           say "Installing required packages with Homebrew."
           if [[ "$FULL_CLONE" == "1" ]]; then
-            brew install git python
+            brew install git node
           else
-            brew install python
+            brew install node
           fi
         else
-          fail "Install Homebrew from https://brew.sh or install Python 3, then re-run this command."
+          fail "Install Homebrew from https://brew.sh or install Node.js 20+, then re-run this command."
         fi
       fi
       ;;
@@ -150,12 +150,10 @@ fetch_minimal_files() {
   download_file "docker-compose.yml" "$INSTALL_DIR/docker-compose.yml"
   download_file "docker-compose.images.yml" "$INSTALL_DIR/docker-compose.images.yml"
   download_file "caddy/Caddyfile" "$INSTALL_DIR/caddy/Caddyfile"
-  download_file "scripts/install.py" "$INSTALL_DIR/scripts/install.py"
-  download_file "scripts/uninstall.py" "$INSTALL_DIR/scripts/uninstall.py"
+  download_file "install.sh" "$INSTALL_DIR/install.sh"
   download_file "uninstall.sh" "$INSTALL_DIR/uninstall.sh"
   download_file "update.sh" "$INSTALL_DIR/update.sh"
-  chmod +x "$INSTALL_DIR/scripts/install.py"
-  chmod +x "$INSTALL_DIR/scripts/uninstall.py"
+  chmod +x "$INSTALL_DIR/install.sh"
   chmod +x "$INSTALL_DIR/uninstall.sh"
   chmod +x "$INSTALL_DIR/update.sh"
 }
@@ -185,7 +183,11 @@ main() {
   fi
   cd "$INSTALL_DIR"
   if [[ -r /dev/tty ]]; then
-    python3 scripts/install.py --images </dev/tty
+    if [[ "$FULL_CLONE" == "1" ]]; then
+      node packages/archivum-cli/src/index.js install --images </dev/tty
+    else
+      npx --yes archivum install --images </dev/tty
+    fi
   else
     fail "No interactive terminal found. Download scripts/bootstrap.sh and run it from a terminal."
   fi

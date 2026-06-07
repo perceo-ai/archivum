@@ -29,12 +29,12 @@ if ($FullClone -eq "1" -and -not (Need-Command git)) {
   }
 }
 
-if (-not (Need-Command python) -and -not (Need-Command py)) {
+if (-not (Need-Command node)) {
   if (Need-Command winget) {
-    Say "Installing Python with winget."
-    winget install --id Python.Python.3.12 -e --source winget
+    Say "Installing Node.js LTS with winget."
+    winget install --id OpenJS.NodeJS.LTS -e --source winget
   } else {
-    throw "Python 3 is required. Install it from https://www.python.org/downloads/windows/ and re-run this command."
+    throw "Node.js 20 or newer is required. Install it from https://nodejs.org/ and re-run this command."
   }
 }
 
@@ -83,15 +83,15 @@ if ($FullClone -eq "1") {
   Download-File "docker-compose.yml" (Join-Path $InstallDir "docker-compose.yml")
   Download-File "docker-compose.images.yml" (Join-Path $InstallDir "docker-compose.images.yml")
   Download-File "caddy/Caddyfile" (Join-Path $InstallDir "caddy/Caddyfile")
-  Download-File "scripts/install.py" (Join-Path $InstallDir "scripts/install.py")
-  Download-File "scripts/uninstall.py" (Join-Path $InstallDir "scripts/uninstall.py")
+  Download-File "install.ps1" (Join-Path $InstallDir "install.ps1")
   Download-File "uninstall.ps1" (Join-Path $InstallDir "uninstall.ps1")
+  Download-File "uninstall.sh" (Join-Path $InstallDir "uninstall.sh")
   Download-File "update.sh" (Join-Path $InstallDir "update.sh")
 }
 
 Set-Location $InstallDir
-if (Need-Command py) {
-  & py -3 scripts/install.py --images
+if ($FullClone -eq "1") {
+  & node packages/archivum-cli/src/index.js install --images
 } else {
-  & python scripts/install.py --images
+  & npx --yes archivum install --images
 }
