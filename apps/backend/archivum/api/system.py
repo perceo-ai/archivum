@@ -37,7 +37,7 @@ def get_audio_feature_status() -> dict[str, Any]:
         },
         "missing": missing,
         "commands": {
-            "local": "cd backend && uv sync --extra audio",
+            "local": "cd apps/backend && uv sync --extra audio",
             "ffmpeg": "Install ffmpeg with your OS package manager for video extraction.",
             "docker": "Use a derived audio-enabled image or rebuild the backend image with the audio extra and ffmpeg.",
         },

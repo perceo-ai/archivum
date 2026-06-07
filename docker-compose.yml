@@ -1,6 +1,6 @@
 services:
   backend:
-    build: ./backend
+    build: ./apps/backend
     container_name: archivum-backend
     restart: unless-stopped
     extra_hosts:
@@ -48,7 +48,7 @@ services:
         condition: service_healthy
 
   frontend:
-    build: ./frontend
+    build: ./apps/frontend
     container_name: archivum-frontend
     restart: unless-stopped
     ports:
@@ -58,7 +58,7 @@ services:
 
   mcp:
     build:
-      context: ./backend
+      context: ./apps/backend
       dockerfile: Dockerfile.mcp
     container_name: archivum-mcp
     restart: unless-stopped

@@ -27,7 +27,7 @@ Windows PowerShell:
 irm https://raw.githubusercontent.com/pranavkannepalli/archivum/main/scripts/bootstrap.ps1 | iex
 ```
 
-This installs/checks Python and Docker, downloads Archivum's minimal runtime files into `~/archivum`, launches the guided setup, writes `.env`, pulls the published Docker images, and starts the containers.
+This installs/checks Node.js and Docker, downloads Archivum's minimal runtime files into `~/archivum`, launches the `archivum` CLI guided setup, writes `.env`, pulls the published Docker images, and starts the containers.
 
 Override the install directory like this:
 
@@ -42,8 +42,7 @@ The one-command installer downloads only the runtime files needed for published 
 docker-compose.yml
 docker-compose.images.yml
 caddy/Caddyfile
-scripts/install.py
-scripts/uninstall.py
+install.sh / install.ps1
 uninstall.sh / uninstall.ps1
 update.sh
 ```
@@ -70,12 +69,19 @@ Windows PowerShell:
 .\install.ps1
 ```
 
-The installer uses only built-in shell/PowerShell plus Python's standard library. If Python or Docker is missing, it prints exact install steps for your OS and can open the Docker docs.
+The installer uses the `archivum` Node package. The shell and PowerShell files are compatibility shims that call the local CLI in a source checkout or `npx archivum` in a minimal runtime install.
 
 By default the installer uses published images from GitHub Container Registry. Developers can build locally instead:
 
 ```bash
 ./install.sh --build
+```
+
+You can also call the package directly:
+
+```bash
+npx archivum install
+npx archivum install --build
 ```
 
 Published image defaults:
@@ -127,6 +133,12 @@ Optional cleanup flags:
 ./uninstall.sh --yes       # skip confirmation prompts
 ```
 
+Equivalent package command:
+
+```bash
+npx archivum uninstall --volumes --yes
+```
+
 PowerShell uses the same options as switches, for example:
 
 ```powershell
@@ -149,6 +161,12 @@ This refreshes the runtime files, pulls the latest published Docker images, and 
 ./update.sh --build
 ```
 
+Equivalent package command:
+
+```bash
+npx archivum update --build
+```
+
 **Endpoints after boot:**
 
 | URL | What |
@@ -166,7 +184,7 @@ You can run the Python services directly with `uv` and only use Docker for Qdran
 ```bash
 docker compose up -d qdrant
 
-cd backend
+cd apps/backend
 uv sync
 
 WIKI_DIR=.data/wiki \
@@ -180,7 +198,7 @@ uv run uvicorn archivum.main:app --reload --host 0.0.0.0 --port 8000
 Run the MCP server in a second shell:
 
 ```bash
-cd backend
+cd apps/backend
 WIKI_DIR=.data/wiki \
 RAW_DIR=.data/raw \
 DB_PATH=.data/archivum.db \
@@ -193,7 +211,7 @@ uv run python -m archivum.mcp.server --sse
 For frontend-only work:
 
 ```bash
-cd frontend
+cd apps/frontend
 npm install
 npm run dev
 ```
@@ -322,7 +340,7 @@ Then run `cloudflared service install` on the host. Keep `PUBLIC_WIKI_ENABLED=fa
 
 ## Publishing Docker Images
 
-The repo includes a GitHub Actions workflow at `.github/workflows/docker-publish.yml`. On pushes to `main`, tags like `v1.2.3`, or manual workflow dispatch, it publishes multi-arch `linux/amd64` and `linux/arm64` images to GitHub Container Registry:
+The repo includes a GitHub Actions workflow at `.github/workflows/docker-publish.yml`. On pushes to `main` or tags like `v1.2.3`, it automatically publishes multi-arch `linux/amd64` and `linux/arm64` images to GitHub Container Registry:
 
 ```text
 ghcr.io/pranavkannepalli/archivum-backend
@@ -330,15 +348,7 @@ ghcr.io/pranavkannepalli/archivum-frontend
 ghcr.io/pranavkannepalli/archivum-mcp
 ```
 
-VS Code tasks are also included:
-
-| Task | What |
-|---|---|
-| `Archivum: compose up with published images` | Starts using GHCR images, no local build. |
-| `Archivum: build local images` | Builds local Docker images for development. |
-| `Archivum: publish backend image` | Buildx-pushes backend image. |
-| `Archivum: publish MCP image` | Buildx-pushes MCP image. |
-| `Archivum: publish frontend image` | Buildx-pushes frontend image. |
+To trigger a manual publish without a push, run the workflow via GitHub Actions → **Publish Docker Images** → **Run workflow**, and set `publish_images` to `true`. Running it without that flag only runs validation (tests + build) without pushing images.
 
 ## Architecture
 
@@ -377,7 +387,7 @@ Add to `~/.claude/claude_desktop_config.json` (or `~/Library/Application Support
   "mcpServers": {
     "archivum": {
       "command": "docker",
-      "args": ["exec", "-i", "archivum-mcp", "python", "-m", "archivum.mcp"],
+      "args": ["exec", "-i", "archivum-mcp", "python", "-m", "archivum.mcp.server", "--stdio"],
       "env": { "MCP_API_KEY": "your-mcp-api-key" }
     }
   }
@@ -421,7 +431,7 @@ Authorization: Bearer your-mcp-api-key
 Validate tool schemas locally with:
 
 ```bash
-cd backend
+cd apps/backend
 UV_PYTHON=python3.12 npx @modelcontextprotocol/inspector --cli --method tools/list \
   uv run python -m archivum.mcp.server --stdio
 ```
@@ -429,7 +439,7 @@ UV_PYTHON=python3.12 npx @modelcontextprotocol/inspector --cli --method tools/li
 For SSE, start the MCP server and run Inspector against `/sse`:
 
 ```bash
-cd backend
+cd apps/backend
 UV_PYTHON=python3.12 uv run python -m archivum.mcp.server --sse
 npx @modelcontextprotocol/inspector --cli --method tools/list http://127.0.0.1:8001/sse
 ```
@@ -467,7 +477,7 @@ npx @modelcontextprotocol/inspector --cli --method tools/list http://127.0.0.1:8
 Audio and video transcription require the optional `audio` Python extra plus `ffmpeg` for video extraction. The default Docker images omit Whisper/Torch/ffmpeg so the backend and MCP images stay small. For local media transcription outside the published images:
 
 ```bash
-cd backend
+cd apps/backend
 uv sync --extra audio
 # Also install ffmpeg with your OS package manager if you need video extraction.
 ```

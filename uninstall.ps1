@@ -18,22 +18,22 @@ if ($Help) {
   exit 0
 }
 
-$python = $null
-foreach ($candidate in @("py", "python", "python3")) {
+$node = $null
+foreach ($candidate in @("node")) {
   $cmd = Get-Command $candidate -ErrorAction SilentlyContinue
   if ($cmd) {
-    $python = $candidate
+    $node = $candidate
     break
   }
 }
 
-if (-not $python) {
-  Write-Host "Python 3 was not found." -ForegroundColor Yellow
+if (-not $node) {
+  Write-Host "Node.js 20 or newer was not found." -ForegroundColor Yellow
   Write-Host ""
-  Write-Host "Install Python 3 from:"
-  Write-Host "  https://www.python.org/downloads/windows/"
+  Write-Host "Install Node.js from:"
+  Write-Host "  https://nodejs.org/"
   Write-Host ""
-  Write-Host "During install, check 'Add python.exe to PATH'. Then re-run:"
+  Write-Host "Then re-run:"
   Write-Host "  .\uninstall.ps1"
   exit 1
 }
@@ -46,8 +46,8 @@ if ($Yes) { $argsForPython += "--yes" }
 if ($DryRun) { $argsForPython += "--dry-run" }
 if ($UninstallerArgs) { $argsForPython += $UninstallerArgs }
 
-if ($python -eq "py") {
-  & py -3 scripts/uninstall.py @argsForPython
+if (Test-Path "packages/archivum-cli/src/index.js") {
+  & node packages/archivum-cli/src/index.js uninstall @argsForPython
 } else {
-  & $python scripts/uninstall.py @argsForPython
+  & npx --yes archivum uninstall @argsForPython
 }
