@@ -29,11 +29,35 @@ export interface GraphEdge {
 }
 
 export interface IngestProgress {
-  type: 'start' | 'parsed' | 'page_created' | 'page_updated' | 'done' | 'error';
+  type: 'start' | 'parsed' | 'extracting' | 'extracted' | 'page_created' | 'page_updated' | 'done' | 'error';
   file?: string;
+  log_id?: number;
+  source?: string;
+  chars?: number;
   slug?: string;
   title?: string;
   message?: string;
+  pages?: number;
+  entities?: number;
+  entities_extracted?: number;
   pages_created?: number;
   pages_updated?: number;
 }
+
+export interface IngestLog {
+  id: number;
+  wiki_id: string;
+  source_type: 'file' | 'url' | 'batch';
+  source_path: string;
+  status: 'pending' | 'running' | 'done' | 'error';
+  pages_created: number;
+  pages_updated: number;
+  error: string | null;
+  created_at: string;
+}
+
+export type IngestSocketMessage =
+  | { type: 'snapshot'; logs: IngestLog[] }
+  | { type: 'event'; event: IngestProgress }
+  | { type: 'control_ack'; action: string }
+  | { type: 'control_error'; action?: string; message: string };

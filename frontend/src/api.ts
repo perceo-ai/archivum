@@ -1,4 +1,4 @@
-import type { Page, SearchResult, GraphNode, GraphEdge, IngestProgress } from './types';
+import type { Page, SearchResult, GraphNode, GraphEdge, IngestLog, IngestSocketMessage } from './types';
 
 const BASE = '';
 
@@ -238,8 +238,7 @@ async function parseSSEStream(
 
 export async function ingestFile(
   file: File,
-  onProgress: (p: IngestProgress) => void,
-): Promise<void> {
+): Promise<{ accepted: boolean; file: string | null }> {
   const formData = new FormData();
   formData.append('file', file);
 
@@ -256,13 +255,12 @@ export async function ingestFile(
     throw new Error(text || `HTTP ${response.status}`);
   }
 
-  await parseSSEStream(response, (data) => onProgress(data as IngestProgress));
+  return response.json();
 }
 
 export async function ingestUrl(
   url: string,
-  onProgress: (p: IngestProgress) => void,
-): Promise<void> {
+): Promise<{ accepted: boolean; url: string | null }> {
   const csrf = csrfToken();
   const response = await fetch('/api/ingest/url', {
     method: 'POST',
@@ -279,7 +277,32 @@ export async function ingestUrl(
     throw new Error(text || `HTTP ${response.status}`);
   }
 
-  await parseSSEStream(response, (data) => onProgress(data as IngestProgress));
+  return response.json();
+}
+
+export async function listIngestHistory(limit = 25): Promise<IngestLog[]> {
+  const res = await apiFetch(`/api/ingest/history?limit=${encodeURIComponent(String(limit))}`);
+  return res.json();
+}
+
+export function openIngestSocket(
+  onMessage: (message: IngestSocketMessage) => void,
+  onClose?: () => void,
+): WebSocket {
+  const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+  const socket = new WebSocket(`${protocol}//${window.location.host}/api/ingest/ws`);
+
+  socket.addEventListener('message', (event) => {
+    try {
+      onMessage(JSON.parse(event.data) as IngestSocketMessage);
+    } catch {
+      // Ignore malformed socket messages.
+    }
+  });
+  if (onClose) {
+    socket.addEventListener('close', onClose);
+  }
+  return socket;
 }
 
 export type InviteToken = {

@@ -323,6 +323,43 @@ class WikiAgent:
 
         return ExtractionResult(pages=pages, entities=entities, relationships=relationships)
 
+    def _fallback_entities(self, text: str) -> list[dict[str, str]]:
+        """Extract basic proper-noun entities when LLM extraction is unavailable."""
+        candidates = re.findall(
+            r"\b[A-Z][A-Za-z0-9]*(?:\s+[A-Z][A-Za-z0-9]*){0,4}\b",
+            text,
+        )
+        stopwords = {
+            "Content",
+            "Date",
+            "From",
+            "Page",
+            "Subject",
+            "Summary",
+            "The",
+            "To",
+        }
+        entities: list[dict[str, str]] = []
+        seen: set[str] = set()
+        for candidate in candidates:
+            name = candidate.strip()
+            if name in stopwords or name in seen:
+                continue
+            seen.add(name)
+            lowered = name.lower()
+            if any(marker in lowered for marker in ("api", "ai", "graph", "search", "software")):
+                entity_type = "tech"
+            elif any(marker in lowered for marker in ("inc", "llc", "corp", "company", "archivum")):
+                entity_type = "org"
+            elif len(name.split()) >= 2:
+                entity_type = "person"
+            else:
+                entity_type = "concept"
+            entities.append({"name": name, "type": entity_type})
+            if len(entities) >= 25:
+                break
+        return entities
+
     def _fallback_extraction(self, doc: ParsedDoc) -> ExtractionResult:
         """Generate a minimal page when the LLM call fails or produces no pages."""
         source = doc.source or "unknown"
@@ -335,10 +372,15 @@ class WikiAgent:
             f"---\ntitle: {title}\ntags: [ingested]\nsource: {source}\n---\n\n"
             f"# {title}\n\n{snippet}"
         )
+        entities = self._fallback_entities(doc.text)
+        relationships = [
+            {"from": entities[0]["name"], "to": entity["name"], "type": "mentioned_with"}
+            for entity in entities[1:10]
+        ] if entities else []
         return ExtractionResult(
             pages=[WikiPage(slug=slug, title=title, content=content, tags=["ingested"])],
-            entities=[],
-            relationships=[],
+            entities=entities,
+            relationships=relationships,
         )
 
 

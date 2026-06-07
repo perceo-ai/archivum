@@ -7,19 +7,18 @@ All ingest operations stream progress via SSE.
 from __future__ import annotations
 
 import asyncio
-import json
 import logging
+import shutil
 import tempfile
 from pathlib import Path
-from typing import Any, AsyncGenerator
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, WebSocket, WebSocketDisconnect, status
 from pydantic import BaseModel
-from sse_starlette.sse import EventSourceResponse
 
-from archivum.auth import CurrentUser, require_writer
+from archivum.auth import CurrentUser, decode_access_token, require_writer
 from archivum.config import Settings, get_settings
 from archivum.db import sqlite
+from archivum.ingest.events import subscribe
 from archivum.ingest.pipeline import ingest, ingest_batch
 
 logger = logging.getLogger(__name__)
@@ -30,34 +29,20 @@ MAX_BATCH_FILES = 20
 MAX_FILE_SIZE = 50 * 1024 * 1024  # 50 MB
 
 
-# ── SSE helper ────────────────────────────────────────────────────────────────
+def _safe_upload_name(filename: str | None) -> str:
+    """Keep the client filename's basename without allowing path traversal."""
+    name = Path(filename or "upload").name.strip()
+    return name or "upload"
 
-async def _stream_ingest(
-    source: str | Path,
-    wiki_id: str,
-    settings: Settings,
-) -> AsyncGenerator[dict[str, Any], None]:
-    """Run ingest and yield SSE-compatible dicts."""
-    queue: asyncio.Queue[dict | None] = asyncio.Queue()
 
-    async def callback(event: dict) -> None:
-        await queue.put(event)
-
-    async def run():
-        try:
-            await ingest(source, wiki_id, callback, settings)
-        finally:
-            await queue.put(None)  # sentinel
-
-    task = asyncio.create_task(run())
-
-    while True:
-        event = await queue.get()
-        if event is None:
-            break
-        yield event
-
-    await task
+async def _save_upload_to_temp(file: UploadFile) -> tuple[Path, Path, str]:
+    """Save an upload to a per-file temp dir while preserving its visible name."""
+    original_name = _safe_upload_name(file.filename)
+    tmp_dir = Path(tempfile.mkdtemp(prefix="archivum-upload-"))
+    tmp_path = tmp_dir / original_name
+    content = await file.read()
+    tmp_path.write_bytes(content)
+    return tmp_path, tmp_dir, original_name
 
 
 # ── Routes ────────────────────────────────────────────────────────────────────
@@ -66,13 +51,84 @@ class URLIngestRequest(BaseModel):
     url: str
 
 
+class IngestAcceptedResponse(BaseModel):
+    accepted: bool
+    file: str | None = None
+    files: list[str] | None = None
+    url: str | None = None
+
+
+def _websocket_user(websocket: WebSocket, settings: Settings) -> CurrentUser | None:
+    token = websocket.cookies.get("access_token")
+    if not token:
+        authorization = websocket.headers.get("authorization")
+        if authorization and authorization.startswith("Bearer "):
+            token = authorization[len("Bearer "):]
+    if not token:
+        return None
+
+    try:
+        payload = decode_access_token(token, settings)
+    except HTTPException:
+        return None
+
+    if payload.role not in {"owner", "collaborator"}:
+        return None
+    return CurrentUser(username=payload.sub, role=payload.role, wiki_id=payload.wiki_id)
+
+
+def _start_file_ingest_task(
+    tmp_path: Path,
+    tmp_dir: Path,
+    original_name: str,
+    wiki_id: str,
+    settings: Settings,
+) -> None:
+    async def run() -> None:
+        try:
+            await ingest(tmp_path, wiki_id, settings=settings, source_name=original_name)
+        finally:
+            shutil.rmtree(tmp_dir, ignore_errors=True)
+
+    asyncio.create_task(run())
+
+
+def _start_url_ingest_task(url: str, wiki_id: str, settings: Settings) -> None:
+    async def run() -> None:
+        await ingest(url, wiki_id, settings=settings)
+
+    asyncio.create_task(run())
+
+
+def _start_batch_ingest_task(
+    tmp_paths: list[Path],
+    tmp_dirs: list[Path],
+    original_names: list[str],
+    wiki_id: str,
+    settings: Settings,
+) -> None:
+    async def run() -> None:
+        try:
+            await ingest_batch(
+                tmp_paths,
+                wiki_id,
+                settings=settings,
+                source_names=original_names,
+            )
+        finally:
+            for tmp_dir in tmp_dirs:
+                shutil.rmtree(tmp_dir, ignore_errors=True)
+
+    asyncio.create_task(run())
+
+
 @router.post("/file")
 async def ingest_file(
     file: UploadFile = File(...),
     current_user: CurrentUser = Depends(require_writer),
     settings: Settings = Depends(get_settings),
-) -> EventSourceResponse:
-    """Upload a single file and stream ingest progress via SSE."""
+) -> IngestAcceptedResponse:
+    """Upload a single file and start ingest. Progress is sent over /api/ingest/ws."""
     logger.info(
         "API ingest_file",
         extra={
@@ -89,23 +145,12 @@ async def ingest_file(
             detail={"detail": "File too large (max 50 MB)", "code": "file_too_large"},
         )
 
-    # Save to temp file
-    suffix = Path(file.filename or "upload").suffix
-    tmp = tempfile.NamedTemporaryFile(suffix=suffix, delete=False)
-    content = await file.read()
-    tmp.write(content)
-    tmp.flush()
-    tmp.close()
-    tmp_path = Path(tmp.name)
+    # Save to a temp directory under the original basename. The pipeline still
+    # reads the temp path, but logs/events/LLM source hints use original_name.
+    tmp_path, tmp_dir, original_name = await _save_upload_to_temp(file)
 
-    async def event_generator():
-        try:
-            async for event in _stream_ingest(tmp_path, current_user.wiki_id, settings):
-                yield {"data": json.dumps(event)}
-        finally:
-            tmp_path.unlink(missing_ok=True)
-
-    return EventSourceResponse(event_generator())
+    _start_file_ingest_task(tmp_path, tmp_dir, original_name, current_user.wiki_id, settings)
+    return IngestAcceptedResponse(accepted=True, file=original_name)
 
 
 @router.post("/url")
@@ -113,8 +158,8 @@ async def ingest_url(
     body: URLIngestRequest,
     current_user: CurrentUser = Depends(require_writer),
     settings: Settings = Depends(get_settings),
-) -> EventSourceResponse:
-    """Ingest a URL and stream progress via SSE."""
+) -> IngestAcceptedResponse:
+    """Start URL ingest. Progress is sent over /api/ingest/ws."""
     logger.info("API ingest_url", extra={"wiki_id": current_user.wiki_id})
 
     url = body.url.strip()
@@ -124,11 +169,8 @@ async def ingest_url(
             detail={"detail": "URL must start with http:// or https://", "code": "invalid_url"},
         )
 
-    async def event_generator():
-        async for event in _stream_ingest(url, current_user.wiki_id, settings):
-            yield {"data": json.dumps(event)}
-
-    return EventSourceResponse(event_generator())
+    _start_url_ingest_task(url, current_user.wiki_id, settings)
+    return IngestAcceptedResponse(accepted=True, url=url)
 
 
 @router.post("/batch")
@@ -136,8 +178,8 @@ async def ingest_batch_upload(
     files: list[UploadFile] = File(...),
     current_user: CurrentUser = Depends(require_writer),
     settings: Settings = Depends(get_settings),
-) -> EventSourceResponse:
-    """Upload up to 20 files and stream batch progress via SSE."""
+) -> IngestAcceptedResponse:
+    """Upload up to 20 files and start batch ingest. Progress is sent over /api/ingest/ws."""
     logger.info(
         "API ingest_batch",
         extra={"files": len(files), "wiki_id": current_user.wiki_id},
@@ -152,43 +194,24 @@ async def ingest_batch_upload(
             },
         )
 
-    # Save all files to temp
+    # Save all files to per-file temp dirs under their original basenames.
     tmp_paths: list[Path] = []
+    tmp_dirs: list[Path] = []
+    original_names: list[str] = []
     for file in files:
-        suffix = Path(file.filename or "upload").suffix
-        tmp = tempfile.NamedTemporaryFile(suffix=suffix, delete=False)
-        content = await file.read()
-        tmp.write(content)
-        tmp.flush()
-        tmp.close()
-        tmp_paths.append(Path(tmp.name))
+        tmp_path, tmp_dir, original_name = await _save_upload_to_temp(file)
+        tmp_paths.append(tmp_path)
+        tmp_dirs.append(tmp_dir)
+        original_names.append(original_name)
 
-    async def event_generator():
-        queue: asyncio.Queue[dict | None] = asyncio.Queue()
-
-        async def callback(event: dict) -> None:
-            await queue.put(event)
-
-        async def run():
-            try:
-                await ingest_batch(tmp_paths, current_user.wiki_id, callback, settings)
-            finally:
-                await queue.put(None)
-
-        task = asyncio.create_task(run())
-
-        try:
-            while True:
-                event = await queue.get()
-                if event is None:
-                    break
-                yield {"data": json.dumps(event)}
-        finally:
-            task.cancel()
-            for p in tmp_paths:
-                p.unlink(missing_ok=True)
-
-    return EventSourceResponse(event_generator())
+    _start_batch_ingest_task(
+        tmp_paths,
+        tmp_dirs,
+        original_names,
+        current_user.wiki_id,
+        settings,
+    )
+    return IngestAcceptedResponse(accepted=True, files=original_names)
 
 
 @router.get("/history")
@@ -199,3 +222,58 @@ async def ingest_history(
     """Return the ingest log for the current wiki."""
     logs = await sqlite.list_ingest_logs(current_user.wiki_id, limit=limit)
     return logs
+
+
+@router.websocket("/ws")
+async def ingest_websocket(
+    websocket: WebSocket,
+    settings: Settings = Depends(get_settings),
+) -> None:
+    current_user = _websocket_user(websocket, settings)
+    if current_user is None:
+        await websocket.close(code=1008)
+        return
+
+    await websocket.accept()
+    logs = await sqlite.list_ingest_logs(current_user.wiki_id, limit=10)
+    await websocket.send_json({"type": "snapshot", "logs": logs})
+
+    async with subscribe(current_user.wiki_id) as queue:
+        receive_task = asyncio.create_task(websocket.receive_json())
+        event_task = asyncio.create_task(queue.get())
+        try:
+            while True:
+                done, pending = await asyncio.wait(
+                    {receive_task, event_task},
+                    return_when=asyncio.FIRST_COMPLETED,
+                )
+
+                if receive_task in done:
+                    try:
+                        message = receive_task.result()
+                    except WebSocketDisconnect:
+                        break
+
+                    if message.get("type") == "control" and message.get("action") == "ping":
+                        await websocket.send_json({"type": "control_ack", "action": "ping"})
+                    elif message.get("type") == "control":
+                        await websocket.send_json(
+                            {
+                                "type": "control_error",
+                                "action": message.get("action"),
+                                "message": "Unsupported ingest control action",
+                            }
+                        )
+                    receive_task = asyncio.create_task(websocket.receive_json())
+
+                if event_task in done:
+                    event = event_task.result()
+                    await websocket.send_json({"type": "event", "event": event})
+                    event_task = asyncio.create_task(queue.get())
+
+                for task in pending:
+                    if task.cancelled():
+                        continue
+        finally:
+            receive_task.cancel()
+            event_task.cancel()

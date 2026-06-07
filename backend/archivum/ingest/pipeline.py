@@ -12,6 +12,7 @@ from archivum.config import Settings, get_settings
 from archivum.db import sqlite, qdrant_client as qdrant, graph
 from archivum.ingest.parsers import ParsedDoc, UnsupportedFileTypeError, parse_source
 from archivum.ingest.agent import ExtractionResult, WikiPage, get_agent, slugify
+from archivum.ingest.events import publish
 from archivum.observability import new_trace_id, set_trace_id, span
 
 logger = logging.getLogger(__name__)
@@ -87,6 +88,7 @@ async def ingest(
     wiki_id: str = "default",
     progress_callback: ProgressCallback | None = None,
     settings: Settings | None = None,
+    source_name: str | None = None,
 ) -> dict[str, Any]:
     """
     Full ingest pipeline for a single source (file path or URL).
@@ -96,12 +98,14 @@ async def ingest(
     """
     s = settings or get_settings()
     source_str = str(source)
+    display_source = source_name.strip() if source_name and source_name.strip() else source_str
     pages_created = 0
     pages_updated = 0
     log_id: int | None = None
     set_trace_id(new_trace_id("ingest"))
 
     async def emit(event: dict[str, Any]) -> None:
+        await publish(wiki_id, event)
         if progress_callback:
             await progress_callback(event)
 
@@ -109,24 +113,31 @@ async def ingest(
     source_type = "url" if source_str.startswith("http") else "file"
 
     try:
-        with span("sqlite.create_ingest_log", source=source_str, wiki_id=wiki_id) as sp_log:
-            log_id = await sqlite.create_ingest_log(source_type, source_str, wiki_id)
+        with span("sqlite.create_ingest_log", source=display_source, wiki_id=wiki_id) as sp_log:
+            log_id = await sqlite.create_ingest_log(source_type, display_source, wiki_id)
         if log_id:
             set_trace_id(f"ingest-{log_id}")
         logger.info(
             "Ingest started",
-            extra={"source_type": source_type, "source": source_str, "wiki_id": wiki_id, **sp_log},
+            extra={"source_type": source_type, "source": display_source, "wiki_id": wiki_id, **sp_log},
         )
-        await emit({"type": "start", "file": source_str, "log_id": log_id})
+        await emit({"type": "start", "file": display_source, "log_id": log_id})
 
         # ── Step 1: Parse ──────────────────────────────────────────────────
         with span("parse_source", source=source_str) as sp_parse:
             doc = await parse_source(source)
+        if source_name and source_type == "file":
+            doc.source = display_source
+            doc.metadata = {
+                **doc.metadata,
+                "filename": display_source,
+                "title": doc.metadata.get("title") or Path(display_source).stem,
+            }
         logger.info(
             "Parsed source",
-            extra={"source": source_str, "chars": len(doc.text), "has_title": bool(doc.metadata.get("title")), **sp_parse},
+            extra={"source": display_source, "chars": len(doc.text), "has_title": bool(doc.metadata.get("title")), **sp_parse},
         )
-        await emit({"type": "parsed", "chars": len(doc.text), "source": source_str})
+        await emit({"type": "parsed", "chars": len(doc.text), "source": display_source})
 
         # ── Step 2: LLM extraction ─────────────────────────────────────────
         await emit({"type": "extracting", "message": "Running LLM extraction…"})
@@ -271,7 +282,7 @@ async def ingest(
         logger.info(
             "Ingest finished",
             extra={
-                "source": source_str,
+                "source": display_source,
                 "wiki_id": wiki_id,
                 "pages_created": pages_created,
                 "pages_updated": pages_updated,
@@ -312,14 +323,18 @@ async def ingest_batch(
     wiki_id: str = "default",
     progress_callback: ProgressCallback | None = None,
     settings: Settings | None = None,
+    source_names: list[str] | None = None,
 ) -> list[dict[str, Any]]:
     """Ingest multiple sources sequentially, streaming progress."""
     results = []
     for i, source in enumerate(sources):
-        async def _cb(event: dict, src=source, idx=i):
-            if progress_callback:
-                await progress_callback({**event, "file_index": idx, "file": str(src)})
+        source_name = source_names[i] if source_names and i < len(source_names) else None
+        display_source = source_name or str(source)
 
-        result = await ingest(source, wiki_id, _cb, settings)
+        async def _cb(event: dict, idx=i, display=display_source):
+            if progress_callback:
+                await progress_callback({**event, "file_index": idx, "file": display})
+
+        result = await ingest(source, wiki_id, _cb, settings, source_name=source_name)
         results.append(result)
     return results
