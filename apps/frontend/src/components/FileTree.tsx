@@ -35,6 +35,8 @@ import {
   Upload,
 } from 'lucide-react';
 
+const VAULT_DRAG_MIME = 'application/x-archivum-vault-item';
+
 type ActionKind =
   | 'new-page'
   | 'new-folder'
@@ -56,6 +58,43 @@ type ContextState =
   | { type: 'page'; page: TreePage; x: number; y: number }
   | { type: 'folder'; path: string; x: number; y: number };
 
+type VaultDragItem = {
+  type: 'page' | 'folder';
+  path: string;
+};
+
+export function makeVaultDragPayload(type: VaultDragItem['type'], path: string): string {
+  return JSON.stringify({ type, path });
+}
+
+export function parseVaultDragPayload(raw: string): VaultDragItem | null {
+  if (!raw) return null;
+  try {
+    const data = JSON.parse(raw) as Partial<VaultDragItem>;
+    if ((data.type === 'page' || data.type === 'folder') && typeof data.path === 'string' && data.path) {
+      return { type: data.type, path: data.path };
+    }
+  } catch {
+    return null;
+  }
+  return null;
+}
+
+export function vaultActionButtonLabel(kind: ActionKind): string {
+  const labels: Record<ActionKind, string> = {
+    'new-page': 'Create page',
+    'new-folder': 'Create folder',
+    'rename-page': 'Rename',
+    'move-page': 'Move',
+    'duplicate-page': 'Duplicate',
+    'rename-folder': 'Rename',
+    'move-folder': 'Move',
+    'delete-page': 'Delete',
+    'delete-folder': 'Delete',
+  };
+  return labels[kind];
+}
+
 export default function FileTree() {
   const { pages, currentSlug } = useAppState();
   const dispatch = useAppDispatch();
@@ -69,6 +108,7 @@ export default function FileTree() {
   const [folderPickerOpen, setFolderPickerOpen] = useState(false);
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set());
   const [context, setContext] = useState<ContextState | null>(null);
+  const [dropTarget, setDropTarget] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -151,7 +191,12 @@ export default function FileTree() {
         if (!path) return;
         const folder = await createFolder({ path });
         setFolders((prev) => mergeFolder(prev, folder));
-        setExpanded((prev) => new Set(prev).add(folder.path));
+        setExpanded((prev) => {
+          const next = new Set(prev);
+          addAncestorFolders(next, `${folder.path}/_`);
+          next.add(folder.path);
+          return next;
+        });
       }
       if (action.kind === 'rename-page' && action.page) {
         const name = slugifySegment(draft) || action.page.slug.split('/').pop()!;
@@ -220,23 +265,36 @@ export default function FileTree() {
 
   function onDragLeave() {
     setDragOver(false);
+    setDropTarget(null);
   }
 
   function onDrop(e: React.DragEvent) {
     e.preventDefault();
     setDragOver(false);
+    setDropTarget(null);
     if (e.dataTransfer.files.length > 0) {
       handleFileDrop(e.dataTransfer.files);
+      return;
     }
+    dropVaultItem('', e);
   }
 
-  async function dropIntoFolder(targetPath: string, e: React.DragEvent) {
+  function readVaultDragItem(e: React.DragEvent): VaultDragItem | null {
+    return (
+      parseVaultDragPayload(e.dataTransfer.getData(VAULT_DRAG_MIME)) ??
+      parseVaultDragPayload(e.dataTransfer.getData('text/plain'))
+    );
+  }
+
+  async function dropVaultItem(targetPath: string, e: React.DragEvent) {
     e.preventDefault();
     e.stopPropagation();
-    const raw = e.dataTransfer.getData('text/plain');
+    setDropTarget(null);
+    const item = readVaultDragItem(e);
+    if (!item) return;
     try {
-      if (raw.startsWith('page:')) {
-        const slug = raw.slice(5);
+      if (item.type === 'page') {
+        const slug = item.path;
         const leaf = slug.split('/').pop()!;
         const nextSlug = targetPath ? `${targetPath}/${leaf}` : leaf;
         if (nextSlug !== slug) {
@@ -246,8 +304,8 @@ export default function FileTree() {
           if (currentSlug === slug) navigate(`/wiki/${page.slug}`);
         }
       }
-      if (raw.startsWith('folder:')) {
-        const path = raw.slice(7);
+      if (item.type === 'folder') {
+        const path = item.path;
         const leaf = path.split('/').pop()!;
         const nextPath = targetPath ? `${targetPath}/${leaf}` : leaf;
         if (nextPath !== path && !nextPath.startsWith(`${path}/`)) {
@@ -274,42 +332,54 @@ export default function FileTree() {
       data-dragover={dragOver ? 'true' : 'false'}
     >
       <div className="px-3 py-2 border-b border-border shrink-0">
-        <div className="flex items-center justify-between mb-2">
-          <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-            Vault
-          </span>
-          <div className="flex items-center gap-1">
-            <Button
-              onClick={() => beginAction({ kind: 'new-folder' })}
-              variant="ghost"
-              size="icon"
-              title="New folder"
-              aria-label="New folder"
-            >
-              <FolderPlus className="h-4 w-4" />
-            </Button>
-            <Button
-              onClick={() => beginAction({ kind: 'new-page' })}
-              variant="ghost"
-              size="icon"
-              title="New page"
-              aria-label="New page"
-            >
-              <FilePlus2 className="h-4 w-4" />
-            </Button>
-          </div>
+        <div className="mb-2 flex items-center justify-between">
+          <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Files</span>
         </div>
         <Input
           type="text"
-          placeholder="Filter vault..."
+          placeholder="Search files..."
           value={filter}
           onChange={(e) => setFilter(e.target.value)}
           className="h-8 text-xs"
         />
+        <div className="mt-2 grid grid-cols-2 gap-2">
+          <Button
+            onClick={() => beginAction({ kind: 'new-folder' })}
+            variant="outline"
+            size="sm"
+            className="justify-start"
+          >
+            <FolderPlus className="h-4 w-4" />
+            New folder
+          </Button>
+          <Button
+            onClick={() => beginAction({ kind: 'new-page' })}
+            variant="outline"
+            size="sm"
+            className="justify-start"
+          >
+            <FilePlus2 className="h-4 w-4" />
+            New page
+          </Button>
+        </div>
       </div>
 
       <ScrollArea className="flex-1 py-1">
-        <div className="pb-2" onDragOver={(e) => e.preventDefault()} onDrop={(e) => dropIntoFolder('', e)}>
+        <div
+          className={cn('min-h-full pb-2', dropTarget === '' && 'bg-accent/10')}
+          onContextMenu={(e) => {
+            if (e.target !== e.currentTarget) return;
+            e.preventDefault();
+            setContext({ type: 'folder', path: '', x: e.clientX, y: e.clientY });
+          }}
+          onDragOver={(e) => {
+            if (readVaultDragItem(e)) {
+              e.preventDefault();
+              setDropTarget('');
+            }
+          }}
+          onDrop={(e) => dropVaultItem('', e)}
+        >
           {isEmpty && (
             <div className="px-3 py-4 text-center text-muted-foreground text-xs">
               {filter ? 'No matches' : 'No pages or folders yet'}
@@ -331,7 +401,9 @@ export default function FileTree() {
             onNavigate={(s) => navigate(`/wiki/${s}`)}
             onContext={setContext}
             onBeginAction={beginAction}
-            onDropIntoFolder={dropIntoFolder}
+            onDropIntoFolder={dropVaultItem}
+            dropTarget={dropTarget}
+            onDropTarget={setDropTarget}
           />
         </div>
       </ScrollArea>
@@ -455,6 +527,8 @@ function TreeFolder({
   onContext,
   onBeginAction,
   onDropIntoFolder,
+  dropTarget,
+  onDropTarget,
 }: {
   node: TreeNode;
   depth: number;
@@ -465,6 +539,8 @@ function TreeFolder({
   onContext: (context: ContextState) => void;
   onBeginAction: (action: ActionState, draft?: string, location?: string) => void;
   onDropIntoFolder: (path: string, event: React.DragEvent) => void;
+  dropTarget: string | null;
+  onDropTarget: (path: string | null) => void;
 }) {
   const isRoot = node.path === '';
   const expanded = isRoot ? true : isExpanded(node.path);
@@ -477,11 +553,21 @@ function TreeFolder({
           className={cn(
             'w-full px-2 py-1.5 text-xs transition-colors flex items-center gap-1.5 group',
             'hover:bg-muted/50 text-muted-foreground hover:text-foreground',
+            dropTarget === node.path && 'bg-accent/20 text-foreground',
           )}
           style={{ paddingLeft: 8 + depth * 12 }}
           draggable
-          onDragStart={(e) => e.dataTransfer.setData('text/plain', `folder:${node.path}`)}
-          onDragOver={(e) => e.preventDefault()}
+          onDragStart={(e) => {
+            const payload = makeVaultDragPayload('folder', node.path);
+            e.dataTransfer.effectAllowed = 'move';
+            e.dataTransfer.setData(VAULT_DRAG_MIME, payload);
+            e.dataTransfer.setData('text/plain', payload);
+          }}
+          onDragOver={(e) => {
+            e.preventDefault();
+            onDropTarget(node.path);
+          }}
+          onDragLeave={() => onDropTarget(null)}
           onDrop={(e) => onDropIntoFolder(node.path, e)}
           onContextMenu={(e) => {
             e.preventDefault();
@@ -527,6 +613,8 @@ function TreeFolder({
               onContext={onContext}
               onBeginAction={onBeginAction}
               onDropIntoFolder={onDropIntoFolder}
+              dropTarget={dropTarget}
+              onDropTarget={onDropTarget}
             />
           ))}
 
@@ -534,7 +622,12 @@ function TreeFolder({
             <button
               key={p.slug}
               draggable
-              onDragStart={(e) => e.dataTransfer.setData('text/plain', `page:${p.slug}`)}
+              onDragStart={(e) => {
+                const payload = makeVaultDragPayload('page', p.slug);
+                e.dataTransfer.effectAllowed = 'move';
+                e.dataTransfer.setData(VAULT_DRAG_MIME, payload);
+                e.dataTransfer.setData('text/plain', payload);
+              }}
               onClick={() => onNavigate(p.slug)}
               onContextMenu={(e) => {
                 e.preventDefault();
@@ -581,7 +674,12 @@ function ContextMenu({
           { label: 'Copy path', icon: Copy, action: () => void navigator.clipboard?.writeText(context.page.slug) },
           { label: 'Delete', icon: Trash2, danger: true, action: () => onBeginAction({ kind: 'delete-page', page: context.page }) },
         ]
-      : [
+      : context.path === ''
+        ? [
+            { label: 'New page', icon: FilePlus2, action: () => onBeginAction({ kind: 'new-page', folderPath: '' }, '', '') },
+            { label: 'New folder', icon: FolderPlus, action: () => onBeginAction({ kind: 'new-folder', folderPath: '' }, '', '') },
+          ]
+        : [
           { label: 'New page', icon: FilePlus2, action: () => onBeginAction({ kind: 'new-page', folderPath: context.path }, '', context.path) },
           { label: 'New folder', icon: FolderPlus, action: () => onBeginAction({ kind: 'new-folder', folderPath: context.path }, '', context.path) },
           { label: 'Rename', icon: Pencil, action: () => onBeginAction({ kind: 'rename-folder', folderPath: context.path }, leafName(context.path)) },
@@ -591,11 +689,15 @@ function ContextMenu({
           { label: 'Delete', icon: Trash2, danger: true, action: () => onBeginAction({ kind: 'delete-folder', folderPath: context.path }) },
         ];
 
+  const left = Math.min(context.x, Math.max(8, window.innerWidth - 232));
+  const top = Math.min(context.y, Math.max(8, window.innerHeight - 260));
+
   return (
     <div
-      className="fixed z-50 min-w-44 rounded-md border border-border bg-popover p-1 text-popover-foreground shadow-lg"
-      style={{ left: context.x, top: context.y }}
+      className="fixed z-[100] min-w-52 rounded-md border border-border bg-popover p-1 text-popover-foreground shadow-xl"
+      style={{ left, top }}
       onClick={(e) => e.stopPropagation()}
+      onContextMenu={(e) => e.preventDefault()}
     >
       {items.map((item) => {
         const Icon = item.icon;
@@ -661,6 +763,7 @@ function ActionDialog({
     action &&
     !['delete-page', 'delete-folder', 'move-page', 'move-folder'].includes(action.kind);
   const isDelete = action?.kind === 'delete-page' || action?.kind === 'delete-folder';
+  const actionKind = action?.kind;
 
   return (
     <Dialog
@@ -676,7 +779,7 @@ function ActionDialog({
             Cancel
           </Button>
           <Button variant={isDelete ? 'danger' : 'default'} onClick={onSubmit}>
-            {isDelete ? 'Delete' : 'Apply'}
+            {actionKind ? vaultActionButtonLabel(actionKind) : 'Apply'}
           </Button>
         </div>
       }
@@ -782,6 +885,7 @@ function dialogDescription(action: ActionState | null): string {
   if (action?.kind === 'delete-folder') return 'This recursively removes child folders and pages.';
   if (action?.kind === 'delete-page') return 'This removes the markdown file and all page indexes.';
   if (action?.kind === 'move-folder') return 'Child pages and folders move with it.';
+  if (action?.kind === 'new-folder') return 'Create an empty folder in the vault.';
   return '';
 }
 
