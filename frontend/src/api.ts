@@ -63,11 +63,22 @@ export type UpdatePageInput = {
   tags?: string[] | null;
 };
 
+export type AuthSession = {
+  username: string;
+  role: string;
+  wiki_id: string;
+};
+
 export async function login(password: string): Promise<void> {
   await apiFetch('/api/auth/login', {
     method: 'POST',
     body: JSON.stringify({ password }),
   });
+}
+
+export async function refreshSession(): Promise<AuthSession> {
+  const res = await apiFetch('/api/auth/refresh', { method: 'POST' });
+  return res.json();
 }
 
 export async function logout(): Promise<void> {
