@@ -134,6 +134,22 @@ async def list_pages(
     return [_row_to_summary(r) for r in rows]
 
 
+@router.get("/{slug:path}/backlinks", response_model=list[dict])
+async def get_backlinks(
+    slug: str,
+    current_user: CurrentUser = Depends(get_current_user),
+) -> list[dict]:
+    slug = _validate_slug(slug)
+    # Verify page exists
+    existing = await sqlite.get_page(slug, current_user.wiki_id)
+    if not existing:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"detail": f"Page '{slug}' not found", "code": "page_not_found"},
+        )
+    return await graph.get_backlinks(slug, current_user.wiki_id)
+
+
 @router.get("/{slug:path}", response_model=PageDetail)
 async def get_page(
     slug: str,
@@ -281,19 +297,3 @@ async def delete_page(
 
     # Cleanup: remove graph nodes that no longer have any backing Page.
     await graph.cleanup_abandoned_nodes(current_user.wiki_id)
-
-
-@router.get("/{slug:path}/backlinks", response_model=list[dict])
-async def get_backlinks(
-    slug: str,
-    current_user: CurrentUser = Depends(get_current_user),
-) -> list[dict]:
-    slug = _validate_slug(slug)
-    # Verify page exists
-    existing = await sqlite.get_page(slug, current_user.wiki_id)
-    if not existing:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail={"detail": f"Page '{slug}' not found", "code": "page_not_found"},
-        )
-    return await graph.get_backlinks(slug, current_user.wiki_id)
