@@ -153,9 +153,11 @@ fetch_minimal_files() {
   download_file "scripts/install.py" "$INSTALL_DIR/scripts/install.py"
   download_file "scripts/uninstall.py" "$INSTALL_DIR/scripts/uninstall.py"
   download_file "uninstall.sh" "$INSTALL_DIR/uninstall.sh"
+  download_file "update.sh" "$INSTALL_DIR/update.sh"
   chmod +x "$INSTALL_DIR/scripts/install.py"
   chmod +x "$INSTALL_DIR/scripts/uninstall.py"
   chmod +x "$INSTALL_DIR/uninstall.sh"
+  chmod +x "$INSTALL_DIR/update.sh"
 }
 
 fetch_full_repo() {
