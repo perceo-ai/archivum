@@ -98,6 +98,10 @@ This writes:
 - `graph-export-out/graph.html` (self-contained visualisation)
 - `graph-export-out/manifest.json`
 
+Also, the frontend graph endpoints are mock-safe:
+- `GET /api/graph` falls back to the same demo graph if Kuzu DB export fails
+- `GET /api/graph/demo` returns the demo graph explicitly
+
 To open the HTML:
 - macOS/Linux: `open graph-export-out/graph.html` / `xdg-open graph-export-out/graph.html`
 - or just `file://.../graph-export-out/graph.html`
