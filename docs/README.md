@@ -23,4 +23,5 @@ This folder contains human-readable documentation for Archivum. It is intentiona
 
 ### Ops / Runbooks
 - [OpenClaw cron management runbook](./ops/openclaw-cron-management-runbook.md)
+- [Archivum operator handoff (ingest → extract → wiki/search/graph → MCP)](./ops/operator-handoff-archivum.md)
 
