@@ -1,4 +1,4 @@
-.PHONY: up down build logs shell-backend shell-frontend setup uninstall rebuild-indexes lint-wiki dev
+.PHONY: up down build logs shell-backend shell-frontend setup uninstall rebuild-indexes lint-wiki dev graph-export-demo
 
 # ─── Docker ───────────────────────────────────────────────────────────────────
 
@@ -42,6 +42,10 @@ rebuild-indexes:
 lint-wiki:
 	@if [ ! -f .env ]; then cp .env.example .env && echo "Created .env — fill in your values before continuing" && exit 1; fi
 	node packages/archivum-cli/src/index.js wiki lint
+
+graph-export-demo:
+	cd backend && python3 -m archivum.scripts.graph_export --demo --output-dir ../graph-export-out
+	@echo "OK: graph-export-out/graph.json and graph-export-out/graph.html written"
 
 # ─── Shells ───────────────────────────────────────────────────────────────────
 
