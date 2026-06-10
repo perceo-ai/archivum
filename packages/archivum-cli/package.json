@@ -1,0 +1,18 @@
+{
+  "name": "@pranavkannepalli/archivum",
+  "version": "0.1.0",
+  "type": "module",
+  "bin": {
+    "archivum": "src/index.js"
+  },
+  "scripts": {
+    "test": "node --test test/*.test.js",
+    "start": "node src/index.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "publishConfig": {
+    "registry": "https://npm.pkg.github.com"
+  }
+}

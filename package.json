@@ -1,0 +1,12 @@
+{
+  "name": "archivum-monorepo",
+  "private": true,
+  "workspaces": [
+    "apps/frontend",
+    "packages/archivum-cli"
+  ],
+  "scripts": {
+    "test": "npm run test --workspaces --if-present",
+    "cli": "node packages/archivum-cli/src/index.js"
+  }
+}
