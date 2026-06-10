@@ -169,7 +169,7 @@ def render_html(graph: dict[str, Any], title: str) -> str:
 
         const mx = (a.x + b.x) / 2;
         const my = (a.y + b.y) / 2;
-        const labelText = e.type ?? '';
+        const labelText = e.label ?? e.type ?? '';
         if (labelText) {
           const text = el('text', {
             x: mx,
@@ -215,8 +215,29 @@ def render_html(graph: dict[str, Any], title: str) -> str:
     return template.replace("__TITLE__", title).replace("__GRAPH_JSON__", graph_json)
 
 
+def _normalize_edges(graph: dict[str, Any]) -> dict[str, Any]:
+    """Ensure edges have a `label` field (frontend-friendly), while preserving any existing `type`."""
+    nodes = graph.get("nodes", [])
+    edges = graph.get("edges", [])
+
+    normalized_edges: list[dict[str, Any]] = []
+    for e in edges:
+        if not isinstance(e, dict):
+            continue
+        if "label" in e:
+            normalized_edges.append(e)
+            continue
+
+        label = e.get("type")
+        normalized_edges.append({**e, "label": label if label is not None else ""})
+
+    return {"nodes": nodes, "edges": normalized_edges}
+
+
 def write_export(graph: dict[str, Any], output_dir: Path, mode: str, notes: list[str]) -> None:
     output_dir.mkdir(parents=True, exist_ok=True)
+
+    graph = _normalize_edges(graph)
 
     (output_dir / "graph.json").write_text(
         json.dumps(graph, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
