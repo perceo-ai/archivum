@@ -20,6 +20,9 @@ frontend/.vite/
 # Graphify
 graphify-out/cache/
 
+# Graph export (never commit generated artifacts)
+graph-export-out/
+
 # Data (never commit wiki content or DBs)
 /data/
 *.db

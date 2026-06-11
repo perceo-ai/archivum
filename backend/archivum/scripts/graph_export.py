@@ -49,9 +49,41 @@ def _repo_root() -> Path:
     return Path(__file__).resolve().parents[3]
 
 
+def default_output_dir() -> Path:
+    """Repo-owned location where demo exports are written."""
+    return _repo_root() / "graph-export-out"
+
+
+def export_demo(output_dir: Path) -> dict[str, Any]:
+    """Generate a self-contained demo graph export (no DB required)."""
+    notes = [
+        "Generated from DEMO_GRAPH fixtures (no Kuzu DB required).",
+        "Nodes/edges format matches Archivum frontend expectations: {nodes:[...], edges:[{from,to,label/type}]}",
+    ]
+
+    write_export(
+        DEMO_GRAPH,
+        output_dir=output_dir,
+        mode="demo",
+        notes=notes,
+    )
+
+    manifest_path = output_dir / "manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8")) if manifest_path.exists() else None
+
+    return {
+        "mode": "demo",
+        "output_dir": str(output_dir),
+        "files_written": ["graph.json", "graph.html", "manifest.json"],
+        "manifest": manifest,
+        "notes": notes,
+    }
+
+
 def render_html(graph: dict[str, Any], title: str) -> str:
     graph_json = json.dumps(graph, ensure_ascii=False)
 
+    # Offline/self-contained rendering: no CDN assets.
     template = """<!doctype html>
 <html lang=\"en\">
   <head>
@@ -60,57 +92,121 @@ def render_html(graph: dict[str, Any], title: str) -> str:
     <title>__TITLE__</title>
     <style>
       html, body { height: 100%; margin: 0; }
-      #network { width: 100%; height: calc(100% - 48px); }
+      #canvas { width: 100%; height: calc(100% - 48px); display: block; background: #0b1220; }
       .topbar { height: 48px; display: flex; align-items: center; gap: 12px; padding: 0 14px; background: #0b1220; color: #e6edf3; font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial; }
       .pill { background: rgba(255,255,255,0.12); padding: 6px 10px; border-radius: 999px; font-size: 12px; }
+      .node-label { font: 12px system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial; fill: #e6edf3; pointer-events: none; }
+      .edge-label { font: 10px system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial; fill: rgba(230,237,243,0.85); pointer-events: none; }
     </style>
-    <link href=\"https://unpkg.com/vis-network/styles/vis-network.min.css\" rel=\"stylesheet\" />
-    <script src=\"https://unpkg.com/vis-network/standalone/umd/vis-network.min.js\"></script>
   </head>
   <body>
     <div class=\"topbar\">
       <div style=\"font-weight: 700;\">__TITLE__</div>
       <div class=\"pill\" id=\"meta\"></div>
     </div>
-    <div id=\"network\"></div>
+
+    <svg id=\"canvas\" viewBox=\"0 0 1000 600\" xmlns=\"http://www.w3.org/2000/svg\" aria-label=\"Graph\" role=\"img\"></svg>
 
     <script>
       const graphData = __GRAPH_JSON__;
 
-      const nodes = new vis.DataSet(graphData.nodes.map(n => {
-        const bg = n.type === 'page' ? '#1f77b4'
-          : (n.type === 'entity' ? '#ff7f0e' : '#7f7f7f');
-        return {
-          id: n.id,
-          label: n.label ?? n.id,
-          shape: 'dot',
-          color: { background: bg, border: 'rgba(0,0,0,0.2)' },
-          font: { color: '#111', size: 12 },
-          type: n.type
-        };
-      }));
+      const svg = document.getElementById('canvas');
+      const NS = 'http://www.w3.org/2000/svg';
 
-      const edges = new vis.DataSet(graphData.edges.map(e => ({
-        from: e.from,
-        to: e.to,
-        label: e.type ?? '',
-        arrows: 'to',
-        font: { align: 'top', size: 10 },
-        smooth: { enabled: true, type: 'dynamic' },
-        color: { color: 'rgba(0,0,0,0.35)' }
-      })));
+      function el(name, attrs) {
+        const e = document.createElementNS(NS, name);
+        if (attrs) for (const [k, v] of Object.entries(attrs)) e.setAttribute(k, v);
+        return e;
+      }
 
-      document.getElementById('meta').textContent = `${graphData.nodes.length} nodes • ${graphData.edges.length} edges`;
+      function nodeColor(type) {
+        if (type === 'page') return '#1f77b4';
+        if (type === 'entity') return '#ff7f0e';
+        return '#7f7f7f';
+      }
 
-      const container = document.getElementById('network');
-      const data = { nodes, edges };
-      const options = {
-        interaction: { hover: true },
-        physics: { stabilization: false, barnesHut: { gravitationalConstant: -2000, springLength: 95 } },
-        layout: { improvedLayout: true }
-      };
+      const nodes = graphData.nodes ?? [];
+      const edges = graphData.edges ?? [];
 
-      new vis.Network(container, data, options);
+      document.getElementById('meta').textContent = `${nodes.length} nodes • ${edges.length} edges`;
+
+      // Clear
+      while (svg.firstChild) svg.removeChild(svg.firstChild);
+
+      // Arrow marker
+      const defs = el('defs');
+      const marker = el('marker', { id: 'arrow', viewBox: '0 0 10 10', refX: '8', refY: '5', markerWidth: '8', markerHeight: '8', orient: 'auto-start-reverse' });
+      marker.appendChild(el('path', { d: 'M 0 0 L 10 5 L 0 10 z', fill: 'rgba(230,237,243,0.8)' }));
+      defs.appendChild(marker);
+      svg.appendChild(defs);
+
+      // Circle layout
+      const cx = 500, cy = 300;
+      const r = Math.min(240, 0.45 * Math.max(1, Math.sqrt(nodes.length)) * 240);
+      const pos = new Map();
+
+      nodes.forEach((n, i) => {
+        const angle = (Math.PI * 2 * i) / Math.max(1, nodes.length);
+        const x = cx + r * Math.cos(angle);
+        const y = cy + r * Math.sin(angle);
+        pos.set(n.id, { x, y, n });
+      });
+
+      // Edges
+      edges.forEach(e => {
+        const a = pos.get(e.from);
+        const b = pos.get(e.to);
+        if (!a || !b) return;
+
+        const line = el('line', {
+          x1: a.x, y1: a.y,
+          x2: b.x, y2: b.y,
+          stroke: 'rgba(230,237,243,0.35)',
+          'stroke-width': 2,
+          'marker-end': 'url(#arrow)'
+        });
+        svg.appendChild(line);
+
+        const mx = (a.x + b.x) / 2;
+        const my = (a.y + b.y) / 2;
+        const labelText = e.label ?? e.type ?? '';
+        if (labelText) {
+          const text = el('text', {
+            x: mx,
+            y: my,
+            'text-anchor': 'middle',
+            'dominant-baseline': 'central',
+            class: 'edge-label'
+          });
+          text.textContent = labelText;
+          svg.appendChild(text);
+        }
+      });
+
+      // Nodes (draw after edges)
+      nodes.forEach(n => {
+        const p = pos.get(n.id);
+        if (!p) return;
+
+        const color = nodeColor(n.type);
+        svg.appendChild(el('circle', {
+          cx: p.x, cy: p.y,
+          r: 22,
+          fill: color,
+          stroke: 'rgba(0,0,0,0.25)',
+          'stroke-width': 2
+        }));
+
+        const label = (n.label ?? n.id);
+        const text = el('text', {
+          x: p.x,
+          y: p.y + 4,
+          'text-anchor': 'middle',
+          class: 'node-label'
+        });
+        text.textContent = label;
+        svg.appendChild(text);
+      });
     </script>
   </body>
 </html>
@@ -119,8 +215,29 @@ def render_html(graph: dict[str, Any], title: str) -> str:
     return template.replace("__TITLE__", title).replace("__GRAPH_JSON__", graph_json)
 
 
+def _normalize_edges(graph: dict[str, Any]) -> dict[str, Any]:
+    """Ensure edges have a `label` field (frontend-friendly), while preserving any existing `type`."""
+    nodes = graph.get("nodes", [])
+    edges = graph.get("edges", [])
+
+    normalized_edges: list[dict[str, Any]] = []
+    for e in edges:
+        if not isinstance(e, dict):
+            continue
+        if "label" in e:
+            normalized_edges.append(e)
+            continue
+
+        label = e.get("type")
+        normalized_edges.append({**e, "label": label if label is not None else ""})
+
+    return {"nodes": nodes, "edges": normalized_edges}
+
+
 def write_export(graph: dict[str, Any], output_dir: Path, mode: str, notes: list[str]) -> None:
     output_dir.mkdir(parents=True, exist_ok=True)
+
+    graph = _normalize_edges(graph)
 
     (output_dir / "graph.json").write_text(
         json.dumps(graph, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
@@ -158,15 +275,7 @@ def main() -> None:
     output_dir = Path(args.output_dir)
 
     if args.demo:
-        write_export(
-            DEMO_GRAPH,
-            output_dir=output_dir,
-            mode="demo",
-            notes=[
-                "Generated from DEMO_GRAPH fixtures (no Kuzu DB required).",
-                "Nodes/edges format matches Archivum frontend expectations: {nodes:[...], edges:[{from,to,label/type}]}",
-            ],
-        )
+        export_demo(output_dir=output_dir)
         print(f"OK: wrote {output_dir / 'graph.json'} and {output_dir / 'graph.html'}")
         return
 

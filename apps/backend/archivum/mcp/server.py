@@ -6,6 +6,7 @@ import logging
 import re
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any
 
 import anthropic
@@ -160,6 +161,24 @@ async def graph_neighbors(node_id: str, wiki_id: str = "default") -> dict[str, A
 
 
 @mcp.tool()
+async def export_graph_demo(output_dir: str | None = None) -> dict[str, Any]:
+    """Generate a self-contained demo graph export (no DB required)."""
+    _require_key()
+    set_trace_id(new_trace_id("mcp-graph-demo"))
+
+    # Write to repo-owned fixtures by default.
+    from archivum.scripts.graph_export import default_output_dir, export_demo
+
+    out_path = default_output_dir() if not output_dir else Path(output_dir)
+    result = export_demo(out_path)
+    return {
+        "ok": True,
+        "tool": "export_graph_demo",
+        "result": result,
+    }
+
+
+@mcp.tool()
 async def lint_wiki(wiki_id: str = "default") -> dict[str, Any]:
     """Health check: broken wikilinks + orphan pages (v1)."""
     _require_key()
@@ -305,6 +324,7 @@ async def dispatch_command(command: str, wiki_id: str = "default") -> dict[str, 
                     "write <json> OR write <title> | <content>",
                     "lint",
                     "graph <node_id>",
+                    "graph-export-demo [output_dir]",
                 ],
             }
 
@@ -378,6 +398,10 @@ async def dispatch_command(command: str, wiki_id: str = "default") -> dict[str, 
         if cmd in {"lint", "lint_wiki"}:
             result = await lint_wiki(wiki_id=wiki_id)
             return {"ok": True, "command": raw, "tool": "lint_wiki", "result": result}
+
+        if cmd in {"graph-export-demo", "graph_export_demo", "export_graph_demo"}:
+            result = await export_graph_demo(output_dir=rest or None)
+            return {"ok": True, "command": raw, "tool": "export_graph_demo", "result": result}
 
         if cmd in {"graph", "graph_neighbors", "neighbors"}:
             if not rest:
