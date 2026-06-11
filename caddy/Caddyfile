@@ -1,13 +1,15 @@
 {
-	# Email for Let's Encrypt notifications — change this
-	email admin@example.com
+	email pranav.kannepalli@gmail.com
 }
 
 # ─── Production (ARCHIVUM_HOST set) ──────────────────────────────────────────
 {$ARCHIVUM_HOST:localhost} {
-	# Serve frontend
-	handle {
-		reverse_proxy frontend:8080
+	# WebSocket for ingest progress — must come before /api/* to get upgrade headers
+	handle /api/ingest/ws {
+		reverse_proxy backend:8000 {
+			header_up Upgrade websocket
+			header_up Connection Upgrade
+		}
 	}
 
 	# Proxy API to backend
@@ -15,12 +17,9 @@
 		reverse_proxy backend:8000
 	}
 
-	# WebSocket for editor auto-save
-	handle /ws/* {
-		reverse_proxy backend:8000 {
-			header_up Upgrade websocket
-			header_up Connection Upgrade
-		}
+	# Serve frontend
+	handle {
+		reverse_proxy frontend:8080
 	}
 
 	# Security headers
@@ -38,8 +37,24 @@
 
 # ─── Share link subdomain (read-only, public) ─────────────────────────────────
 share.{$ARCHIVUM_HOST:localhost} {
-	handle /share/* {
+	handle /api/share/* {
 		reverse_proxy backend:8000
+	}
+
+	handle /api/public/* {
+		reverse_proxy backend:8000
+	}
+
+	handle /share/* {
+		reverse_proxy frontend:8080
+	}
+
+	handle /public* {
+		reverse_proxy frontend:8080
+	}
+
+	handle {
+		respond "Not found" 404
 	}
 
 	header {

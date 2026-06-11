@@ -1,0 +1,15 @@
+services:
+  backend:
+    image: ${ARCHIVUM_IMAGE_REGISTRY:-ghcr.io/pranavkannepalli}/archivum-backend:${ARCHIVUM_IMAGE_TAG:-latest}
+    pull_policy: missing
+    build: null
+
+  frontend:
+    image: ${ARCHIVUM_IMAGE_REGISTRY:-ghcr.io/pranavkannepalli}/archivum-frontend:${ARCHIVUM_IMAGE_TAG:-latest}
+    pull_policy: missing
+    build: null
+
+  mcp:
+    image: ${ARCHIVUM_IMAGE_REGISTRY:-ghcr.io/pranavkannepalli}/archivum-mcp:${ARCHIVUM_IMAGE_TAG:-latest}
+    pull_policy: missing
+    build: null

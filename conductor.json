@@ -1,0 +1,8 @@
+{
+  "scripts": {
+    "setup": "npm install && cd apps/backend && uv sync",
+    "run": "set -a; [ -f .env ] && source .env; set +a; docker compose up -d qdrant; npx --yes concurrently --kill-others-on-fail 'cd apps/backend && WIKI_DIR=${WIKI_DIR:-.data/wiki} RAW_DIR=${RAW_DIR:-.data/raw} DB_PATH=${DB_PATH:-.data/archivum.db} KUZU_PATH=${KUZU_PATH:-.data/kuzu} QDRANT_URL=${QDRANT_URL:-http://localhost:6333} uv run uvicorn archivum.main:app --reload --port 8000' 'cd apps/frontend && npm run dev -- --port ${CONDUCTOR_PORT:-5173}'",
+    "archive": "docker compose stop qdrant 2>/dev/null || true"
+  },
+  "runScriptMode": "nonconcurrent"
+}
