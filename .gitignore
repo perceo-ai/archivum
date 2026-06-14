@@ -22,6 +22,7 @@ graphify-out/cache/
 
 # Graph export (never commit generated artifacts)
 graph-export-out/
+mcp-demo-out/
 
 # Data (never commit wiki content or DBs)
 /data/
