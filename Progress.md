@@ -15,15 +15,15 @@ Build Archivum into a daily-use second brain for one owner:
 
 | Area | Status | Evidence |
 |---|---|---|
-| Backend API | Built | FastAPI app under `apps/backend/archivum`; routes for pages, folders, ingest, query, graph, search, lint, share, export, auth, public pages, system maintenance |
-| MCP server | Built, needs final validation pass | `apps/backend/archivum/mcp/server.py` exposes `ingest_source`, `search_wiki`, `list_pages`, `get_page`, `write_page`, `graph_neighbors`, `export_graph_demo`, `lint_wiki`, and `query` |
+| Backend API | Built, Life OS backend started | FastAPI app under `apps/backend/archivum`; routes for pages, folders, ingest, query, graph, search, lint, share, export, auth, public pages, system maintenance, plus `/api/life/daily`, `/api/life/projects`, and `/api/life/tasks` |
+| MCP server | Built, Life OS tools started | `apps/backend/archivum/mcp/server.py` exposes existing wiki tools plus `life_daily_note`, `life_register_project`, and `life_create_task`; `make mcp-smoke` passed on 2026-06-21 |
 | Obsidian-like editor | Built foundation | React/Vite UI has wiki editor, file tree, backlinks, graph, query, ingest, search, lint, settings |
-| Storage | Built foundation | SQLite metadata and FTS, Qdrant vectors, Kuzu graph, raw source directory |
+| Storage | Built foundation, Life OS schema started | SQLite metadata and FTS, Qdrant vectors, Kuzu graph, raw source directory; Life OS tables now include projects, tasks, decisions, people, areas, and agent activity |
 | Ingest | Built foundation | Parsers and pipeline exist for documents, web, code, email, media extras, and batch ingest |
 | Search and retrieval | Mostly built | Qdrant semantic search and SQLite FTS exist; hybrid ranking needs product-level confirmation |
 | Security | Mostly built | Auth, JWT cookies, roles, CSRF, CSP, rate limiting, markdown sanitization, share controls |
 | Sharing/export | Built foundation | Share links, public wiki, PDF/HTML export endpoints and UI hooks exist |
-| Life OS concepts | Not yet built as first-class workflow | No dedicated schema/API/UI/MCP tools for projects, tasks, decisions, daily notes, people, areas, or reviews |
+| Life OS concepts | Backend/MCP foundation started | Daily note, project registry, and task capture are available through SQLite helpers, REST endpoints, and MCP tools; dedicated frontend views and decision/activity workflows are still pending |
 | Agent activity ledger | Not yet built as first-class workflow | MCP writes pages, but there is no normalized run/activity log, inbox, or provenance dashboard |
 | Personal import/export | Partial | General ingest/export exists; Life OS import conventions and Obsidian-compatible vault export are not defined |
 
@@ -41,15 +41,13 @@ Build Archivum into a daily-use second brain for one owner:
 
 ## Prioritized Work
 
-1. Validate the existing app end-to-end and reconcile stale progress docs.
-2. Add first-class Life OS data model and page conventions.
-3. Add daily note, project, task, decision, person, and area APIs.
-4. Add matching MCP tools for agents.
-5. Add Obsidian-like UI affordances for second-brain workflows: command palette, daily note button, project dashboard, task/decision views, and backlinks/graph improvements.
-6. Add import/export conventions for Obsidian vaults and Life OS bundles.
-7. Add activity/provenance logging for agent changes and ingest runs.
-8. Harden verification: MCP stdio/SSE smoke tests, Playwright UI flows, backend integration tests, and Docker boot checks.
-9. Update README and operator docs for personal deployment and project integration.
+1. Add Obsidian-like UI affordances for second-brain workflows: command palette, daily note button, project dashboard, task/decision views, and backlinks/graph improvements.
+2. Add decision/activity workflow endpoints and MCP tools.
+3. Add Life OS page conventions and docs.
+4. Add import/export conventions for Obsidian vaults and Life OS bundles.
+5. Add activity/provenance logging for agent changes and ingest runs.
+6. Harden verification: MCP stdio/SSE smoke tests, Playwright UI flows, backend integration tests, and Docker boot checks.
+7. Update README and operator docs for personal deployment and project integration.
 
 ## Active Implementation Plan
 

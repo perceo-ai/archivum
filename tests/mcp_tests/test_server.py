@@ -1,8 +1,35 @@
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
+from archivum.config import Settings
+from archivum.db import sqlite
 from archivum.mcp import server
+
+
+@pytest.fixture
+def temp_settings(tmp_path):
+    return Settings(
+        db_path=tmp_path / "archivum.db",
+        wiki_dir=tmp_path / "wiki",
+        raw_dir=tmp_path / "raw",
+        kuzu_path=tmp_path / "kuzu",
+    )
+
+
+@pytest.mark.asyncio
+async def test_mcp_life_os_tools(temp_settings, monkeypatch):
+    monkeypatch.setattr(server, "settings", temp_settings)
+    await sqlite.init_db(temp_settings)
+
+    with patch("archivum.life_os.service.qdrant.upsert_page", new=AsyncMock()):
+        daily = await server.life_daily_note("2026-06-21")
+        project = await server.life_register_project("phoenix", "Phoenix", "MVP")
+        task = await server.life_create_task("Wire Life OS MCP", project_key="phoenix")
+
+    assert daily["slug"] == "daily-2026-06-21"
+    assert project["key"] == "phoenix"
+    assert task["project_key"] == "phoenix"
 
 
 @pytest.mark.asyncio
