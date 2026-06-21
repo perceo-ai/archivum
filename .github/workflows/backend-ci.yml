@@ -1,0 +1,28 @@
+name: Backend CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Run backend tests
+        run: PYTHONPATH=apps/backend uv run --project apps/backend --with pytest pytest tests
+
+      - name: Run MCP stdio smoke test
+        run: cd apps/backend && uv run pytest ../../tests/mcp_tests/test_stdio_smoke.py -q

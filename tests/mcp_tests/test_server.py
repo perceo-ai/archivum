@@ -28,6 +28,31 @@ async def test_lint_wiki_reports_broken_links_and_orphans(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_lint_wiki_reports_contradictions(monkeypatch):
+    monkeypatch.setattr(
+        server.sqlite,
+        "list_pages",
+        AsyncMock(
+            return_value=[
+                {"slug": "ops-a", "content": "Public wiki is enabled."},
+                {"slug": "ops-b", "content": "Public wiki is disabled."},
+            ]
+        ),
+    )
+
+    result = await server.lint_wiki("default")
+
+    assert result["contradictory_claims"] == [
+        {
+            "type": "contradictory_claim",
+            "subject": "public wiki",
+            "pages": ["ops-a", "ops-b"],
+            "claims": ["enabled", "disabled"],
+        }
+    ]
+
+
+@pytest.mark.asyncio
 async def test_dispatch_command_returns_help_without_touching_storage():
     result = await server.dispatch_command("help")
 

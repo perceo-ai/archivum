@@ -3,7 +3,6 @@ from __future__ import annotations
 import argparse
 import json
 import logging
-import re
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -16,15 +15,13 @@ from archivum.config import Settings, get_settings
 from archivum.db import graph, qdrant_client as qdrant, sqlite
 from archivum.ingest.pipeline import ingest
 from archivum.ingest.agent import slugify
+from archivum.linting import analyze_wiki_pages
 from archivum.llm.openrouter_client import openrouter_chat_completion
 from archivum.llm.openai_compat_client import openai_compat_chat_completion
 from archivum.logging_config import setup_logging
 from archivum.observability import new_trace_id, set_trace_id
 
 logger = logging.getLogger(__name__)
-
-
-WIKILINK_RE = re.compile(r"\[\[([^\]|]+)(?:\|[^\]]+)?\]\]")
 
 
 @dataclass
@@ -180,30 +177,30 @@ async def export_graph_demo(output_dir: str | None = None) -> dict[str, Any]:
 
 @mcp.tool()
 async def lint_wiki(wiki_id: str = "default") -> dict[str, Any]:
-    """Health check: broken wikilinks + orphan pages (v1)."""
+    """Health check: broken wikilinks, orphan pages, and contradictory claims."""
     _require_key()
     set_trace_id(new_trace_id("mcp-lint"))
     pages = await sqlite.list_pages(wiki_id)
-    slug_set = {p["slug"] for p in pages}
-
-    inbound: dict[str, int] = {s: 0 for s in slug_set}
-    outbound: dict[str, int] = {s: 0 for s in slug_set}
-    broken: list[dict[str, Any]] = []
-
-    for p in pages:
-        slug = p["slug"]
-        content = p.get("content", "") or ""
-        for target in (t.strip() for t in WIKILINK_RE.findall(content)):
-            if not target:
-                continue
-            outbound[slug] = outbound.get(slug, 0) + 1
-            if target in slug_set:
-                inbound[target] = inbound.get(target, 0) + 1
-            else:
-                broken.append({"type": "broken_wikilink", "page": slug, "target": target})
-
-    orphan = [s for s in slug_set if inbound.get(s, 0) == 0 and outbound.get(s, 0) == 0]
-    return {"broken_wikilinks": broken, "orphan_pages": orphan}
+    analysis = analyze_wiki_pages(pages)
+    broken = [
+        {"type": i["type"], "page": i["page"], "target": i["target"]}
+        for i in analysis["broken_wikilinks"]
+    ]
+    orphan = [i["page"] for i in analysis["orphan_pages"]]
+    contradictory = [
+        {
+            "type": i["type"],
+            "subject": i["subject"],
+            "pages": i["pages"],
+            "claims": i["claims"],
+        }
+        for i in analysis["contradictory_claims"]
+    ]
+    return {
+        "broken_wikilinks": broken,
+        "orphan_pages": orphan,
+        "contradictory_claims": contradictory,
+    }
 
 
 @mcp.tool()
