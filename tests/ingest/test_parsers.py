@@ -110,6 +110,37 @@ class TestParseFilePlainText:
         assert result.source == str(f)
 
 
+class TestParseFileMbox:
+    def test_parses_mbox_messages(self, tmp_path):
+        f = tmp_path / "archive.mbox"
+        f.write_text(
+            "From alice@example.com Sat Jan 01 00:00:00 2026\n"
+            "From: Alice <alice@example.com>\n"
+            "To: Bob <bob@example.com>\n"
+            "Subject: First note\n"
+            "Date: Sat, 1 Jan 2026 00:00:00 +0000\n"
+            "\n"
+            "The first body.\n"
+            "\n"
+            "From bob@example.com Sat Jan 01 00:01:00 2026\n"
+            "From: Bob <bob@example.com>\n"
+            "To: Alice <alice@example.com>\n"
+            "Subject: Second note\n"
+            "Date: Sat, 1 Jan 2026 00:01:00 +0000\n"
+            "\n"
+            "The second body.\n",
+            encoding="utf-8",
+        )
+
+        result = parse_file(f)
+
+        assert result.metadata == {"type": "mbox", "messages": 2}
+        assert "Subject: First note" in result.text
+        assert "The first body." in result.text
+        assert "Subject: Second note" in result.text
+        assert "The second body." in result.text
+
+
 # ── parse_file — PDF ──────────────────────────────────────────────────────────
 
 

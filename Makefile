@@ -1,4 +1,4 @@
-.PHONY: up down build logs shell-backend shell-frontend setup uninstall rebuild-indexes lint-wiki dev graph-export-demo
+.PHONY: up down build logs shell-backend shell-frontend setup uninstall rebuild-indexes lint-wiki dev graph-export-demo mcp-demo mcp-smoke
 
 # ─── Docker ───────────────────────────────────────────────────────────────────
 
@@ -59,3 +59,12 @@ shell-frontend:
 
 print-mcp-config:
 	@node packages/archivum-cli/src/index.js mcp config --client claude
+
+# ─── MCP Demo ─────────────────────────────────────────────────────────────────
+
+mcp-demo:
+	cd apps/backend && uv run python -m archivum.mcp.demo
+	@echo "OK: mcp-demo-out/ written"
+
+mcp-smoke:
+	cd apps/backend && uv run pytest ../../tests/mcp_tests/test_stdio_smoke.py -q

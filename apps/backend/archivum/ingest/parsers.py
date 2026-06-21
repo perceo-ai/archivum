@@ -9,6 +9,7 @@ import email
 import io
 import json
 import logging
+import mailbox
 import os
 import re
 import subprocess
@@ -82,6 +83,35 @@ def _html_to_text(html_content: str, url: str = "") -> str:
         for tag in soup(["script", "style", "nav", "header", "footer", "aside"]):
             tag.decompose()
         return soup.get_text(separator="\n", strip=True)
+
+
+def _message_text(msg: email.message.Message) -> str:
+    if msg.is_multipart():
+        for part in msg.walk():
+            if part.get_content_type() == "text/plain":
+                payload = part.get_payload(decode=True)
+                if payload:
+                    return payload.decode("utf-8", errors="replace")
+        return ""
+
+    payload = msg.get_payload(decode=True)
+    if payload:
+        return payload.decode("utf-8", errors="replace")
+    payload_text = msg.get_payload()
+    return payload_text if isinstance(payload_text, str) else ""
+
+
+def _format_email_message(msg: email.message.Message) -> str:
+    return "\n".join(
+        [
+            f"From: {msg.get('From', '')}",
+            f"To: {msg.get('To', '')}",
+            f"Subject: {msg.get('Subject', '')}",
+            f"Date: {msg.get('Date', '')}",
+            "",
+            _message_text(msg),
+        ]
+    ).strip()
 
 
 # ── Extension dispatch ────────────────────────────────────────────────────────
@@ -317,30 +347,19 @@ def parse_file(path: Path) -> ParsedDoc:
     if suffix == ".eml":
         raw = path.read_bytes()
         msg = email.message_from_bytes(raw)
-        parts = [
-            f"From: {msg.get('From', '')}",
-            f"To: {msg.get('To', '')}",
-            f"Subject: {msg.get('Subject', '')}",
-            f"Date: {msg.get('Date', '')}",
-            "",
-        ]
-        # Extract body
-        if msg.is_multipart():
-            for part in msg.walk():
-                ct = part.get_content_type()
-                if ct == "text/plain":
-                    payload = part.get_payload(decode=True)
-                    if payload:
-                        parts.append(payload.decode("utf-8", errors="replace"))
-                        break
-        else:
-            payload = msg.get_payload(decode=True)
-            if payload:
-                parts.append(payload.decode("utf-8", errors="replace"))
         return ParsedDoc(
-            text="\n".join(parts),
+            text=_format_email_message(msg),
             source=str(path),
             metadata={"type": "eml", "subject": msg.get("Subject", "")},
+        )
+
+    if suffix == ".mbox":
+        messages = mailbox.mbox(str(path), create=False)
+        parts = [_format_email_message(msg) for msg in messages]
+        return ParsedDoc(
+            text="\n\n---\n\n".join(part for part in parts if part),
+            source=str(path),
+            metadata={"type": "mbox", "messages": len(parts)},
         )
 
     # ── Images ────────────────────────────────────────────────────────────────

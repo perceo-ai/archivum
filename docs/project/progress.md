@@ -34,7 +34,7 @@ _Last updated: 2026-06-05_
 | Parser: images (`.png`, `.jpg`, `.webp`, `.gif`) — Claude vision | ✅ Done | `ingest/parsers.py` |
 | Parser: audio (`.mp3`, `.m4a`, `.wav`, `.ogg`, `.flac`) — optional Whisper | ✅ Done | `ingest/parsers.py`; packaged behind the `audio` extra |
 | Parser: video (`.mp4`, `.mov`, `.avi`, `.mkv`) — optional ffmpeg → Whisper | ✅ Done | `ingest/parsers.py`; packaged behind the `audio` extra |
-| Parser: `.mbox` | ❌ Not built | PRD listed, not implemented |
+| Parser: `.mbox` | ✅ Done | stdlib mailbox parser in `ingest/parsers.py` |
 
 ---
 
@@ -111,7 +111,7 @@ _Last updated: 2026-06-05_
 | Broken wikilink detection | ✅ Done | `GET /api/lint` + MCP `lint_wiki` |
 | Orphan page detection | ✅ Done | Same endpoints |
 | One-click fix UI | ✅ Done | LintPage.tsx + `POST /api/lint/fix` |
-| Contradiction detection | ❌ Not built | PRD listed, not implemented |
+| Contradiction detection | ✅ Done | Deterministic enabled/disabled claim checks in `/api/lint` and MCP `lint_wiki` |
 
 ---
 
@@ -185,6 +185,6 @@ _Last updated: 2026-06-05_
 ## What to Build Next
 
 **To close out v1:**
-1. MCP transport smoke tests in CI — keep stdio and SSE validated after dependency updates
-2. `.mbox` email parser — last unimplemented parser from PRD
-3. Contradiction detection in lint — semantic detection of conflicting pages
+1. Add SSE transport smoke coverage alongside the stdio MCP smoke test
+2. Broaden contradiction detection beyond deterministic enabled/disabled claims
+3. Review and merge the MCP demo script and graph export test coverage through PR

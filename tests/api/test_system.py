@@ -160,6 +160,22 @@ class TestLintWiki(unittest.TestCase):
         self.assertGreater(len(orphans), 0)
         self.assertEqual(orphans[0]["page"], "island")
 
+    def test_lint_detects_contradictory_boolean_claims(self):
+        """GET /api/lint reports contradictory_claim for enabled/disabled statements."""
+        pages = [
+            {"slug": "ops-a", "content": "Public wiki is enabled."},
+            {"slug": "ops-b", "content": "Public wiki is disabled."},
+        ]
+        with patch("archivum.api.system.sqlite.list_pages", new=AsyncMock(return_value=pages)):
+            response = self.client.get("/api/lint")
+
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        contradictions = [i for i in data["issues"] if i["type"] == "contradictory_claim"]
+        self.assertEqual(len(contradictions), 1)
+        self.assertEqual(contradictions[0]["subject"], "public wiki")
+        self.assertEqual(contradictions[0]["pages"], ["ops-a", "ops-b"])
+
 
 class TestLintFix(unittest.TestCase):
     def setUp(self):

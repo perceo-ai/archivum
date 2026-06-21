@@ -12,11 +12,9 @@ from pydantic import BaseModel
 from archivum.auth import CurrentUser, require_owner
 from archivum.config import Settings, get_settings
 from archivum.db import graph, qdrant_client as qdrant, sqlite
+from archivum.linting import WIKILINK_RE, analyze_wiki_pages
 
 router = APIRouter(prefix="/api", tags=["system"])
-
-
-WIKILINK_RE = re.compile(r"\[\[([^\]|]+)(?:\|[^\]]+)?\]\]")
 
 
 def get_audio_feature_status() -> dict[str, Any]:
@@ -88,43 +86,7 @@ async def lint_wiki(
     current_user: CurrentUser = Depends(require_owner),
 ) -> dict[str, Any]:
     pages = await sqlite.list_pages(current_user.wiki_id)
-    slug_set = {p["slug"] for p in pages}
-
-    inbound: dict[str, int] = {s: 0 for s in slug_set}
-    outbound: dict[str, int] = {s: 0 for s in slug_set}
-    broken: list[dict[str, Any]] = []
-
-    for p in pages:
-        slug = p["slug"]
-        content = p.get("content", "") or ""
-        targets = [t.strip() for t in WIKILINK_RE.findall(content)]
-        for t in targets:
-            if not t:
-                continue
-            outbound[slug] = outbound.get(slug, 0) + 1
-            if t in slug_set:
-                inbound[t] = inbound.get(t, 0) + 1
-            else:
-                broken.append(
-                    {
-                        "type": "broken_wikilink",
-                        "page": slug,
-                        "target": t,
-                        "suggestion": f"Create page '{t}' or fix link.",
-                    }
-                )
-
-    orphan_pages = [
-        {
-            "type": "orphan_page",
-            "page": s,
-            "suggestion": "Add links to/from other pages so this page is discoverable.",
-        }
-        for s in slug_set
-        if inbound.get(s, 0) == 0 and outbound.get(s, 0) == 0
-    ]
-
-    issues = broken + orphan_pages
+    issues = analyze_wiki_pages(pages)["issues"]
     return {"issues": issues, "counts": {"issues": len(issues)}}
 
 
