@@ -17,13 +17,13 @@ Build Archivum into a daily-use second brain for one owner:
 |---|---|---|
 | Backend API | Built, Life OS backend started | FastAPI app under `apps/backend/archivum`; routes for pages, folders, ingest, query, graph, search, lint, share, export, auth, public pages, system maintenance, plus `/api/life/daily`, `/api/life/projects`, and `/api/life/tasks` |
 | MCP server | Built, Life OS tools started | `apps/backend/archivum/mcp/server.py` exposes existing wiki tools plus `life_daily_note`, `life_register_project`, and `life_create_task`; `make mcp-smoke` passed on 2026-06-21 |
-| Obsidian-like editor | Built foundation | React/Vite UI has wiki editor, file tree, backlinks, graph, query, ingest, search, lint, settings |
+| Obsidian-like editor | Built foundation, Life OS routes started | React/Vite UI has wiki editor, file tree, backlinks, graph, query, ingest, search, lint, settings, plus Daily, Projects, Tasks, Decisions, and Activity routes |
 | Storage | Built foundation, Life OS schema started | SQLite metadata and FTS, Qdrant vectors, Kuzu graph, raw source directory; Life OS tables now include projects, tasks, decisions, people, areas, and agent activity |
 | Ingest | Built foundation | Parsers and pipeline exist for documents, web, code, email, media extras, and batch ingest |
 | Search and retrieval | Mostly built | Qdrant semantic search and SQLite FTS exist; hybrid ranking needs product-level confirmation |
 | Security | Mostly built | Auth, JWT cookies, roles, CSRF, CSP, rate limiting, markdown sanitization, share controls |
 | Sharing/export | Built foundation | Share links, public wiki, PDF/HTML export endpoints and UI hooks exist |
-| Life OS concepts | Backend/MCP foundation started | Daily note, project registry, and task capture are available through SQLite helpers, REST endpoints, and MCP tools; dedicated frontend views and decision/activity workflows are still pending |
+| Life OS concepts | Backend/MCP/frontend foundation started | Daily note, project registry, and task capture are available through SQLite helpers, REST endpoints, MCP tools, and first-pass UI routes; decision/activity data workflows are still pending |
 | Agent activity ledger | Not yet built as first-class workflow | MCP writes pages, but there is no normalized run/activity log, inbox, or provenance dashboard |
 | Personal import/export | Partial | General ingest/export exists; Life OS import conventions and Obsidian-compatible vault export are not defined |
 
@@ -41,13 +41,12 @@ Build Archivum into a daily-use second brain for one owner:
 
 ## Prioritized Work
 
-1. Add Obsidian-like UI affordances for second-brain workflows: command palette, daily note button, project dashboard, task/decision views, and backlinks/graph improvements.
-2. Add decision/activity workflow endpoints and MCP tools.
-3. Add Life OS page conventions and docs.
-4. Add import/export conventions for Obsidian vaults and Life OS bundles.
-5. Add activity/provenance logging for agent changes and ingest runs.
-6. Harden verification: MCP stdio/SSE smoke tests, Playwright UI flows, backend integration tests, and Docker boot checks.
-7. Update README and operator docs for personal deployment and project integration.
+1. Add decision/activity workflow endpoints and MCP tools.
+2. Add Life OS page conventions and docs.
+3. Add import/export conventions for Obsidian vaults and Life OS bundles.
+4. Add activity/provenance logging for agent changes and ingest runs.
+5. Harden verification: MCP stdio/SSE smoke tests, browser UI flows, backend integration tests, and Docker boot checks.
+6. Update README and operator docs for personal deployment and project integration.
 
 ## Active Implementation Plan
 

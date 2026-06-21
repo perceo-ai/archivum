@@ -833,7 +833,7 @@ git commit -m "feat: add life os mcp tools"
 - Modify: `apps/frontend/src/api.ts`
 - Test: `apps/frontend/src/api.test.ts`
 
-- [ ] **Step 1: Add frontend types**
+- [x] **Step 1: Add frontend types**
 
 Add to `apps/frontend/src/types.ts`:
 
@@ -860,7 +860,7 @@ export type LifeTask = {
 };
 ```
 
-- [ ] **Step 2: Add API methods**
+- [x] **Step 2: Add API methods**
 
 Add to `apps/frontend/src/api.ts`:
 
@@ -898,11 +898,11 @@ export async function createLifeTask(input: { title: string; project_key?: strin
 }
 ```
 
-- [ ] **Step 3: Add API tests**
+- [x] **Step 3: Add API tests**
 
 Extend `apps/frontend/src/api.test.ts` with mocked fetch assertions for `ensureDailyNote`, `listLifeProjects`, and `createLifeTask`.
 
-- [ ] **Step 4: Run frontend tests**
+- [x] **Step 4: Run frontend tests**
 
 ```bash
 cd apps/frontend
@@ -929,7 +929,7 @@ git commit -m "feat: add life os frontend api"
 - Create: `apps/frontend/src/pages/DecisionsPage.tsx`
 - Create: `apps/frontend/src/pages/ActivityPage.tsx`
 
-- [ ] **Step 1: Create `DailyPage.tsx`**
+- [x] **Step 1: Create `DailyPage.tsx`**
 
 ```tsx
 import { useState } from 'react';
@@ -964,19 +964,19 @@ export default function DailyPage() {
 }
 ```
 
-- [ ] **Step 2: Create `ProjectsPage.tsx`**
+- [x] **Step 2: Create `ProjectsPage.tsx`**
 
 Implement a compact list and creation form using `listLifeProjects` and `createLifeProject`. On clicking a project, navigate to `/wiki/${project.page_slug}`.
 
-- [ ] **Step 3: Create `TasksPage.tsx`**
+- [x] **Step 3: Create `TasksPage.tsx`**
 
 Implement an open task list and one-line capture form using `listLifeTasks('open')` and `createLifeTask`.
 
-- [ ] **Step 4: Create placeholder-backed `DecisionsPage.tsx` and `ActivityPage.tsx`**
+- [x] **Step 4: Create placeholder-backed `DecisionsPage.tsx` and `ActivityPage.tsx`**
 
 Use the same page shell and make them call their API methods once those are added in Milestone 5. Until then, show an empty state driven by an empty array, not static explanatory copy.
 
-- [ ] **Step 5: Add routes**
+- [x] **Step 5: Add routes**
 
 In `apps/frontend/src/App.tsx`, import pages and add protected routes:
 
@@ -988,7 +988,7 @@ In `apps/frontend/src/App.tsx`, import pages and add protected routes:
 <Route path="/activity" element={<Layout><ActivityPage /></Layout>} />
 ```
 
-- [ ] **Step 6: Add navigation**
+- [x] **Step 6: Add navigation**
 
 In `apps/frontend/src/components/Layout.tsx`, add nav items:
 
@@ -1002,7 +1002,7 @@ In `apps/frontend/src/components/Layout.tsx`, add nav items:
 
 Update the `NavItem['view']` union to include those values.
 
-- [ ] **Step 7: Run build**
+- [x] **Step 7: Run build**
 
 ```bash
 cd apps/frontend
