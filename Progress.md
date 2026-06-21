@@ -1,202 +1,63 @@
-# Archivum — Build Progress
+# Archivum Second-Brain MVP Progress
 
-_Last updated: 2026-04-28_
+_Last updated: 2026-06-21_
 
----
+## MVP Target
 
-## Overall Status
+Build Archivum into a daily-use second brain for one owner:
 
-**Core v1 loop: COMPLETE** — ingest → wiki → query → MCP all working end-to-end.  
-**Remaining:** stretch parsers (image/audio/video), security hardening, share links, export.
+- A functioning MCP server that lets agents read, search, query, write, ingest, lint, and inspect the knowledge base.
+- An Obsidian-like web interface for editing markdown, navigating backlinks, searching, viewing the graph, ingesting sources, and asking questions.
+- A Life OS layer that captures daily notes, tasks, decisions, projects, people, areas, and agent activity in structured pages agents can use safely.
+- Local-first deployment through Docker Compose with durable SQLite, Qdrant, Kuzu, raw source storage, and markdown content.
 
----
+## Current Codebase Status
 
-## Epic 1: Ingest
-
-| Feature | Status | Notes |
+| Area | Status | Evidence |
 |---|---|---|
-| Ingest pipeline (parse → LLM → SQLite + Qdrant + Kuzu) | ✅ Done | `backend/archivum/ingest/pipeline.py` |
-| SSE progress streaming per file | ✅ Done | `api/ingest.py` |
-| Batch ingest (up to 20 files, sequential) | ✅ Done | `ingest_batch()` in pipeline |
-| Ingest history log | ✅ Done | SQLite `ingest_log` table |
-| Drag & drop ingest UI | ✅ Done | `frontend/src/components/IngestPanel.tsx` |
-| URL ingest | ✅ Done | httpx + readability + BeautifulSoup |
-| Parser: `.md`, `.txt`, `.rst` | ✅ Done | Native, frontmatter included |
-| Parser: `.pdf` | ✅ Done | PyMuPDF |
-| Parser: `.html`, `.htm` | ✅ Done | BeautifulSoup + readability |
-| Parser: `.docx` | ✅ Done | python-docx |
-| Parser: `.pptx` | ✅ Done | python-pptx |
-| Parser: `.xlsx`, `.xls`, `.csv` | ✅ Done | pandas + openpyxl fallback |
-| Parser: `.json`, `.jsonl` | ✅ Done | stdlib json |
-| Parser: `.epub` | ✅ Done | ebooklib |
-| Parser: code files (`.py`, `.js`, `.ts`, `.go`, `.rs`, `.sh`, etc.) | ✅ Done | 20+ languages |
-| Parser: `.srt`, `.vtt` (subtitles/transcripts) | ✅ Done | Native, strips timestamps |
-| Parser: `.eml` | ✅ Done | stdlib email |
-| Parser: images (`.png`, `.jpg`, `.webp`) — Claude vision | ❌ Not built | PRD Day 7 stretch |
-| Parser: audio (`.mp3`, `.m4a`, `.wav`) — Whisper | ❌ Not built | PRD Day 7 stretch |
-| Parser: video (`.mp4`, `.mov`) — ffmpeg → Whisper | ❌ Not built | PRD Day 7 stretch |
-| Parser: `.mbox` | ❌ Not built | PRD listed, not implemented |
+| Backend API | Built | FastAPI app under `apps/backend/archivum`; routes for pages, folders, ingest, query, graph, search, lint, share, export, auth, public pages, system maintenance |
+| MCP server | Built, needs final validation pass | `apps/backend/archivum/mcp/server.py` exposes `ingest_source`, `search_wiki`, `list_pages`, `get_page`, `write_page`, `graph_neighbors`, `export_graph_demo`, `lint_wiki`, and `query` |
+| Obsidian-like editor | Built foundation | React/Vite UI has wiki editor, file tree, backlinks, graph, query, ingest, search, lint, settings |
+| Storage | Built foundation | SQLite metadata and FTS, Qdrant vectors, Kuzu graph, raw source directory |
+| Ingest | Built foundation | Parsers and pipeline exist for documents, web, code, email, media extras, and batch ingest |
+| Search and retrieval | Mostly built | Qdrant semantic search and SQLite FTS exist; hybrid ranking needs product-level confirmation |
+| Security | Mostly built | Auth, JWT cookies, roles, CSRF, CSP, rate limiting, markdown sanitization, share controls |
+| Sharing/export | Built foundation | Share links, public wiki, PDF/HTML export endpoints and UI hooks exist |
+| Life OS concepts | Not yet built as first-class workflow | No dedicated schema/API/UI/MCP tools for projects, tasks, decisions, daily notes, people, areas, or reviews |
+| Agent activity ledger | Not yet built as first-class workflow | MCP writes pages, but there is no normalized run/activity log, inbox, or provenance dashboard |
+| Personal import/export | Partial | General ingest/export exists; Life OS import conventions and Obsidian-compatible vault export are not defined |
 
----
+## MVP Definition Of Done
 
-## Epic 2: Editor
+- `docker compose up` boots the app, backend, MCP server, Qdrant, and Caddy from a clean checkout after `.env` setup.
+- MCP Inspector or equivalent smoke tests confirm both stdio and SSE transports expose the expected tools.
+- The web UI supports the daily second-brain loop: capture, edit, link, query, inspect graph, review backlinks, manage ingest, and resolve lint issues.
+- Life OS entities are represented consistently: daily notes, projects, areas, tasks, decisions, people, sources, and agent runs.
+- Agents can use MCP tools for Life OS workflows without scraping UI state.
+- Search returns useful answers across semantic hits, exact keyword hits, tags, and Life OS metadata.
+- The system can import an existing notes folder and export an Obsidian-readable markdown vault.
+- Tests cover backend APIs, MCP tools, core DB behavior, and frontend flows touched by the MVP.
+- README includes personal setup, MCP client config, Life OS conventions, backup/restore, and recovery instructions.
 
-| Feature | Status | Notes |
-|---|---|---|
-| CodeMirror 6 with markdown syntax highlighting | ✅ Done | `Editor.tsx` + `wikilinkExtension.ts` |
-| `[[wikilink]]` autocomplete + broken-link detection | ✅ Done | Custom CM6 extension |
-| Auto-save (debounced 1s) | ✅ Done | via `PUT /api/pages/:slug` |
-| Backlinks panel | ✅ Done | `BacklinksPanel.tsx` + `GET /api/pages/:slug/backlinks` |
-| File tree sidebar (create / delete) | ✅ Done | `FileTree.tsx` |
-| Page CRUD (create, read, update, delete) | ✅ Done | `api/pages.py` — full REST |
+## Prioritized Work
 
----
+1. Validate the existing app end-to-end and reconcile stale progress docs.
+2. Add first-class Life OS data model and page conventions.
+3. Add daily note, project, task, decision, person, and area APIs.
+4. Add matching MCP tools for agents.
+5. Add Obsidian-like UI affordances for second-brain workflows: command palette, daily note button, project dashboard, task/decision views, and backlinks/graph improvements.
+6. Add import/export conventions for Obsidian vaults and Life OS bundles.
+7. Add activity/provenance logging for agent changes and ingest runs.
+8. Harden verification: MCP stdio/SSE smoke tests, Playwright UI flows, backend integration tests, and Docker boot checks.
+9. Update README and operator docs for personal deployment and project integration.
 
-## Epic 3: Graph View
+## Active Implementation Plan
 
-| Feature | Status | Notes |
-|---|---|---|
-| Force-directed graph (vis-network) | ✅ Done | `GraphView.tsx` |
-| Nodes colour-coded by type | ✅ Done | Page, entity, concept nodes |
-| Edges with relationship labels | ✅ Done | REFERENCES, MENTIONS, RELATED |
-| Click node → open wiki page | ✅ Done | `loadGraph()` / `renderGraph()` |
-| Zoom, pan, search / highlight | ✅ Done | vis-network built-ins |
-| Graph API (neighbors, all nodes/edges, rebuild) | ✅ Done | `api/graph.py` |
+Full task-by-task plan: `docs/superpowers/plans/2026-06-21-second-brain-mvp.md`
 
----
+## Open Decisions
 
-## Epic 4: Query
-
-| Feature | Status | Notes |
-|---|---|---|
-| Streaming SSE query (token-by-token) | ✅ Done | `api/query.py` + `QueryPanel.tsx` |
-| Citations panel linked to source pages | ✅ Done | sent before tokens via SSE |
-| Save query answer as wiki page | ✅ Done | "Save as page" button in QueryPanel |
-| Query via MCP | ✅ Done | `query` tool in `mcp/server.py` |
-
----
-
-## Epic 5: Search
-
-| Feature | Status | Notes |
-|---|---|---|
-| Semantic search via Qdrant | ✅ Done | `api/search.py` + `db/qdrant_client.py` |
-| Search bar in UI | ✅ Done | `SearchBar.tsx` |
-| Keyword fallback | ❓ Unknown | Qdrant supports hybrid — not confirmed wired |
-
----
-
-## Epic 6: MCP Server
-
-| Feature | Status | Notes |
-|---|---|---|
-| SSE transport (`localhost:8001`) | ✅ Done | FastMCP with `--sse` |
-| stdio transport | ✅ Done | FastMCP with `--stdio` |
-| `ingest_source` tool | ✅ Done | Runs full pipeline |
-| `search_wiki` tool | ✅ Done | Qdrant semantic search |
-| `get_page` tool | ✅ Done | Returns full markdown |
-| `list_pages` tool | ✅ Done | Lists all pages |
-| `write_page` tool | ✅ Done | Create or update + re-index |
-| `query` tool | ✅ Done | LLM synthesis with citations |
-| `graph_neighbors` tool | ✅ Done | Kuzu neighbors |
-| `lint_wiki` tool | ✅ Done | Broken wikilinks + orphans |
-| MCP Inspector validation | ❌ Not confirmed | Needs manual run |
-| Client config snippets in README | ❌ Not built | README not written yet |
-
----
-
-## Epic 7: Lint
-
-| Feature | Status | Notes |
-|---|---|---|
-| Broken wikilink detection | ✅ Done | `GET /api/lint` + MCP `lint_wiki` |
-| Orphan page detection | ✅ Done | Same endpoints |
-| One-click fix UI | ❌ Not built | PRD P1 — UI not wired |
-| Contradiction detection | ❌ Not built | PRD listed, not implemented |
-
----
-
-## Infrastructure
-
-| Feature | Status | Notes |
-|---|---|---|
-| Docker Compose stack (all services) | ✅ Done | `docker-compose.yml` |
-| Backend (FastAPI Python 3.12) | ✅ Done | Port 8000 behind Caddy |
-| Frontend (React + Vite + TypeScript) | ✅ Done | nginx, port 3000 behind Caddy |
-| MCP server (stdio + SSE) | ✅ Done | Port 8001 |
-| Qdrant vector DB | ✅ Done | Internal only, healthcheck |
-| Kuzu embedded graph DB (chose over Neo4j) | ✅ Done | Saves ~2 GB RAM vs Neo4j |
-| SQLite WAL for metadata | ✅ Done | Single file, no extra container |
-| Caddy reverse proxy with auto TLS | ✅ Done | `caddy/Caddyfile` |
-| Named Docker volumes (data survives restarts) | ✅ Done | 7 volumes in compose |
-| fastembed local embeddings (BAAI/bge-small-en-v1.5) | ✅ Done | Zero API cost for embeddings |
-| claude-haiku-4-5-20251001 for entity extraction | ✅ Done | Prompt caching on system prompt |
-| claude-sonnet-4-6 for query synthesis | ✅ Done | Streaming via Anthropic SDK |
-| `POST /api/rebuild-indexes` | ✅ Done | `api/system.py` |
-| `wiki_id` on all models (multi-tenancy ready) | ✅ Done | Throughout SQLite + Qdrant + Kuzu |
-
----
-
-## Auth & Security
-
-| Feature | Status | Notes |
-|---|---|---|
-| Owner login (password from `.env`) | ✅ Done | `api/auth.py` |
-| JWT cookies (httpOnly, SameSite=Strict) | ✅ Done | 15min access / 7day refresh |
-| bcrypt password hashing (cost 12) | ✅ Done | `auth.py` |
-| Role-based access (owner / writer / viewer) | ✅ Done | `require_owner`, `require_writer` deps |
-| Register endpoint | ✅ Done | `POST /api/auth/register` |
-| Token refresh | ✅ Done | `POST /api/auth/refresh` |
-| Rate limiting (login + API) | ❌ Not built | PRD security hardening |
-| CSRF token protection | ❌ Not built | PRD security hardening |
-| Content Security Policy headers | ❌ Not built | PRD security hardening |
-| Markdown sanitization (DOMPurify / bleach) | ❌ Not built | PRD security hardening — **critical** |
-| Non-root Docker containers | ❌ Not confirmed | Check Dockerfiles |
-
----
-
-## Sharing & Export
-
-| Feature | Status | Notes |
-|---|---|---|
-| Share links (public page token URLs) | ❌ Not built | PRD Epic 11 |
-| Query result sharing (frozen permalinks) | ❌ Not built | PRD Epic 11 |
-| Share link expiry + revocation | ❌ Not built | PRD Epic 11 |
-| Wiki invite (viewer / collaborator role) | ❌ Not built | PRD Epic 11 |
-| PDF export (WeasyPrint) | ❌ Not built | PRD Epic 11 |
-| HTML export (self-contained bundle) | ❌ Not built | PRD Epic 11 |
-| Public wiki mode | ❌ Not built | PRD Epic 11 |
-| Cloudflare Tunnel integration | ❌ Not built | PRD Section 10 |
-
----
-
-## Week 1 KRs (from PRD §7)
-
-| KR | Status |
-|---|---|
-| KR1: `docker compose up` boots with zero manual steps beyond `.env` | ✅ Done |
-| KR2: Full ingest → query loop works end-to-end | ✅ Done |
-| KR3: CodeMirror 6 editor with `[[wikilink]]` autocomplete functional | ✅ Done |
-| KR4: MCP server connects from Claude Code (Inspector validation pending) | 🟡 Partial |
-| KR5: Graph view renders from Kuzu | ✅ Done |
-
----
-
-## What to Build Next
-
-**Highest leverage (unblocking daily use):**
-1. Markdown sanitization — security gap before real content goes in
-2. Rate limiting — login brute-force protection
-3. MCP Inspector validation run — confirm KR4 complete
-4. README with client config snippets — needed for KR4 to count
-
-**Medium priority:**
-5. Share links — needed before showing anyone else
-6. Image ingest (Claude vision) — high-value parser gap
-7. Keyword search fallback — confirm wired or add it
-
-**Lower priority / cut candidates:**
-8. Audio/video ingest (Whisper + ffmpeg) — stretch
-9. PDF/HTML export
-10. Wiki invite flow
-11. One-click lint fixes UI
+- Whether Life OS structured entities should remain derived from markdown frontmatter only, or also live in normalized SQLite tables. Current plan uses both: markdown stays portable; SQLite gives reliable API/MCP queries.
+- Whether tasks should be simple markdown checkboxes for MVP or full recurring/scheduled task objects. Current plan starts with simple task rows plus page links.
+- Whether project integration should sync from external project folders automatically. Current plan starts with explicit import/register actions to avoid unsafe filesystem crawling.
+- Whether to expose write-capable MCP over SSE outside localhost. Current plan keeps write-capable MCP local/private by default and documents reverse-proxy risks.
