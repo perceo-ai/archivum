@@ -15,6 +15,7 @@ from archivum.config import Settings, get_settings
 from archivum.db import graph, qdrant_client as qdrant, sqlite
 from archivum.ingest.pipeline import ingest
 from archivum.ingest.agent import slugify
+from archivum.life_os.service import ensure_daily_note, register_project
 from archivum.linting import analyze_wiki_pages
 from archivum.llm.openrouter_client import openrouter_chat_completion
 from archivum.llm.openai_compat_client import openai_compat_chat_completion
@@ -145,6 +146,49 @@ async def write_page(
         extra={"slug": final_slug, "wiki_id": wiki_id, "title_chars": len(title or ""), "content_chars": len(content or "")},
     )
     return await get_page(final_slug, wiki_id)
+
+
+@mcp.tool()
+async def life_daily_note(day: str | None = None, wiki_id: str = "default") -> dict[str, Any]:
+    """Create or return the daily note for YYYY-MM-DD."""
+    _require_key()
+    set_trace_id(new_trace_id("mcp-life-daily"))
+    return await ensure_daily_note(day, wiki_id=wiki_id)
+
+
+@mcp.tool()
+async def life_register_project(
+    key: str,
+    name: str,
+    summary: str = "",
+    status: str = "active",
+    wiki_id: str = "default",
+) -> dict[str, Any]:
+    """Register a project and create its canonical project page."""
+    _require_key()
+    set_trace_id(new_trace_id("mcp-life-project"))
+    return await register_project(key, name, summary, status, wiki_id)
+
+
+@mcp.tool()
+async def life_create_task(
+    title: str,
+    project_key: str | None = None,
+    page_slug: str | None = None,
+    due_date: str | None = None,
+    wiki_id: str = "default",
+) -> dict[str, Any]:
+    """Create a Life OS task linked to an optional project or page."""
+    _require_key()
+    set_trace_id(new_trace_id("mcp-life-task"))
+    return await sqlite.create_life_task(
+        wiki_id=wiki_id,
+        title=title,
+        project_key=project_key,
+        page_slug=page_slug,
+        due_date=due_date,
+        source="mcp",
+    )
 
 
 @mcp.tool()

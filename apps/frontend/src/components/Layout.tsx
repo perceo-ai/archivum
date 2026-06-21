@@ -1,4 +1,4 @@
-import { useAppState, useAppDispatch } from '../store';
+import { type ActiveView, useAppState, useAppDispatch } from '../store';
 import { useNavigate, useLocation } from 'react-router-dom';
 import FileTree from './FileTree';
 import RightSidebar from './RightSidebar';
@@ -12,7 +12,7 @@ interface LayoutProps {
 type NavItem = {
   label: string;
   path: string;
-  view: 'editor' | 'graph' | 'query' | 'ingest' | 'search' | 'lint' | 'settings';
+  view: ActiveView;
 };
 
 const NAV_ITEMS: NavItem[] = [
@@ -22,6 +22,11 @@ const NAV_ITEMS: NavItem[] = [
   { label: 'Ingest', path: '/ingest', view: 'ingest' },
   { label: 'Search', path: '/search', view: 'search' },
   { label: 'Lint', path: '/lint', view: 'lint' },
+  { label: 'Daily', path: '/daily', view: 'daily' },
+  { label: 'Projects', path: '/projects', view: 'projects' },
+  { label: 'Tasks', path: '/tasks', view: 'tasks' },
+  { label: 'Decisions', path: '/decisions', view: 'decisions' },
+  { label: 'Activity', path: '/activity', view: 'activity' },
   { label: 'Settings', path: '/settings', view: 'settings' },
 ];
 

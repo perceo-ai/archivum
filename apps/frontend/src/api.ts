@@ -7,6 +7,8 @@ import type {
   GraphEdge,
   IngestLog,
   IngestSocketMessage,
+  LifeProject,
+  LifeTask,
 } from './types';
 
 const BASE = '';
@@ -285,6 +287,51 @@ export async function search(query: string): Promise<SearchResult[]> {
 
 export async function getGraph(): Promise<{ nodes: GraphNode[]; edges: GraphEdge[] }> {
   const res = await apiFetch('/api/graph');
+  return res.json();
+}
+
+export async function ensureDailyNote(date?: string): Promise<Page> {
+  const res = await apiFetch('/api/life/daily', {
+    method: 'POST',
+    body: JSON.stringify({ date }),
+  });
+  return res.json();
+}
+
+export async function listLifeProjects(): Promise<LifeProject[]> {
+  const res = await apiFetch('/api/life/projects');
+  return res.json();
+}
+
+export async function createLifeProject(input: {
+  key: string;
+  name: string;
+  summary?: string;
+  status?: string;
+}): Promise<LifeProject> {
+  const res = await apiFetch('/api/life/projects', {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+  return res.json();
+}
+
+export async function listLifeTasks(status?: string): Promise<LifeTask[]> {
+  const qs = status ? `?status=${encodeURIComponent(status)}` : '';
+  const res = await apiFetch(`/api/life/tasks${qs}`);
+  return res.json();
+}
+
+export async function createLifeTask(input: {
+  title: string;
+  project_key?: string;
+  page_slug?: string;
+  due_date?: string;
+}): Promise<LifeTask> {
+  const res = await apiFetch('/api/life/tasks', {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
   return res.json();
 }
 

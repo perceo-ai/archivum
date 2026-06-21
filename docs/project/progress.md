@@ -1,12 +1,26 @@
 # Archivum — Build Progress
 
-_Last updated: 2026-06-05_
+_Last updated: 2026-06-21_
 
 ---
 
 ## Overall Status
 
-**v1 FEATURE-COMPLETE** — all PRD epics built. Remaining: MCP Inspector validation, Cloudflare Tunnel docs, query result permalinks, public wiki mode.
+**v1 FEATURE-COMPLETE; second-brain MVP backend phase in progress** — Life OS storage, daily/project/task REST endpoints, and matching MCP tools are now started. Remaining second-brain MVP work includes frontend Life OS views, decision/activity workflows, import/export conventions, and final end-to-end validation.
+
+---
+
+## Second-Brain MVP Update
+
+| Feature | Status | Notes |
+|---|---|---|
+| Life OS SQLite schema | ✅ Started | `life_projects`, `life_tasks`, `life_decisions`, `life_people`, `life_areas`, and `agent_activity` tables added in `apps/backend/archivum/db/sqlite.py` |
+| Daily note service | ✅ Started | `ensure_daily_note()` creates portable markdown pages with `type: daily` frontmatter |
+| Project registry service | ✅ Started | `register_project()` creates canonical `project-*` pages and project rows |
+| Task capture | ✅ Started | REST and MCP can create/list task rows; first-pass task UI is available at `/tasks` |
+| Life OS REST API | ✅ Started | `/api/life/daily`, `/api/life/projects`, and `/api/life/tasks` mounted |
+| Life OS MCP tools | ✅ Started | `life_daily_note`, `life_register_project`, and `life_create_task` added; stdio smoke still passes |
+| Life OS frontend | ✅ Started | `/daily`, `/projects`, `/tasks`, `/decisions`, and `/activity` routes are mounted with first-pass UI |
 
 ---
 

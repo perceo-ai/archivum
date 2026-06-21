@@ -10,6 +10,11 @@ import SharePage from './pages/SharePage';
 import PublicWikiPage from './pages/PublicWikiPage';
 import SettingsPage from './pages/SettingsPage';
 import LintPage from './pages/LintPage';
+import DailyPage from './pages/DailyPage';
+import ProjectsPage from './pages/ProjectsPage';
+import TasksPage from './pages/TasksPage';
+import DecisionsPage from './pages/DecisionsPage';
+import ActivityPage from './pages/ActivityPage';
 import GraphView from './components/GraphView';
 import QueryPanel from './components/QueryPanel';
 import IngestPanel from './components/IngestPanel';
@@ -87,6 +92,31 @@ function ProtectedRoutes() {
       <Route path="/lint" element={
         <Layout>
           <LintPage />
+        </Layout>
+      } />
+      <Route path="/daily" element={
+        <Layout>
+          <DailyPage />
+        </Layout>
+      } />
+      <Route path="/projects" element={
+        <Layout>
+          <ProjectsPage />
+        </Layout>
+      } />
+      <Route path="/tasks" element={
+        <Layout>
+          <TasksPage />
+        </Layout>
+      } />
+      <Route path="/decisions" element={
+        <Layout>
+          <DecisionsPage />
+        </Layout>
+      } />
+      <Route path="/activity" element={
+        <Layout>
+          <ActivityPage />
         </Layout>
       } />
       <Route path="/settings" element={

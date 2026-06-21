@@ -74,3 +74,24 @@ export type IngestSocketMessage =
   | { type: 'event'; event: IngestProgress }
   | { type: 'control_ack'; action: string }
   | { type: 'control_error'; action?: string; message: string };
+
+export type LifeProject = {
+  id: number;
+  key: string;
+  name: string;
+  status: string;
+  page_slug?: string | null;
+  summary: string;
+  updated_at: string;
+};
+
+export type LifeTask = {
+  id: number;
+  title: string;
+  status: string;
+  project_key?: string | null;
+  page_slug?: string | null;
+  due_date?: string | null;
+  source: string;
+  updated_at: string;
+};

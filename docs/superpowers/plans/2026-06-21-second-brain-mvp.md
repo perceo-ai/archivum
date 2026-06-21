@@ -153,7 +153,7 @@ git commit -m "docs: reconcile second brain mvp progress"
 - Modify: `apps/backend/archivum/db/sqlite.py`
 - Test: `tests/db/test_life_os.py`
 
-- [ ] **Step 1: Write failing DB tests**
+- [x] **Step 1: Write failing DB tests**
 
 Create `tests/db/test_life_os.py`:
 
@@ -202,7 +202,7 @@ uv run pytest ../../tests/db/test_life_os.py -q
 
 Expected: FAIL because helper functions do not exist.
 
-- [ ] **Step 2: Add schema**
+- [x] **Step 2: Add schema**
 
 Append these tables to `_SCHEMA` in `apps/backend/archivum/db/sqlite.py`:
 
@@ -284,7 +284,7 @@ CREATE INDEX IF NOT EXISTS idx_life_tasks_status ON life_tasks(wiki_id, status);
 CREATE INDEX IF NOT EXISTS idx_agent_activity_created ON agent_activity(wiki_id, created_at);
 ```
 
-- [ ] **Step 3: Add minimal helper functions**
+- [x] **Step 3: Add minimal helper functions**
 
 Add these functions to `apps/backend/archivum/db/sqlite.py`:
 
@@ -361,7 +361,7 @@ async def list_life_tasks(wiki_id: str = "default", status: str | None = None) -
             return [dict(r) for r in await cur.fetchall()]
 ```
 
-- [ ] **Step 4: Run test**
+- [x] **Step 4: Run test**
 
 ```bash
 cd apps/backend
@@ -389,7 +389,7 @@ git commit -m "feat: add life os storage"
 - Create: `apps/backend/archivum/life_os/__init__.py`
 - Test: `tests/test_life_os_service.py`
 
-- [ ] **Step 1: Write failing service tests**
+- [x] **Step 1: Write failing service tests**
 
 Create `tests/test_life_os_service.py`:
 
@@ -441,7 +441,7 @@ uv run pytest ../../tests/test_life_os_service.py -q
 
 Expected: FAIL because service module does not exist.
 
-- [ ] **Step 2: Add models**
+- [x] **Step 2: Add models**
 
 Create `apps/backend/archivum/life_os/models.py`:
 
@@ -480,7 +480,7 @@ Create `apps/backend/archivum/life_os/__init__.py`:
 """Life OS workflows for daily notes, projects, tasks, decisions, and activity."""
 ```
 
-- [ ] **Step 3: Add service**
+- [x] **Step 3: Add service**
 
 Create `apps/backend/archivum/life_os/service.py`:
 
@@ -558,7 +558,7 @@ async def register_project(
     return await sqlite.upsert_life_project(wiki_id, project_key, name, status, slug, summary)
 ```
 
-- [ ] **Step 4: Run service tests**
+- [x] **Step 4: Run service tests**
 
 ```bash
 cd apps/backend
@@ -581,7 +581,7 @@ git commit -m "feat: add life os service"
 - Modify: `apps/backend/archivum/main.py`
 - Test: `tests/api/test_life_os_api.py`
 
-- [ ] **Step 1: Write failing API tests**
+- [x] **Step 1: Write failing API tests**
 
 Create `tests/api/test_life_os_api.py`:
 
@@ -615,7 +615,7 @@ uv run pytest ../../tests/api/test_life_os_api.py -q
 
 Expected: FAIL with 404.
 
-- [ ] **Step 2: Add router**
+- [x] **Step 2: Add router**
 
 Create `apps/backend/archivum/api/life_os.py`:
 
@@ -675,7 +675,7 @@ async def list_tasks(status: str | None = None, _user=Depends(require_writer)):
     return await sqlite.list_life_tasks("default", status=status)
 ```
 
-- [ ] **Step 3: Mount router**
+- [x] **Step 3: Mount router**
 
 In `apps/backend/archivum/main.py`, import and include the router:
 
@@ -685,7 +685,7 @@ from archivum.api import life_os
 app.include_router(life_os.router)
 ```
 
-- [ ] **Step 4: Run API tests**
+- [x] **Step 4: Run API tests**
 
 ```bash
 cd apps/backend
@@ -711,7 +711,7 @@ git commit -m "feat: expose life os api"
 - Modify: `apps/backend/archivum/mcp/server.py`
 - Test: `tests/mcp_tests/test_server.py`
 
-- [ ] **Step 1: Write failing MCP tests**
+- [x] **Step 1: Write failing MCP tests**
 
 Add tests that call tool functions directly:
 
@@ -745,7 +745,7 @@ uv run pytest ../../tests/mcp_tests/test_server.py -q
 
 Expected: FAIL because MCP functions do not exist.
 
-- [ ] **Step 2: Add MCP tools**
+- [x] **Step 2: Add MCP tools**
 
 Append to `apps/backend/archivum/mcp/server.py`:
 
@@ -796,7 +796,7 @@ async def life_create_task(
     )
 ```
 
-- [ ] **Step 3: Run MCP tests**
+- [x] **Step 3: Run MCP tests**
 
 ```bash
 cd apps/backend
@@ -805,7 +805,7 @@ uv run pytest ../../tests/mcp_tests/test_server.py -q
 
 Expected: PASS.
 
-- [ ] **Step 4: Verify tool listing**
+- [x] **Step 4: Verify tool listing**
 
 Run:
 
@@ -833,7 +833,7 @@ git commit -m "feat: add life os mcp tools"
 - Modify: `apps/frontend/src/api.ts`
 - Test: `apps/frontend/src/api.test.ts`
 
-- [ ] **Step 1: Add frontend types**
+- [x] **Step 1: Add frontend types**
 
 Add to `apps/frontend/src/types.ts`:
 
@@ -860,7 +860,7 @@ export type LifeTask = {
 };
 ```
 
-- [ ] **Step 2: Add API methods**
+- [x] **Step 2: Add API methods**
 
 Add to `apps/frontend/src/api.ts`:
 
@@ -898,11 +898,11 @@ export async function createLifeTask(input: { title: string; project_key?: strin
 }
 ```
 
-- [ ] **Step 3: Add API tests**
+- [x] **Step 3: Add API tests**
 
 Extend `apps/frontend/src/api.test.ts` with mocked fetch assertions for `ensureDailyNote`, `listLifeProjects`, and `createLifeTask`.
 
-- [ ] **Step 4: Run frontend tests**
+- [x] **Step 4: Run frontend tests**
 
 ```bash
 cd apps/frontend
@@ -929,7 +929,7 @@ git commit -m "feat: add life os frontend api"
 - Create: `apps/frontend/src/pages/DecisionsPage.tsx`
 - Create: `apps/frontend/src/pages/ActivityPage.tsx`
 
-- [ ] **Step 1: Create `DailyPage.tsx`**
+- [x] **Step 1: Create `DailyPage.tsx`**
 
 ```tsx
 import { useState } from 'react';
@@ -964,19 +964,19 @@ export default function DailyPage() {
 }
 ```
 
-- [ ] **Step 2: Create `ProjectsPage.tsx`**
+- [x] **Step 2: Create `ProjectsPage.tsx`**
 
 Implement a compact list and creation form using `listLifeProjects` and `createLifeProject`. On clicking a project, navigate to `/wiki/${project.page_slug}`.
 
-- [ ] **Step 3: Create `TasksPage.tsx`**
+- [x] **Step 3: Create `TasksPage.tsx`**
 
 Implement an open task list and one-line capture form using `listLifeTasks('open')` and `createLifeTask`.
 
-- [ ] **Step 4: Create placeholder-backed `DecisionsPage.tsx` and `ActivityPage.tsx`**
+- [x] **Step 4: Create placeholder-backed `DecisionsPage.tsx` and `ActivityPage.tsx`**
 
 Use the same page shell and make them call their API methods once those are added in Milestone 5. Until then, show an empty state driven by an empty array, not static explanatory copy.
 
-- [ ] **Step 5: Add routes**
+- [x] **Step 5: Add routes**
 
 In `apps/frontend/src/App.tsx`, import pages and add protected routes:
 
@@ -988,7 +988,7 @@ In `apps/frontend/src/App.tsx`, import pages and add protected routes:
 <Route path="/activity" element={<Layout><ActivityPage /></Layout>} />
 ```
 
-- [ ] **Step 6: Add navigation**
+- [x] **Step 6: Add navigation**
 
 In `apps/frontend/src/components/Layout.tsx`, add nav items:
 
@@ -1002,7 +1002,7 @@ In `apps/frontend/src/components/Layout.tsx`, add nav items:
 
 Update the `NavItem['view']` union to include those values.
 
-- [ ] **Step 7: Run build**
+- [x] **Step 7: Run build**
 
 ```bash
 cd apps/frontend
