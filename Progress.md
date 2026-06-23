@@ -1,6 +1,6 @@
 # Archivum Second-Brain MVP Progress
 
-_Last updated: 2026-06-21_
+_Last updated: 2026-06-23_
 
 ## MVP Target
 
@@ -24,6 +24,7 @@ Build Archivum into a daily-use second brain for one owner:
 | Security | Mostly built | Auth, JWT cookies, roles, CSRF, CSP, rate limiting, markdown sanitization, share controls |
 | Sharing/export | Built foundation | Share links, public wiki, PDF/HTML export endpoints and UI hooks exist |
 | Life OS concepts | Backend/MCP/frontend foundation started | Daily note, project registry, and task capture are available through SQLite helpers, REST endpoints, MCP tools, and first-pass UI routes; decision/activity data workflows are still pending |
+| Conductor docs UI redesign | Planned, not implemented | Spec and task plan exist in `docs/superpowers/specs/2026-06-21-conductor-docs-ui-redesign-design.md` and `docs/superpowers/plans/2026-06-21-conductor-docs-ui-redesign.md`; current branch has no frontend implementation diff |
 | Agent activity ledger | Not yet built as first-class workflow | MCP writes pages, but there is no normalized run/activity log, inbox, or provenance dashboard |
 | Personal import/export | Partial | General ingest/export exists; Life OS import conventions and Obsidian-compatible vault export are not defined |
 
@@ -43,10 +44,11 @@ Build Archivum into a daily-use second brain for one owner:
 
 1. Add decision/activity workflow endpoints and MCP tools.
 2. Add Life OS page conventions and docs.
-3. Add import/export conventions for Obsidian vaults and Life OS bundles.
-4. Add activity/provenance logging for agent changes and ingest runs.
-5. Harden verification: MCP stdio/SSE smoke tests, browser UI flows, backend integration tests, and Docker boot checks.
-6. Update README and operator docs for personal deployment and project integration.
+3. Implement the Conductor-docs-style frontend rewrite from `docs/superpowers/plans/2026-06-21-conductor-docs-ui-redesign.md`.
+4. Add import/export conventions for Obsidian vaults and Life OS bundles.
+5. Add activity/provenance logging for agent changes and ingest runs.
+6. Harden verification: MCP stdio/SSE smoke tests, browser UI flows, backend integration tests, and Docker boot checks.
+7. Update README and operator docs for personal deployment and project integration.
 
 ## Active Implementation Plan
 

@@ -1,12 +1,12 @@
 # Archivum — Build Progress
 
-_Last updated: 2026-06-21_
+_Last updated: 2026-06-23_
 
 ---
 
 ## Overall Status
 
-**v1 FEATURE-COMPLETE; second-brain MVP backend phase in progress** — Life OS storage, daily/project/task REST endpoints, and matching MCP tools are now started. Remaining second-brain MVP work includes frontend Life OS views, decision/activity workflows, import/export conventions, and final end-to-end validation.
+**v1 FEATURE-COMPLETE; second-brain MVP foundation merged; Conductor docs UI redesign planned** — Life OS storage, daily/project/task REST endpoints, matching MCP tools, and first-pass frontend routes are in place. A Conductor-docs-style frontend rewrite has been specified and planned, but no implementation diff exists on this branch yet. Remaining MVP work includes decision/activity workflows, import/export conventions, frontend redesign implementation, and final end-to-end validation.
 
 ---
 
@@ -21,6 +21,16 @@ _Last updated: 2026-06-21_
 | Life OS REST API | ✅ Started | `/api/life/daily`, `/api/life/projects`, and `/api/life/tasks` mounted |
 | Life OS MCP tools | ✅ Started | `life_daily_note`, `life_register_project`, and `life_create_task` added; stdio smoke still passes |
 | Life OS frontend | ✅ Started | `/daily`, `/projects`, `/tasks`, `/decisions`, and `/activity` routes are mounted with first-pass UI |
+
+---
+
+## Conductor Docs UI Redesign
+
+| Feature | Status | Notes |
+|---|---|---|
+| Redesign spec | ✅ Done | `docs/superpowers/specs/2026-06-21-conductor-docs-ui-redesign-design.md` captures the approved Conductor-docs-style product direction |
+| Implementation plan | ✅ Done | `docs/superpowers/plans/2026-06-21-conductor-docs-ui-redesign.md` breaks the rewrite into shell, tokens, route, and verification tasks |
+| Frontend implementation | ⏳ Not started | Current branch matches `origin/main`; no app code diff for the redesign is present |
 
 ---
 
@@ -201,4 +211,5 @@ _Last updated: 2026-06-21_
 **To close out v1:**
 1. Add SSE transport smoke coverage alongside the stdio MCP smoke test
 2. Broaden contradiction detection beyond deterministic enabled/disabled claims
-3. Review and merge the MCP demo script and graph export test coverage through PR
+3. Implement the Conductor-docs-style frontend rewrite from `docs/superpowers/plans/2026-06-21-conductor-docs-ui-redesign.md`
+4. Review and merge the MCP demo script and graph export test coverage through PR
