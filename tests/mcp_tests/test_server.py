@@ -106,3 +106,37 @@ async def test_query_returns_missing_key_for_openrouter(monkeypatch):
         "error": "missing_api_key",
         "detail": "OPENROUTER_API_KEY not configured",
     }
+
+
+@pytest.mark.asyncio
+async def test_write_page_queues_backend_job_instead_of_direct_indexing(monkeypatch):
+    monkeypatch.setattr(server.sqlite, "enqueue_page_write_job", AsyncMock(return_value=17))
+    monkeypatch.setattr(
+        server.page_write_queue,
+        "wait_for_page_write_job",
+        AsyncMock(
+            return_value={
+                "id": 17,
+                "status": "done",
+                "result_slug": "queued-page",
+                "error": None,
+            }
+        ),
+    )
+    monkeypatch.setattr(
+        server,
+        "get_page",
+        AsyncMock(return_value={"slug": "queued-page", "title": "Queued Page", "content": "ready"}),
+    )
+    upsert_page = AsyncMock()
+    upsert_graph = AsyncMock()
+    monkeypatch.setattr(server.qdrant, "upsert_page", upsert_page)
+    monkeypatch.setattr(server.graph, "upsert_page", upsert_graph)
+
+    result = await server.write_page("Queued Page", "ready", wiki_id="default")
+
+    server.sqlite.enqueue_page_write_job.assert_awaited_once()
+    server.page_write_queue.wait_for_page_write_job.assert_awaited_once_with(17, wiki_id="default")
+    upsert_page.assert_not_awaited()
+    upsert_graph.assert_not_awaited()
+    assert result["slug"] == "queued-page"

@@ -16,6 +16,7 @@ services:
       - OWNER_PASSWORD=${OWNER_PASSWORD:-}
       - OWNER_USERNAME=${OWNER_USERNAME:-admin}
       - PUBLIC_WIKI_ENABLED=${PUBLIC_WIKI_ENABLED:-false}
+      - PAGE_WRITE_WORKER_ENABLED=true
       - QDRANT_URL=http://qdrant:6333
       - QDRANT_RECREATE_COLLECTION_ON_DIM_MISMATCH=true
       - WIKI_DIR=/data/wiki
@@ -122,6 +123,17 @@ services:
       timeout: 3s
       retries: 10
 
+  ollama:
+    image: ollama/ollama:latest
+    container_name: archivum-ollama
+    restart: unless-stopped
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    networks:
+      - archivum-net
+
   caddy:
     image: caddy:2-alpine
     container_name: archivum-caddy
@@ -147,6 +159,7 @@ volumes:
   db_data:
   kuzu_data:
   qdrant_data:
+  ollama_data:
   caddy_data:
   caddy_config:
 

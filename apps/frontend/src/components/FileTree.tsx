@@ -273,9 +273,9 @@ export default function FileTree() {
       onDrop={onDrop}
       data-dragover={dragOver ? 'true' : 'false'}
     >
-      <div className="px-3 py-2 border-b border-border shrink-0">
-        <div className="flex items-center justify-between mb-2">
-          <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+      <div className="shrink-0 border-b border-border/80 px-4 py-4">
+        <div className="mb-3 flex items-center justify-between">
+          <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
             Vault
           </span>
           <div className="flex items-center gap-1">
@@ -301,10 +301,10 @@ export default function FileTree() {
         </div>
         <Input
           type="text"
-          placeholder="Filter vault..."
+          placeholder="Filter pages and folders..."
           value={filter}
           onChange={(e) => setFilter(e.target.value)}
-          className="h-8 text-xs"
+          className="h-10 rounded-2xl border-border/80 bg-background/80 text-sm"
         />
       </div>
 
@@ -336,11 +336,11 @@ export default function FileTree() {
         </div>
       </ScrollArea>
 
-      <div className="px-3 py-2 border-t border-border shrink-0">
+      <div className="shrink-0 border-t border-border/80 px-4 py-4">
         <Button
           type="button"
-          variant="outline"
-          size="sm"
+          variant="secondary"
+          size="default"
           className={cn(
             'w-full justify-center',
             'data-[dragover=true]:border-ring data-[dragover=true]:bg-accent/40',
@@ -475,8 +475,8 @@ function TreeFolder({
       {!isRoot && (
         <div
           className={cn(
-            'w-full px-2 py-1.5 text-xs transition-colors flex items-center gap-1.5 group',
-            'hover:bg-muted/50 text-muted-foreground hover:text-foreground',
+            'group flex w-full items-center gap-1.5 px-2 py-2 text-sm text-muted-foreground transition-colors',
+            'hover:bg-accent/50 hover:text-foreground',
           )}
           style={{ paddingLeft: 8 + depth * 12 }}
           draggable
@@ -541,10 +541,10 @@ function TreeFolder({
                 onContext({ type: 'page', page: p, x: e.clientX, y: e.clientY });
               }}
               className={cn(
-                'w-full text-left px-2 py-2 text-sm transition-colors flex items-start gap-2',
+                'flex w-full items-start gap-2 rounded-xl px-2 py-2 text-left text-sm transition-colors',
                 currentSlug === p.slug
-                  ? 'bg-accent/10 text-foreground'
-                  : 'text-muted-foreground hover:bg-muted/50 hover:text-foreground',
+                  ? 'bg-accent text-accent-foreground shadow-sm'
+                  : 'text-muted-foreground hover:bg-accent/40 hover:text-foreground',
               )}
               style={{ paddingLeft: 8 + (isRoot ? depth : depth + 1) * 12 }}
             >

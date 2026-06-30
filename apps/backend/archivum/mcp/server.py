@@ -21,6 +21,7 @@ from archivum.llm.openrouter_client import openrouter_chat_completion
 from archivum.llm.openai_compat_client import openai_compat_chat_completion
 from archivum.logging_config import setup_logging
 from archivum.observability import new_trace_id, set_trace_id
+from archivum import page_write_queue
 
 logger = logging.getLogger(__name__)
 
@@ -130,7 +131,7 @@ async def write_page(
         return {"error": "invalid_slug"}
 
     t = tags or []
-    await sqlite.upsert_page(
+    job_id = await sqlite.enqueue_page_write_job(
         slug=final_slug,
         title=title,
         content=content,
@@ -138,14 +139,12 @@ async def write_page(
         authored_by="agent",
         wiki_id=wiki_id,
     )
-    await qdrant.upsert_page(final_slug, title, content, wiki_id, settings)
-    await graph.upsert_page(final_slug, title, wiki_id)
+    job = await page_write_queue.wait_for_page_write_job(job_id, wiki_id=wiki_id)
+    if job["status"] == "error":
+        return {"error": "write_failed", "detail": job.get("error", "unknown write failure")}
 
-    logger.info(
-        "MCP write_page indexed",
-        extra={"slug": final_slug, "wiki_id": wiki_id, "title_chars": len(title or ""), "content_chars": len(content or "")},
-    )
-    return await get_page(final_slug, wiki_id)
+    logger.info("MCP write_page done", extra={"slug": job.get("result_slug"), "wiki_id": wiki_id, "job_id": job_id})
+    return await get_page(job["result_slug"], wiki_id)
 
 
 @mcp.tool()

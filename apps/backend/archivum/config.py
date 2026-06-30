@@ -96,6 +96,9 @@ class Settings(BaseSettings):
     # When true, exposes read-only page list/detail APIs for the default wiki.
     public_wiki_enabled: bool = False
 
+    # ── Background workers ────────────────────────────────────────────────
+    page_write_worker_enabled: bool = False
+
     # ── CORS ───────────────────────────────────────────────────────────────
     cors_origins: list[str] = ["http://localhost:3000", "http://127.0.0.1:3000"]
 

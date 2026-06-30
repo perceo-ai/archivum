@@ -43,6 +43,25 @@ CREATE TABLE IF NOT EXISTS pages (
 CREATE INDEX IF NOT EXISTS idx_pages_wiki ON pages(wiki_id);
 CREATE INDEX IF NOT EXISTS idx_pages_slug ON pages(slug);
 
+CREATE TABLE IF NOT EXISTS page_write_jobs (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    wiki_id       TEXT    NOT NULL DEFAULT 'default',
+    slug          TEXT,
+    title         TEXT    NOT NULL,
+    content       TEXT    NOT NULL DEFAULT '',
+    tags          TEXT    NOT NULL DEFAULT '[]',
+    authored_by   TEXT    NOT NULL DEFAULT 'agent',
+    status        TEXT    NOT NULL DEFAULT 'pending', -- pending|processing|done|error
+    result_slug   TEXT,
+    error         TEXT,
+    created_at    TEXT    NOT NULL DEFAULT (datetime('now')),
+    updated_at    TEXT    NOT NULL DEFAULT (datetime('now')),
+    started_at    TEXT,
+    finished_at   TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_page_write_jobs_status ON page_write_jobs(status, created_at);
+
 CREATE TABLE IF NOT EXISTS folders (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
     wiki_id     TEXT    NOT NULL DEFAULT 'default',
@@ -368,6 +387,92 @@ async def upsert_page(
             )
             await db.commit()
             return cur.lastrowid, True  # type: ignore[return-value]
+
+
+async def enqueue_page_write_job(
+    *,
+    title: str,
+    content: str,
+    tags: list[str],
+    authored_by: str = "agent",
+    wiki_id: str = "default",
+    slug: str | None = None,
+) -> int:
+    now = datetime.now(UTC).isoformat()
+    tags_json = json.dumps(tags)
+    async with get_db() as db:
+        cur = await db.execute(
+            "INSERT INTO page_write_jobs (wiki_id, slug, title, content, tags, authored_by, status, created_at, updated_at) "
+            "VALUES (?,?,?,?,?,?, 'pending', ?, ?)",
+            (wiki_id, slug, title, content, tags_json, authored_by, now, now),
+        )
+        await db.commit()
+        return cur.lastrowid  # type: ignore[return-value]
+
+
+async def get_page_write_job(job_id: int, wiki_id: str = "default") -> dict[str, Any] | None:
+    async with get_db() as db:
+        async with db.execute(
+            "SELECT * FROM page_write_jobs WHERE id=? AND wiki_id=?",
+            (job_id, wiki_id),
+        ) as cur:
+            row = await cur.fetchone()
+            return dict(row) if row else None
+
+
+async def claim_next_page_write_job() -> dict[str, Any] | None:
+    now = datetime.now(UTC).isoformat()
+    async with get_db() as db:
+        await db.execute("BEGIN IMMEDIATE")
+        try:
+            async with db.execute(
+                "SELECT id FROM page_write_jobs WHERE status='pending' ORDER BY id ASC LIMIT 1"
+            ) as cur:
+                row = await cur.fetchone()
+            if not row:
+                await db.commit()
+                return None
+
+            job_id = row["id"]
+            await db.execute(
+                "UPDATE page_write_jobs SET status='processing', started_at=?, updated_at=?, error=NULL "
+                "WHERE id=?",
+                (now, now, job_id),
+            )
+            await db.commit()
+        except Exception:
+            await db.rollback()
+            raise
+
+    async with get_db() as db:
+        async with db.execute(
+            "SELECT * FROM page_write_jobs WHERE id=?",
+            (job_id,),
+        ) as cur:
+            row = await cur.fetchone()
+            return dict(row) if row else None
+
+
+async def complete_page_write_job(job_id: int, result_slug: str, wiki_id: str = "default") -> None:
+    now = datetime.now(UTC).isoformat()
+    async with get_db() as db:
+        await db.execute(
+            "UPDATE page_write_jobs SET status='done', result_slug=?, error=NULL, finished_at=?, updated_at=? "
+            "WHERE id=? AND wiki_id=?",
+            (result_slug, now, now, job_id, wiki_id),
+        )
+        await db.commit()
+
+
+async def fail_page_write_job(job_id: int, error: str, wiki_id: str = "default") -> None:
+    now = datetime.now(UTC).isoformat()
+    async with get_db() as db:
+        await db.execute(
+            "UPDATE page_write_jobs SET status='error', error=?, finished_at=?, updated_at=? "
+            "WHERE id=? AND wiki_id=?",
+            (error, now, now, job_id, wiki_id),
+        )
+        await db.commit()
 
 
 async def delete_page(slug: str, wiki_id: str = "default") -> bool:

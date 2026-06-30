@@ -160,13 +160,17 @@ export default function WikiPage() {
   }
 
   return (
-    <div className="flex flex-col h-full">
-      {/* Title bar */}
-      <div
-        className="shrink-0 border-b border-border px-4 py-3 bg-panel/70 backdrop-blur supports-[backdrop-filter]:bg-panel/50"
-      >
-        <div className="flex items-center gap-3">
+    <div className="page-frame !max-w-none bg-transparent">
+      <div className="page-header shrink-0">
+        <div className="flex items-start gap-3">
           <div className="min-w-0 flex-1">
+            <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
+              Library
+            </p>
+            <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+              <span className="font-mono">{slugStr}</span>
+              {page?.authored_by === 'agent' && <Badge variant="info">AI-authored</Badge>}
+            </div>
             <Input
               value={titleDraft}
               onChange={(e) => {
@@ -174,29 +178,28 @@ export default function WikiPage() {
                 scheduleMetaSave({ title: e.target.value });
               }}
               placeholder={loading ? 'Loading…' : 'Untitled'}
-              className="h-9 text-sm font-semibold"
+              className="mt-3 h-12 border-0 bg-transparent px-0 text-3xl font-semibold tracking-tight shadow-none focus-visible:ring-0"
               aria-label="Page title"
             />
-            <div className="mt-2 flex items-center gap-2">
+            <div className="mt-3 flex flex-wrap items-center gap-2">
               <Input
                 value={tagsDraft}
                 onChange={(e) => {
                   setTagsDraft(e.target.value);
                   scheduleMetaSave({ tags: e.target.value.split(',').map((t) => t.trim()).filter(Boolean) });
                 }}
-                placeholder="tags (comma separated)"
-                className="h-8 text-xs max-w-md"
+                placeholder="tags, comma separated"
+                className="h-9 max-w-md rounded-2xl border-border/80 bg-background/70 text-sm"
                 aria-label="Tags"
               />
-              {page?.authored_by === 'agent' && <Badge variant="info">AI</Badge>}
-              {parsedTags.slice(0, 3).map((t) => (
-                <Badge key={t} className="hidden sm:inline-flex">
+              {parsedTags.slice(0, 4).map((t) => (
+                <Badge key={t} className="bg-accent/70 text-accent-foreground">
                   {t}
                 </Badge>
               ))}
             </div>
           </div>
-          <div className="flex items-center gap-2 shrink-0">
+          <div className="flex shrink-0 items-center gap-2">
             <Button variant="secondary" size="sm" onClick={handleSaveNow} disabled={!page}>
               Save
             </Button>
@@ -209,13 +212,12 @@ export default function WikiPage() {
             />
           </div>
         </div>
-        {error && <div className="text-xs text-red-400 mt-1">{error}</div>}
+        {error && <div className="mt-3 text-xs text-destructive">{error}</div>}
       </div>
 
-      {/* Editor */}
-      <div className="flex-1 overflow-hidden">
+      <div className="surface-panel flex min-h-0 flex-1 overflow-hidden rounded-[28px]">
         {loading && !page && (
-          <div className="p-6 space-y-2">
+          <div className="space-y-2 p-6">
             <div className="skeleton h-4 w-full" />
             <div className="skeleton h-4 w-5/6" />
             <div className="skeleton h-4 w-4/5" />

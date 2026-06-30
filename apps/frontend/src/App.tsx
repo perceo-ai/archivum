@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { BrowserRouter, Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, useNavigate } from 'react-router-dom';
 import { AppProvider, useAppState, useAppDispatch } from './store';
 import { ToastProvider } from './components/ui/Toast';
 import Layout from './components/Layout';
@@ -8,24 +8,15 @@ import LoginPage from './pages/LoginPage';
 import NotFoundPage from './pages/NotFoundPage';
 import SharePage from './pages/SharePage';
 import PublicWikiPage from './pages/PublicWikiPage';
-import SettingsPage from './pages/SettingsPage';
-import LintPage from './pages/LintPage';
-import DailyPage from './pages/DailyPage';
-import ProjectsPage from './pages/ProjectsPage';
-import TasksPage from './pages/TasksPage';
-import DecisionsPage from './pages/DecisionsPage';
-import ActivityPage from './pages/ActivityPage';
-import GraphView from './components/GraphView';
-import QueryPanel from './components/QueryPanel';
-import IngestPanel from './components/IngestPanel';
-import SearchBar from './components/SearchBar';
+import LibraryPage from './pages/LibraryPage';
+import WorkflowsPage from './pages/WorkflowsPage';
+import ToolsPage from './pages/ToolsPage';
 import { listPages, refreshSession } from './api';
 
 function ProtectedRoutes() {
   const { isAuthenticated, pages, pagesLoaded } = useAppState();
   const dispatch = useAppDispatch();
   const navigate = useNavigate();
-  useLocation();
 
   useEffect(() => {
     async function loadPages() {
@@ -62,75 +53,45 @@ function ProtectedRoutes() {
       <Route path="/" element={
         pages.length > 0
           ? <Navigate to={`/wiki/${pages[0].slug}`} replace />
-          : <Navigate to="/ingest" replace />
+          : <Navigate to="/library" replace />
+      } />
+      <Route path="/library" element={
+        <Layout>
+          <LibraryPage />
+        </Layout>
       } />
       <Route path="/wiki/*" element={
         <Layout>
           <WikiPage />
         </Layout>
       } />
-      <Route path="/graph" element={
+      <Route path="/workflows/*" element={
         <Layout>
-          <GraphView onNavigate={(slug) => navigate(`/wiki/${slug}`)} />
+          <WorkflowsPage />
         </Layout>
       } />
-      <Route path="/query" element={
+      <Route path="/tools/*" element={
         <Layout>
-          <QueryPanel />
+          <ToolsPage />
         </Layout>
       } />
-      <Route path="/ingest" element={
-        <Layout>
-          <IngestPanel />
-        </Layout>
-      } />
-      <Route path="/search" element={
-        <Layout>
-          <SearchBar />
-        </Layout>
-      } />
-      <Route path="/lint" element={
-        <Layout>
-          <LintPage />
-        </Layout>
-      } />
-      <Route path="/daily" element={
-        <Layout>
-          <DailyPage />
-        </Layout>
-      } />
-      <Route path="/projects" element={
-        <Layout>
-          <ProjectsPage />
-        </Layout>
-      } />
-      <Route path="/tasks" element={
-        <Layout>
-          <TasksPage />
-        </Layout>
-      } />
-      <Route path="/decisions" element={
-        <Layout>
-          <DecisionsPage />
-        </Layout>
-      } />
-      <Route path="/activity" element={
-        <Layout>
-          <ActivityPage />
-        </Layout>
-      } />
-      <Route path="/settings" element={
-        <Layout>
-          <SettingsPage />
-        </Layout>
-      } />
+      <Route path="/graph" element={<Navigate to="/tools/graph" replace />} />
+      <Route path="/query" element={<Navigate to="/tools/query" replace />} />
+      <Route path="/ingest" element={<Navigate to="/tools/ingest" replace />} />
+      <Route path="/search" element={<Navigate to="/library" replace />} />
+      <Route path="/lint" element={<Navigate to="/tools/lint" replace />} />
+      <Route path="/daily" element={<Navigate to="/workflows/daily" replace />} />
+      <Route path="/projects" element={<Navigate to="/workflows/projects" replace />} />
+      <Route path="/tasks" element={<Navigate to="/workflows/tasks" replace />} />
+      <Route path="/decisions" element={<Navigate to="/workflows/decisions" replace />} />
+      <Route path="/activity" element={<Navigate to="/workflows/activity" replace />} />
+      <Route path="/settings" element={<Navigate to="/tools/settings" replace />} />
       <Route path="*" element={<NotFoundPage />} />
     </Routes>
   );
 }
 
 function AppRoutes() {
-  useLocation();
   return (
     <Routes>
       <Route path="/login" element={<LoginPage />} />

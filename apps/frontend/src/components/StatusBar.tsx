@@ -33,16 +33,16 @@ export default function StatusBar() {
 
   return (
     <footer
-      className="h-9 shrink-0 border-t border-border px-3 flex items-center text-xs bg-panel/30 backdrop-blur supports-[backdrop-filter]:bg-panel/20"
+      className="flex h-10 shrink-0 items-center border-t border-border/80 bg-background/70 px-4 text-xs backdrop-blur md:px-6"
     >
-      <span className="text-muted-foreground">{currentSlug ? currentSlug : '—'}</span>
+      <span className="font-mono text-muted-foreground">{currentSlug ? currentSlug : 'library/root'}</span>
       <span className="mx-2 text-muted-foreground">·</span>
       <span
         className={
           saveStatus === 'error'
-            ? 'text-red-400'
+            ? 'text-destructive'
             : saveStatus === 'saving'
-              ? 'text-accent'
+              ? 'text-primary'
               : 'text-muted-foreground'
         }
       >
@@ -55,4 +55,3 @@ export default function StatusBar() {
     </footer>
   );
 }
-

@@ -1,38 +1,40 @@
+@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 @layer base {
   :root {
-    --background: 222.2 84% 4.9%;
-    --foreground: 210 40% 98%;
+    --background: 42 36% 95%;
+    --foreground: 210 24% 18%;
 
-    --card: 222.2 84% 4.9%;
-    --card-foreground: 210 40% 98%;
+    --card: 0 0% 100%;
+    --card-foreground: 210 24% 18%;
 
-    --popover: 222.2 84% 4.9%;
-    --popover-foreground: 210 40% 98%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 210 24% 18%;
 
-    --primary: 210 40% 98%;
-    --primary-foreground: 222.2 47.4% 11.2%;
+    --primary: 31 58% 57%;
+    --primary-foreground: 212 30% 14%;
 
-    --secondary: 217.2 32.6% 17.5%;
-    --secondary-foreground: 210 40% 98%;
+    --secondary: 210 28% 91%;
+    --secondary-foreground: 212 25% 22%;
 
-    --muted: 217.2 32.6% 17.5%;
-    --muted-foreground: 215 20.2% 65.1%;
+    --muted: 40 24% 89%;
+    --muted-foreground: 212 12% 42%;
 
-    --accent: 217.2 32.6% 17.5%;
-    --accent-foreground: 210 40% 98%;
+    --accent: 34 72% 88%;
+    --accent-foreground: 212 30% 16%;
 
-    --destructive: 0 62.8% 30.6%;
+    --destructive: 0 62% 47%;
     --destructive-foreground: 210 40% 98%;
 
-    --border: 217.2 32.6% 17.5%;
-    --input: 217.2 32.6% 17.5%;
-    --ring: 212.7 26.8% 83.9%;
+    --border: 30 18% 81%;
+    --input: 35 18% 86%;
+    --ring: 31 58% 57%;
 
-    --radius: 0.75rem;
+    --radius: 1rem;
   }
 
   html, body, #root {
@@ -42,11 +44,19 @@
   }
 
   body {
-    background-color: hsl(var(--background));
+    background:
+      radial-gradient(circle at top left, rgba(222, 184, 135, 0.24), transparent 28%),
+      linear-gradient(180deg, hsl(var(--background)), hsl(40 32% 93%));
     color: hsl(var(--foreground));
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+    font-family: 'Manrope', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
+  }
+
+  button,
+  input,
+  textarea {
+    font: inherit;
   }
 
   * {
@@ -135,11 +145,39 @@
 }
 
 @layer utilities {
-  .panel-bg {
-    background-color: #252535;
+  .app-shell {
+    background:
+      radial-gradient(circle at top left, rgba(225, 174, 116, 0.18), transparent 22%),
+      linear-gradient(180deg, rgba(255,255,255,0.24), rgba(255,255,255,0.1));
   }
 
-  .border-subtle {
-    border-color: #3a3a4a;
+  .surface-panel {
+    background: linear-gradient(180deg, rgba(255,255,255,0.88), rgba(250,246,239,0.9));
+    border: 1px solid hsl(var(--border));
+    box-shadow: 0 18px 42px rgba(38, 47, 56, 0.08);
+  }
+
+  .rail-panel {
+    background: linear-gradient(180deg, #203444 0%, #172733 100%);
+  }
+
+  .page-frame {
+    @apply mx-auto flex w-full max-w-6xl flex-1 flex-col overflow-hidden px-4 pb-4 pt-4 md:px-6;
+  }
+
+  .page-header {
+    @apply mb-4 rounded-3xl border border-border/90 bg-card/80 px-6 py-5 shadow-sm backdrop-blur;
+  }
+
+  .section-tabs {
+    @apply inline-flex rounded-2xl border border-border/80 bg-card/85 p-1 shadow-sm;
+  }
+
+  .section-tab {
+    @apply rounded-xl px-3 py-2 text-xs font-semibold tracking-[0.02em] text-muted-foreground transition-colors;
+  }
+
+  .section-tab-active {
+    @apply bg-accent text-accent-foreground shadow-sm;
   }
 }

@@ -1,34 +1,17 @@
-import { useState } from 'react';
 import BacklinksPanel from './BacklinksPanel';
 import NotesInteractionPanel from './NotesInteractionPanel';
-import { Button } from './ui/Button';
 
 export default function RightSidebar() {
-  const [tab, setTab] = useState<'backlinks' | 'notes'>('backlinks');
-
   return (
-    <div className="flex flex-col h-full">
-      <div className="px-3 py-2 border-b border-border shrink-0">
-        <div className="flex gap-1">
-          <Button
-            variant={tab === 'backlinks' ? 'secondary' : 'ghost'}
-            size="sm"
-            onClick={() => setTab('backlinks')}
-          >
-            Linked from
-          </Button>
-          <Button
-            variant={tab === 'notes' ? 'secondary' : 'ghost'}
-            size="sm"
-            onClick={() => setTab('notes')}
-          >
-            Notes actions
-          </Button>
-        </div>
+    <div className="flex h-full flex-col gap-4 overflow-y-auto px-4 py-4">
+      <div className="rounded-2xl border border-border/80 bg-card/80 p-3 shadow-sm">
+        <p className="mb-3 text-sm font-semibold text-foreground">Linked from</p>
+        <BacklinksPanel />
       </div>
 
-      <div className="flex-1 overflow-hidden">
-        {tab === 'backlinks' ? <BacklinksPanel /> : <NotesInteractionPanel />}
+      <div className="rounded-2xl border border-border/80 bg-card/80 p-3 shadow-sm">
+        <p className="mb-3 text-sm font-semibold text-foreground">Notes actions</p>
+        <NotesInteractionPanel />
       </div>
     </div>
   );

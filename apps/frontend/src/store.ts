@@ -4,6 +4,9 @@ import type { Page } from './types';
 export type SaveStatus = 'idle' | 'saving' | 'saved' | 'error';
 export type ActiveView =
   | 'editor'
+  | 'library'
+  | 'workflows'
+  | 'tools'
   | 'graph'
   | 'query'
   | 'ingest'
@@ -43,8 +46,8 @@ const initialState: AppState = {
   pagesLoaded: false,
   currentSlug: null,
   saveStatus: 'idle',
-  activeView: 'editor',
-  leftOpen: true,
+  activeView: 'library',
+  leftOpen: false,
   rightOpen: true,
   isAuthenticated: false,
 };
