@@ -1,0 +1,32 @@
+docs/README.md
+  s_25fa2eb5c79a7e::t_3acdf6902eb632 3
+caddy/Caddyfile
+  s_25fa2eb5c79a7e::t_3acdf6902eb632 2
+.env.example
+  s_25fa2eb5c79a7e::t_a600eb1f1265cb 7,10,29,62,89
+docs/ops/operator-handoff-archivum.md
+  s_25fa2eb5c79a7e::t_3acdf6902eb632 86,101
+Progress.md
+  s_25fa2eb5c79a7e::t_a600eb1f1265cb 53
+docs/prd/archivum-prd-v1.0.md
+  s_25fa2eb5c79a7e::t_a600eb1f1265cb 3,27,542
+.gitignore
+  s_25fa2eb5c79a7e::t_a600eb1f1265cb 53
+  s_25fa2eb5c79a7e::t_f016e566e4d0b7 14-15,19-21,26,30,51-52,54-56
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.12",
+  "base_commit_sha": "c202722225776f65a436218dfab4cdefd0970efd",
+  "prompts": {},
+  "sessions": {
+    "s_25fa2eb5c79a7e": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f54da-c15f-74e0-857f-2030d0104996",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Pranav Kannepalli <pranav.kannepalli@gmail.com>"
+    }
+  }
+}
