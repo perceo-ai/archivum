@@ -1,0 +1,21 @@
+AGENTS.md
+  s_25fa2eb5c79a7e::t_c580e5254c7629 1-27
+CLAUDE.md
+  s_25fa2eb5c79a7e::t_2e785841f2a76a 1-27
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.12",
+  "base_commit_sha": "51eeab6fd5687a2579fb608ae8b7ef4dc010264e",
+  "prompts": {},
+  "sessions": {
+    "s_25fa2eb5c79a7e": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f54da-c15f-74e0-857f-2030d0104996",
+        "model": "unknown"
+      },
+      "human_author": "Pranav Kannepalli <pranav.kannepalli@gmail.com>"
+    }
+  }
+}
