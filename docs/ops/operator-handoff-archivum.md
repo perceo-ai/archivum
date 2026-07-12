@@ -83,7 +83,7 @@ Archivum runs as a single `docker compose` stack. No Kubernetes, no cloud depend
 ### 2.2 Configuration
 
 ```bash
-cd /home/claw/.openclaw/repos/archivum
+cd /opt/archivum
 
 # Generate secrets
 JWT_SECRET=$(openssl rand -hex 32)
@@ -98,7 +98,7 @@ cp .env.example .env
 #   JWT_SECRET=$JWT_SECRET
 #   OWNER_PASSWORD=$OWNER_PASSWORD
 #   MCP_API_KEY=$MCP_API_KEY
-#   ARCHIVUM_HOST=archivum.madebypranav.dev   (optional, set for TLS)
+#   ARCHIVUM_HOST=archivum.example.com   (optional, set for TLS)
 
 # Interactive config wizard (alternative to manual .env editing)
 make setup

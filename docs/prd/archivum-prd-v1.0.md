@@ -1,6 +1,6 @@
 # Archivum — Product Requirements Document
 
-> **Name:** Archivum — Latin root of "archive." The actual source word, more distinctive than archive itself. Deploy at `archivum.madebypranav.dev` for v1; register `archivumapp.com` before public launch.
+> **Name:** Archivum — Latin root of "archive." The actual source word, more distinctive than archive itself.
 **Status:** Draft  
 **Author:** TBD  
 **Date:** April 2026  
@@ -24,7 +24,7 @@ The system is architected from day one to be multi-tenant and packageable — so
 
 ### Name: Archivum
 
-**Domain:** `archivum.madebypranav.dev` (v1) → `archivumapp.com` (public launch)  
+**Domain:** configure with `ARCHIVUM_HOST` for your deployment.
 **GitHub:** `github.com/archivum`  
 **Docker image:** `archivumapp/archivum`
 
@@ -539,7 +539,7 @@ The home router is never touched. No port forwarding required.
 
 **Tailscale guest access:** Owner invites trusted people to their Tailscale network via email. Tailscale personal plan supports up to 3 users free. Guests install Tailscale, accept the invite, and reach Archivum at its stable Tailscale IP. They still need a valid Archivum account to log in.
 
-**Cloudflare Tunnel for public links:** A single Cloudflare Tunnel exposes one subdomain (e.g. `share.archivum.madebypranav.dev`) for public share link rendering only. This subdomain serves only the share link viewer — it cannot be used to browse the wiki or log in.
+**Cloudflare Tunnel for public links:** A single Cloudflare Tunnel can expose one share subdomain for public share link rendering only. This subdomain serves only the share link viewer — it cannot be used to browse the wiki or log in.
 
 ---
 
@@ -768,4 +768,3 @@ Distribution targets:
 | Chunking strategy for long pages — whole page or sliding window? | Builder | Day 2 | Open |
 | Docker Hub org name — `archivum` or `archivumapp`? | Builder | Post-v1 | Open |
 | Domain — `archivumapp.com` (register when ready to launch)? | Builder | Post-v1 | Open |
-

@@ -50,7 +50,7 @@ Build Archivum into a daily-use second brain for one owner:
 
 ## Active Implementation Plan
 
-Full task-by-task plan: `docs/superpowers/plans/2026-06-21-second-brain-mvp.md`
+Current launch work is tracked in Linear under the Archivum project.
 
 ## Open Decisions
 
