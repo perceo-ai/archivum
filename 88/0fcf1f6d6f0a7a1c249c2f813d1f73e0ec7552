@@ -1,0 +1,31 @@
+LICENSE
+  s_25fa2eb5c79a7e::t_1a7ebcced60a6f 1-201
+apps/backend/pyproject.toml
+  s_25fa2eb5c79a7e::t_1a7ebcced60a6f 4
+apps/frontend/package.json
+  s_25fa2eb5c79a7e::t_1a7ebcced60a6f 5
+packages/archivum-cli/package.json
+  s_25fa2eb5c79a7e::t_1a7ebcced60a6f 4
+package.json
+  s_25fa2eb5c79a7e::t_1a7ebcced60a6f 4
+apps/frontend/package-lock.json
+  s_25fa2eb5c79a7e::t_3dbefb39ddea40 10
+package-lock.json
+  s_25fa2eb5c79a7e::t_888027822ea37e 8,17,8699
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.12",
+  "base_commit_sha": "880fcf1f6d6f0a7a1c249c2f813d1f73e0ec7552",
+  "prompts": {},
+  "sessions": {
+    "s_25fa2eb5c79a7e": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f54da-c15f-74e0-857f-2030d0104996",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Pranav Kannepalli <pranav.kannepalli@gmail.com>"
+    }
+  }
+}
