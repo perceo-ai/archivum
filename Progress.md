@@ -1,60 +1,37 @@
-# Archivum Second-Brain MVP Progress
+# Archivum Release Progress
 
-_Last updated: 2026-06-21_
+_Last updated: 2026-07-12_
 
-## MVP Target
+## Target
 
-Build Archivum into a daily-use second brain for one owner:
+Ship Archivum as a self-hosted, server-hosted Obsidian-style second brain:
 
-- A functioning MCP server that lets agents read, search, query, write, ingest, lint, and inspect the knowledge base.
-- An Obsidian-like web interface for editing markdown, navigating backlinks, searching, viewing the graph, ingesting sources, and asking questions.
-- A Life OS layer that captures daily notes, tasks, decisions, projects, people, areas, and agent activity in structured pages agents can use safely.
-- Local-first deployment through Docker Compose with durable SQLite, Qdrant, Kuzu, raw source storage, and markdown content.
+- Markdown wiki with folders, backlinks, wikilinks, search, graph, ingest, query, sharing, and export.
+- MCP server for agents to read, search, query, ingest, and write the wiki.
+- Docker Compose install path that boots from a clean checkout after `.env` setup.
+- Honest open-source docs with no private project artifacts or unverified launch claims.
 
-## Current Codebase Status
+## Current Status
 
 | Area | Status | Evidence |
 |---|---|---|
-| Backend API | Built, Life OS backend started | FastAPI app under `apps/backend/archivum`; routes for pages, folders, ingest, query, graph, search, lint, share, export, auth, public pages, system maintenance, plus `/api/life/daily`, `/api/life/projects`, and `/api/life/tasks` |
-| MCP server | Built, Life OS tools started | `apps/backend/archivum/mcp/server.py` exposes existing wiki tools plus `life_daily_note`, `life_register_project`, and `life_create_task`; `make mcp-smoke` passed on 2026-06-21 |
-| Obsidian-like editor | Built foundation, Life OS routes started | React/Vite UI has wiki editor, file tree, backlinks, graph, query, ingest, search, lint, settings, plus Daily, Projects, Tasks, Decisions, and Activity routes |
-| Storage | Built foundation, Life OS schema started | SQLite metadata and FTS, Qdrant vectors, Kuzu graph, raw source directory; Life OS tables now include projects, tasks, decisions, people, areas, and agent activity |
-| Ingest | Built foundation | Parsers and pipeline exist for documents, web, code, email, media extras, and batch ingest |
-| Search and retrieval | Mostly built | Qdrant semantic search and SQLite FTS exist; hybrid ranking needs product-level confirmation |
-| Security | Mostly built | Auth, JWT cookies, roles, CSRF, CSP, rate limiting, markdown sanitization, share controls |
-| Sharing/export | Built foundation | Share links, public wiki, PDF/HTML export endpoints and UI hooks exist |
-| Life OS concepts | Backend/MCP/frontend foundation started | Daily note, project registry, and task capture are available through SQLite helpers, REST endpoints, MCP tools, and first-pass UI routes; decision/activity data workflows are still pending |
-| Agent activity ledger | Not yet built as first-class workflow | MCP writes pages, but there is no normalized run/activity log, inbox, or provenance dashboard |
-| Personal import/export | Partial | General ingest/export exists; Life OS import conventions and Obsidian-compatible vault export are not defined |
+| Repo cleanup | Verified | PER-198 moved to In Review after removing private planning artifacts and committed generated clutter. |
+| License | Verified | `LICENSE` and package metadata use Apache-2.0. |
+| README positioning | Verified | PER-218 ready for review; README now positions Archivum as a server-hosted Obsidian-style second brain. |
+| Progress docs | Verified | PER-219 ready for review; stale "feature complete" claims replaced with verified/partial/unknown status. |
+| Docker clean boot | Verified | PER-216 ready for review; `docker compose down && docker compose up -d --build` boots backend, frontend, MCP, Qdrant, Ollama, and Caddy. |
+| Ingest to query loop | Verified | PER-217 ready for review; markdown source ingested, appeared in search, and query returned source citation plus answer marker. |
+| Backend test suite | Verified | Clean container copy ran `uv run --group dev pytest /tmp/workspace/tests -q`: 258 passed. |
+| Frontend test/build | Verified | `npm test --workspace apps/frontend` passed 29 tests; `npm run build --workspace apps/frontend` completed. |
 
-## MVP Definition Of Done
+## Build Next
 
-- `docker compose up` boots the app, backend, MCP server, Qdrant, and Caddy from a clean checkout after `.env` setup.
-- MCP Inspector or equivalent smoke tests confirm both stdio and SSE transports expose the expected tools.
-- The web UI supports the daily second-brain loop: capture, edit, link, query, inspect graph, review backlinks, manage ingest, and resolve lint issues.
-- Life OS entities are represented consistently: daily notes, projects, areas, tasks, decisions, people, sources, and agent runs.
-- Agents can use MCP tools for Life OS workflows without scraping UI state.
-- Search returns useful answers across semantic hits, exact keyword hits, tags, and Life OS metadata.
-- The system can import an existing notes folder and export an Obsidian-readable markdown vault.
-- Tests cover backend APIs, MCP tools, core DB behavior, and frontend flows touched by the MVP.
-- README includes personal setup, MCP client config, Life OS conventions, backup/restore, and recovery instructions.
+1. Review PER-216, PER-217, PER-218, and PER-219.
+2. Move PER-214 and PER-215 through review/closure if the verification-only result is enough.
+3. Continue PER-220 to PER-224 for the browser second-brain UX.
 
-## Prioritized Work
+## Notes
 
-1. Add decision/activity workflow endpoints and MCP tools.
-2. Add Life OS page conventions and docs.
-3. Add import/export conventions for Obsidian vaults and Life OS bundles.
-4. Add activity/provenance logging for agent changes and ingest runs.
-5. Harden verification: MCP stdio/SSE smoke tests, browser UI flows, backend integration tests, and Docker boot checks.
-6. Update README and operator docs for personal deployment and project integration.
-
-## Active Implementation Plan
-
-Current launch work is tracked in Linear under the Archivum project.
-
-## Open Decisions
-
-- Whether Life OS structured entities should remain derived from markdown frontmatter only, or also live in normalized SQLite tables. Current plan uses both: markdown stays portable; SQLite gives reliable API/MCP queries.
-- Whether tasks should be simple markdown checkboxes for MVP or full recurring/scheduled task objects. Current plan starts with simple task rows plus page links.
-- Whether project integration should sync from external project folders automatically. Current plan starts with explicit import/register actions to avoid unsafe filesystem crawling.
-- Whether to expose write-capable MCP over SSE outside localhost. Current plan keeps write-capable MCP local/private by default and documents reverse-proxy risks.
+- Treat old checkmarks as implementation evidence only, not release proof.
+- Mark features "Verified" only when backed by a command, test, or manual smoke result.
+- Keep Archductor/Archgraph-specific language out of public Archivum docs unless it is clearly an integration note.

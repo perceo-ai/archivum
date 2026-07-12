@@ -1,15 +1,17 @@
 # Archivum
 
-**The wiki that writes itself.**
+**A server-hosted Obsidian-style second brain.**
 
-Self-hosted, AI-powered knowledge base that ingests files and URLs, extracts structured notes via LLMs, and surfaces everything through a wiki editor, semantic search, knowledge graph, and an MCP server your AI clients can query directly.
+Archivum is a self-hosted knowledge server for markdown pages, vault navigation, backlinks, ingest, search, graph exploration, sharing, and MCP access. It gives you an Obsidian-style second brain in the browser, with APIs and MCP tools so AI clients can read, search, query, and write your wiki.
 
 ## What it does
 
-- **Self-hosted wiki that organizes itself** — drop in a PDF or paste a URL and Archivum writes the wiki page, links related concepts, and keeps everything searchable
-- **Background agent** — maintains wiki pages, vector embeddings, and a knowledge graph without you lifting a finger
-- **MCP server built-in** — connect Claude Desktop, Claude Code, Cursor, VS Code, or any MCP-compatible client and let your AI assistant read and write your wiki
-- **One command to start** — `docker compose up -d`; no cloud account, no SaaS, no data leaving your machine (unless you use the Anthropic API)
+- **Markdown wiki and vault** - edit pages, organize folders, follow backlinks, and use `[[wikilinks]]`
+- **Ingest pipeline** - upload files or URLs and turn them into searchable wiki pages with source metadata
+- **Search, query, and graph** - combine keyword/semantic search, cited answers, and a Kuzu-backed knowledge graph
+- **Sharing and export** - publish tokenized read-only links, optional public wiki pages, and HTML/PDF exports
+- **MCP server built in** - connect Claude Desktop, Claude Code, Cursor, VS Code, or any MCP-compatible client to read and write the wiki
+- **Self-hosted deployment** - run with Docker Compose using local SQLite, markdown files, Qdrant, Kuzu, and Caddy
 
 ## Quick Start
 
@@ -546,4 +548,3 @@ Also, the frontend graph endpoints are mock-safe:
 To open the HTML:
 - macOS/Linux: `open graph-export-out/graph.html` / `xdg-open graph-export-out/graph.html`
 - or just `file://.../graph-export-out/graph.html`
-
