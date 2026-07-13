@@ -1,18 +1,21 @@
 # Archivum Documentation
 
-This folder contains human-readable documentation for Archivum.
+This folder contains current docs for Archivum. Public-facing product docs should describe Archivum as a self-hosted, server-hosted Obsidian-style second brain.
 
-## Contents
+## Start Here
 
-### Architecture
+- [Customer README](../README.md) - product overview, install, MCP setup, operations, and development commands
+- [Agent guide](./agent-guide.md) - repo orientation and rules for coding agents
+- [Project progress](./project/progress.md) - verified, partial, unknown, and next work status
+
+## Architecture
+
+- [Infrastructure and storage](./architecture/infra.md)
 - [Ingest pipeline](./architecture/ingest.md)
+- [Retrieval and context sizing](./architecture/retrieval.md)
 - [Graph model](./architecture/graph-model.md)
-- [Retrieval + context sizing](./architecture/retrieval.md)
 - [MCP server tools](./architecture/mcp.md)
 
-### Product / Planning
-- [Product Requirements (PRD)](./prd/archivum-prd-v1.0.md)
-- [Build progress](./project/progress.md)
+## Pruned Docs
 
-### Ops / Runbooks
-- [Archivum operator handoff (ingest → extract → wiki/search/graph → MCP)](./ops/operator-handoff-archivum.md)
+Old PRD and operator-handoff documents were removed because they duplicated the README, carried stale implementation claims, and mentioned outdated architecture. Use the files above as the source of truth.

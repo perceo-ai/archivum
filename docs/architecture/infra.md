@@ -1,111 +1,103 @@
 # Infrastructure and Storage
 
-Archivum is a local-first Docker Compose app. The published deployment runs five services:
+Archivum is a local-first Docker Compose application. The default stack keeps application data on the host through Docker volumes and uses managed external services only when you configure hosted LLM or embedding providers.
 
-| Service | Image / runtime | Responsibility |
+## Services
+
+| Service | Runtime | Responsibility |
 |---|---|---|
-| `backend` | Python + FastAPI | REST API, auth, ingestion pipeline, wiki CRUD, search/query endpoints |
-| `frontend` | React + Vite served by nginx | Browser UI |
-| `mcp` | Python MCP SDK | MCP tools for ingest, search, page reads/writes, graph neighbors, and query synthesis |
-| `qdrant` | `qdrant/qdrant` | Vector database for semantic search |
-| `caddy` | `caddy:2-alpine` | Reverse proxy, TLS, public/share routing |
+| `backend` | Python + FastAPI | REST API, auth, ingestion, wiki CRUD, search/query endpoints, share/export routes |
+| `frontend` | React + Vite served by nginx | Browser wiki UI |
+| `mcp` | Python MCP SDK | MCP tools over stdio and HTTP/SSE |
+| `qdrant` | `qdrant/qdrant:v1.17.1` | Vector search |
+| `ollama` | `ollama/ollama:latest` | Optional local LLM/embedding runtime |
+| `caddy` | `caddy:2-alpine` | Reverse proxy, TLS, share/public routing |
+
+Published-image installs combine:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.images.yml up -d --no-build
+```
+
+Source builds use:
+
+```bash
+docker compose up -d --build
+```
 
 ## Local Stores
 
-All application data is local by default.
-
-| Store | Container path | Docker volume | What it stores | Rebuildable |
+| Store | Container path | Docker volume | Purpose | Rebuildable |
 |---|---|---|---|---|
-| Wiki markdown | `/data/wiki` | `wiki_data` | Canonical page files | No, this is source data |
-| Raw sources | `/data/raw` | `raw_data` | Uploaded source files | No, this is source data |
+| Markdown wiki | `/data/wiki` | `wiki_data` | Canonical page files | No |
+| Raw sources | `/data/raw` | `raw_data` | Original uploaded files | No |
 | SQLite | `/data/archivum.db` | `db_data` | Users, JWT refresh tokens, page metadata, share links, ingest logs, keyword FTS | Partially |
-| Kuzu | `/data/kuzu` | `kuzu_data` | Embedded graph database for pages, entities, and relationships | Yes |
-| Qdrant | `/qdrant/storage` | `qdrant_data` | Embedding vectors and payloads for semantic search | Yes |
+| Kuzu | `/data/kuzu` | `kuzu_data` | Graph pages, entities, and relationships | Yes |
+| Qdrant | `/qdrant/storage` | `qdrant_data` | Embedding vectors and payloads | Yes |
+| Ollama | `/root/.ollama` | `ollama_data` | Local models | Yes |
 
-Markdown is the canonical knowledge store. SQLite is the operational metadata store. Qdrant and Kuzu are derived indexes that can be rebuilt from page content when needed.
+Markdown is the canonical knowledge store. SQLite is operational metadata. Qdrant and Kuzu are derived indexes and can be rebuilt from wiki content.
 
-## Database Choices
+## Network Shape
 
-Archivum currently uses:
+- Caddy exposes ports `80` and `443`.
+- Frontend is also bound to `127.0.0.1:${ARCHIVUM_FRONTEND_PORT:-8473}` for direct local access.
+- REST API is routed through Caddy at `/api/*`; the backend listens on port `8000` inside Compose.
+- MCP SSE is exposed on host port `8001`.
+- Qdrant ports `6333` and `6334` are exposed for local debugging.
+- Ollama is exposed on host port `11434`.
 
-| Concern | Database | Why |
-|---|---|---|
-| Metadata and auth | SQLite with WAL | Single-file local database, no extra container, enough for a single-user/self-hosted deployment |
-| Vector search | Qdrant | Purpose-built vector index with a stable Docker image and async Python client |
-| Graph navigation | Kuzu | Embedded graph database, much lighter than running Neo4j for the v1 self-hosted target |
+## Environment
 
-There is no Postgres or hosted database in the default architecture. External network calls happen only for configured LLM or embedding providers, unless both are pointed at local providers such as Ollama.
+Important configuration lives in `.env` and is documented in [.env.example](../../.env.example).
+
+Provider choices:
+
+| Concern | Options |
+|---|---|
+| Extraction LLM | `anthropic`, `openrouter`, `openai_compat`, `ollama` |
+| Query synthesis LLM | `anthropic`, `openrouter`, `openai_compat`, `ollama` |
+| Embeddings | `local`, `openai_compat`, `openrouter`, `ollama` |
+
+Default embeddings use local fastembed with `BAAI/bge-small-en-v1.5`.
 
 ## Optional Heavy Capabilities
 
-The base backend and MCP images are intended to stay small enough to publish as general-purpose runtime images. Heavy capabilities should be packaged outside the base images.
+The published backend and MCP images omit Whisper, Torch, and ffmpeg. Text, document, web, office, data, code, subtitle, and email parsing are included. Image parsing requires Anthropic vision. Audio/video transcription requires:
 
-Current split:
-
-| Capability | Default image | Optional install |
-|---|---|---|
-| Text, documents, web pages, office files, code, subtitles, email | Included | Not needed |
-| Image description/OCR | Included parser path; requires configured vision-capable LLM provider | Not needed |
-| Audio transcription | Omitted from default images | `uv sync --extra audio` |
-| Video transcription | Omitted from default images | `uv sync --extra audio` plus system `ffmpeg` |
-
-For published deployments, the preferred pattern is:
-
-1. Keep `archivum-backend` and `archivum-mcp` as core images.
-2. Run optional media transcription in a derived image or separate worker when the feature is needed.
-3. Keep optional dependency groups in `pyproject.toml` so base image builds do not pull Torch, CUDA, or ffmpeg.
-
-A derived media image can be as simple as:
-
-```Dockerfile
-FROM ghcr.io/pranavkannepalli/archivum-backend:latest
-USER root
-RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg \
-  && rm -rf /var/lib/apt/lists/*
-RUN uv sync --no-dev --frozen --no-cache --extra audio
-USER app
+```bash
+cd apps/backend
+uv sync --extra audio
+# Install ffmpeg with your OS package manager for video files.
 ```
 
-That image is intentionally separate from the base image because Whisper/Torch wheels are large and can pull CUDA-related packages on Linux.
+## Development
 
-## Local Development
-
-For local backend or MCP development, do not build Docker images unless you are testing packaging. Start only Qdrant in Docker:
+For backend or MCP work, start only Qdrant in Docker:
 
 ```bash
 docker compose up -d qdrant
 ```
 
-Then run Python services from the repo:
+Backend:
 
 ```bash
 cd apps/backend
 uv sync
-
-WIKI_DIR=.data/wiki \
-RAW_DIR=.data/raw \
-DB_PATH=.data/archivum.db \
-KUZU_PATH=.data/kuzu \
-QDRANT_URL=http://localhost:6333 \
-uv run uvicorn archivum.main:app --reload --port 8000
+WIKI_DIR=.data/wiki RAW_DIR=.data/raw DB_PATH=.data/archivum.db KUZU_PATH=.data/kuzu QDRANT_URL=http://localhost:6333 uv run uvicorn archivum.main:app --reload --port 8000
 ```
 
-Run MCP separately when needed:
+MCP:
 
 ```bash
 cd apps/backend
-WIKI_DIR=.data/wiki \
-RAW_DIR=.data/raw \
-DB_PATH=.data/archivum.db \
-KUZU_PATH=.data/kuzu \
-QDRANT_URL=http://localhost:6333 \
-MCP_PORT=8001 \
-uv run python -m archivum.mcp.server --sse
+WIKI_DIR=.data/wiki RAW_DIR=.data/raw DB_PATH=.data/archivum.db KUZU_PATH=.data/kuzu QDRANT_URL=http://localhost:6333 MCP_PORT=8001 uv run python -m archivum.mcp.server --sse
 ```
 
-Build Docker images only when validating release packaging:
+Frontend:
 
 ```bash
-docker build -t archivum-backend:local ./apps/backend
-docker build -f apps/backend/Dockerfile.mcp -t archivum-mcp:local ./apps/backend
+cd apps/frontend
+npm install
+npm run dev
 ```

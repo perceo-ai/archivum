@@ -1,35 +1,28 @@
-# Graph Model (Kuzu)
+# Graph Model
 
-Archivum stores the knowledge graph in an embedded **Kuzu** database (used by the graph UI and graph neighbor APIs).
+Archivum stores graph data in embedded Kuzu. The graph powers graph APIs, graph UI, and MCP neighbor lookups.
 
-## Node types
+## Node Types
 
-- `Page`
-  - Key: `slug` (string)
-  - Properties: `title`, `wiki_id`
-- `Entity`
-  - Key: `name` (string)
-  - Properties: `type`, `wiki_id`
+| Node | Key | Properties |
+|---|---|---|
+| `Page` | `slug` | `title`, `wiki_id` |
+| `Entity` | `name` | `type`, `wiki_id` |
 
-## Edge types (what auto-connects)
+## Edge Types
 
-- `Page -[:REFERENCES]-> Page`
-  - Source: `[[wikilink]]` syntax inside page markdown content.
-  - Behavior: only created when the target page exists (slug found in SQLite during ingest).
+| Edge | Source | Notes |
+|---|---|---|
+| `Page -[:REFERENCES]-> Page` | `[[wikilink]]` syntax | Created only when the target page exists at edge-build time |
+| `Page -[:MENTIONS]-> Entity` | Extracted entity names in page markdown | Case-insensitive substring match |
+| `Entity -[:RELATED_TO]-> Entity` | Extraction LLM `relationships[]` | No separate verification pass |
 
-- `Page -[:MENTIONS]-> Entity`
-  - Source: case-insensitive substring match of extracted `Entity.name` inside the page markdown content.
-  - Behavior: no positions/offsets are stored; it’s a simple containment check.
+## Rebuild
 
-- `Entity -[:RELATED_TO]-> Entity`
-  - Source: Claude-provided `relationships[]` JSON from the extraction step.
-  - Behavior: inferred purely from the LLM output; no extra verification pass exists.
+Use rebuild when content changes outside the normal write path or when ingest order left missing `REFERENCES` edges:
 
-## Rebuild / consistency
+```bash
+node packages/archivum-cli/src/index.js wiki rebuild-indexes
+```
 
-If you change page content or ingest order affects `REFERENCES` edge creation, you can rebuild derived edges:
-
-- `POST /api/rebuild-indexes`
-  - Re-initializes derived stores (Qdrant + Kuzu `Page` nodes).
-  - Rebuilds `REFERENCES` edges by scanning `[[wikilink]]` in each page’s stored content.
-
+Rebuild reinitializes derived Qdrant and Kuzu data from canonical wiki content and SQLite metadata.

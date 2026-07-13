@@ -1,24 +1,41 @@
-# Retrieval + Context Sizing
+# Retrieval and Context Sizing
 
-Archivum avoids sending “3 billion tokens” to Claude by strictly limiting what the LLM sees at query time.
+Archivum answers questions by retrieving small snippets from Qdrant and only sending those snippets to the synthesis LLM.
 
-## Query-time context: Qdrant first, then small excerpts
+## Query Flow
 
-When you call `POST /api/query`, the backend:
+1. Embed the user question.
+2. Search Qdrant for matching page chunks.
+3. Deduplicate hits by page slug.
+4. Fetch page titles from SQLite for citations.
+5. Build a prompt from excerpts, not full wiki contents.
+6. Ask the configured synthesis provider to answer using only the provided context.
 
-1. Runs semantic retrieval using Qdrant over **chunk embeddings**:
-   - Qdrant vectors are built from page content chunks (sliding window).
-2. Pulls only the top-N hits (small number of chunks).
-3. Deduplicates by page `slug` so you don’t get multiple chunks from the same page dominating the prompt.
-4. Builds the LLM prompt from `excerpt` snippets from those hits.
+Primary code:
 
-Only those excerpts are included in the Claude synthesis prompt.
+| Concern | Path |
+|---|---|
+| REST query route | `apps/backend/archivum/api/query.py` |
+| MCP query tool | `apps/backend/archivum/mcp/server.py` |
+| Qdrant adapter | `apps/backend/archivum/db/qdrant_client.py` |
+| Provider clients | `apps/backend/archivum/llm` |
 
-## Why ingest-time is still “expensive” but bounded
+## Why Context Stays Small
 
-On ingest, Claude runs once per ingested source document (not per wiki-wide query), and the ingest agent truncates very long documents before asking for extraction.
+Query synthesis does not send the entire wiki to the model. It sends the top retrieved excerpts, capped and deduplicated by page. Full page content remains available for reading and citation metadata, but synthesis context is excerpt-based.
 
-## Where full content is used
+## Providers
 
-The API may load full page content for “citations” metadata, but the **Claude synthesis prompt** uses only the retrieval excerpts built for the prompt.
+Synthesis supports:
 
+- Anthropic
+- OpenRouter
+- OpenAI-compatible providers
+- Ollama through OpenAI-compatible calls
+
+Embeddings support:
+
+- local fastembed
+- OpenAI-compatible embeddings
+- OpenRouter
+- Ollama
