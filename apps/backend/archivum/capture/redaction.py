@@ -8,7 +8,12 @@ from typing import Any
 HIDDEN_BLOCK_TYPES: frozenset[str] = frozenset(
     {"thinking", "reasoning", "redacted_thinking", "thoughts"}
 )
-_INLINE = re.compile(r"<(thinking|reasoning)>.*?</\1>", re.DOTALL | re.IGNORECASE)
+# Inline tags are derived from HIDDEN_BLOCK_TYPES so the block-based and inline
+# redaction paths can never drift (e.g. <thoughts>…</thoughts> must strip too).
+_INLINE = re.compile(
+    r"<(" + "|".join(re.escape(t) for t in sorted(HIDDEN_BLOCK_TYPES)) + r")>.*?</\1>",
+    re.DOTALL | re.IGNORECASE,
+)
 
 
 def redact_turn_text(text: str) -> str:
