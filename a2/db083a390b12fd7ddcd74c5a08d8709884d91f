@@ -1,0 +1,21 @@
+tests/store/test_blobs.py
+  s_fca0484fc7e95a::t_dfab94bea4c435 1-57
+apps/backend/archivum/store/blobs.py
+  s_fca0484fc7e95a::t_78cfafb495ce96 1-61
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "a2db083a390b12fd7ddcd74c5a08d8709884d91f",
+  "prompts": {},
+  "sessions": {
+    "s_fca0484fc7e95a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f816a12e-be55-4e40-b7e3-e3e50e24344f",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Pranav Kannepalli <pranav.kannepalli@gmail.com>"
+    }
+  }
+}
