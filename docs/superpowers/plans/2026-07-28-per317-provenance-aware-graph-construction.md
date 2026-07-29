@@ -119,24 +119,27 @@ apps/backend/
 
 ## Upstream Dependencies
 
-**PER-315 (immutable source store & ingestion) and PER-316 (conversation/agent capture) plans do not yet exist on disk.** Per the task contract, this plan relies on the spec's L0/L1 model and assumes PER-315 provides:
+**Canonical upstream interfaces are defined in [2026-07-28-archivum-interface-contract.md](2026-07-28-archivum-interface-contract.md).** This plan consumes PER-315's real L0/L1 surface and PER-316's real capture surface:
 
-- **`SourceStore`** — content-addressed L0 blob store; not directly consumed here.
-- **`ingest_source(...)`** — deterministic-stage ingestion producing `sources`, `documents`, `chunks` rows; not directly consumed here.
-- **L1 base tables** with these columns (assumed shape; if the real PER-315 schema differs, adjust `_KNOWLEDGE_SCHEMA` foreign keys in Task 2 and note the deviation):
+- **PER-315 `SourceStore`** (`archivum/store/repository.py`) — async CRUD over L1; not directly written here, read for evidence resolution.
+- **PER-315 `ingest_source(...)`** (`archivum/store/ingest.py`) — deterministic-stage ingestion producing `sources`, `documents`, `chunks` rows; upstream of this plan's work queue, not directly called here.
+- **PER-315 L1 base tables** (real schema, `archivum/store/schema.py::EVIDENCE_SCHEMA`, applied in `init_db`):
 
   ```sql
   sources(id TEXT PRIMARY KEY, content_hash TEXT, version INTEGER,
-          source_type TEXT, origin_uri TEXT, ingested_at TEXT, scope TEXT)
+          source_type TEXT, origin_uri TEXT, scope TEXT,
+          ingested_at TEXT, recorded_at TEXT, valid_from TEXT, valid_to TEXT,
+          UNIQUE(content_hash, version))
   documents(id TEXT PRIMARY KEY, source_id TEXT REFERENCES sources(id),
-            mime TEXT, normalized_hash TEXT, content TEXT)
+            mime TEXT, normalized_hash TEXT)
   chunks(id TEXT PRIMARY KEY, document_id TEXT REFERENCES documents(id),
-         span_start INTEGER, span_end INTEGER, text TEXT, text_hash TEXT)
+         seq INTEGER, start_offset INTEGER, end_offset INTEGER, text_hash TEXT,
+         UNIQUE(document_id, seq))
   ```
 
-  **ASSUMPTION (flagged):** Task 1's `conftest.py` creates these three tables in the test DB via a fixture `seed_l1_base(...)` so PER-317 tests are self-contained. When PER-315 lands, delete the fixture's DDL and import PER-315's schema init instead — the column names above are the contract.
+  **TEST STAND-IN (flagged):** Task 1's `conftest.py` fixture `seed_l1_base(...)` stands in for PER-315's `EVIDENCE_SCHEMA` so PER-317 tests are self-contained. When PER-315 lands, delete the fixture's DDL and import `archivum.store.schema.EVIDENCE_SCHEMA` (via `init_db`) instead — the columns above are PER-315's real contract.
 
-- **PER-316** captures each agent session as a Source. This plan's worker harness (Task 13) writes a session-capture hook point (`on_session_captured`) but does not implement PER-316 capture; it is a no-op callback by default.
+- **PER-316** captures each agent session as a Source via **`CaptureStore.capture(conv) -> CaptureResult`** and emits knowledge via **`provenance.emit_knowledge(conv, capture) -> ProvenanceResult`** (`archivum/capture/`); those captured Sources feed this plan's work queue. This plan's worker harness (Task 13) exposes a session-capture hook point (`on_session_captured`) that stands in for `CaptureStore.capture`; it is a no-op callback by default until PER-316 is wired in.
 
 **Existing modules consumed as-is:** `archivum.config.get_settings`, `archivum.db.sqlite.get_db`, `archivum.db.graph` (`_get_conn`, `_run`), `archivum.db.qdrant_client` (`get_client`, `embed_texts`, `resolve_embed_dim`).
 

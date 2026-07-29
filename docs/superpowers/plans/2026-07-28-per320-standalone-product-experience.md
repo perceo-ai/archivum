@@ -85,54 +85,66 @@ New / changed files (responsibility):
 
 ## Upstream Dependencies
 
-**PER-319 (Cited Retrieval, Ask & MCP) — REST API + ContextPackage.** The plan `docs/superpowers/plans/2026-07-28-per319-cited-retrieval-ask-and-mcp.md` does **not exist yet** at time of writing. This frontend consumes its REST layer. Per spec §8 the shapes are treated as the contract; if PER-319 finalizes different field names, adjust `src/api/types.ts` only (all UI reads through it).
+**PER-319 (Cited Retrieval, Ask & MCP) — REST API + ContextPackage.** Canonical upstream interfaces are defined in [2026-07-28-archivum-interface-contract.md](2026-07-28-archivum-interface-contract.md). This frontend consumes PER-319's real REST layer (and PER-315's `/api/sources`). All UI reads through `src/api/types.ts`; keep those types mirrored to PER-319's `ContextPackage`/`Citation`/`RetrievalHit`/`AskResult`.
 
-**Assumed endpoints (document any drift in code comments):**
-- `POST /api/ask` — SSE stream: `{type:'token',token}`, `{type:'citations',citations:Citation[]}`, `{type:'context',package:ContextPackage}`, `{type:'insufficient',reason}`, `[DONE]`.
-- `GET /api/sources?q=&limit=` → `Source[]`.
-- `GET /api/sources/:id` → `Source` (with `versions`).
-- `GET /api/sources/:id/versions` → `SourceVersion[]`.
-- `GET /api/entities?q=&limit=` → `Entity[]`; `GET /api/entities/:id` → `EntityDetail`.
-- `GET /api/timeline?scope=&from=&to=` → `TimelineEvent[]`.
-- `GET /api/graph?seed=&depth=&relations=` → `ContextPackage` (nodes + edges).
+**Real endpoints (PER-319 canonical; PER-315 for sources):**
+- `POST /api/ask` — SSE stream: `citations` event → `token`* events → `insufficient` event (when weak) → `[DONE]`. (There is **no** `context` event; fetch the package separately via `POST /api/context-package`.)
+- `POST /api/retrieve` — body `{query, source_type?, limit?, top_n?}` → `{ hits: RetrievalHit[] }`.
+- `POST /api/context-package` — body `{query, source_type?, depth?, max_nodes?, relations?}` → `ContextPackage`.
+- `GET /api/graph/neighbors?node_id=&depth=&wiki_id=` → `{ center, nodes, edges }`.
+- `GET /api/sources?q=&limit=` → `Source[]`; `GET /api/sources/:id` → `Source` (with `versions`); `GET /api/sources/:id/versions` → `SourceVersion[]` (PER-315 `api/sources.py` read-back; extend there if a list route is needed).
+- Entities/Timeline views (`/api/entities`, `/api/timeline`) are projections over PER-319 retrieval + PER-317 `list_objects`; treat as this plan's own view endpoints, not PER-319 contract.
 
-**ContextPackage shape (spec §8, canonical for this plan):**
+**ContextPackage / Citation shape (mirror of PER-319's real Pydantic models):**
 ```ts
 type ExtractionMethod = 'EXTRACTED' | 'INFERRED' | 'AMBIGUOUS';
+type SourceType = 'code' | 'structured' | 'natural_language';
 
 interface Citation {
-  chunk_id: string;
   source_id: string;
-  source_title: string;
-  span: { start: number; end: number } | { line_start: number; line_end: number };
-  extraction_method: ExtractionMethod;
-  confidence: number; // 0..1
+  source_type: SourceType;
+  title: string;
+  origin_uri?: string | null;
+  chunk_id?: string | null;
+  span?: [number, number] | null;
+  excerpt?: string | null;
 }
 
 interface ContextNode {
   id: string;
   label: string;
-  kind: 'entity' | 'artifact' | 'event' | 'claim';
-  entity_type?: string;
-  confidence: number;
+  node_type: string;
+  scope: string;
   extraction_method: ExtractionMethod;
+  confidence: number;
   citations: Citation[];
 }
 
 interface ContextEdge {
-  from: string;
-  to: string;
-  label: string;
+  from_id: string;
+  to_id: string;
+  relation: string;
   extraction_method: ExtractionMethod;
   confidence: number;
 }
 
 interface ContextPackage {
   query: string;
+  seeds: string[];
   nodes: ContextNode[];
   edges: ContextEdge[];
-  sufficient: boolean;
-  insufficient_reason?: string;
+  truncated: boolean;
+  insufficient_evidence: boolean;
+}
+
+interface RetrievalHit {
+  node_id: string;
+  label: string;
+  node_type: string;
+  scope: string;
+  score: number;
+  source: string;
+  excerpt?: string | null;
 }
 ```
 
@@ -372,6 +384,8 @@ export async function ask(question: string, cb: AskCallbacks): Promise<void> {
     };
     if (e.type === 'token' && e.token !== undefined) cb.onToken(e.token);
     else if (e.type === 'citations' && e.citations) cb.onCitations(e.citations);
+    // PER-319 /api/ask emits only citations/token/insufficient/[DONE] (no `context` event);
+    // fetch the ContextPackage separately via POST /api/context-package when needed.
     else if (e.type === 'context' && e.package) cb.onContext(e.package);
     else if (e.type === 'insufficient') cb.onInsufficient(e.reason ?? 'insufficient evidence');
   });
@@ -394,7 +408,7 @@ export function listSourceVersions(id: string): Promise<SourceVersion[]>;
 export function listEntities(q?: string, limit?: number): Promise<Entity[]>;
 export function getEntity(id: string): Promise<EntityDetail>;
 export function getTimeline(opts?: { scope?: string; from?: string; to?: string }): Promise<TimelineEvent[]>;
-export function getScopedGraph(scope: GraphScope): Promise<ContextPackage>;
+export function getScopedGraph(scope: GraphScope): Promise<{ center: unknown; nodes: ContextNode[]; edges: ContextEdge[] }>;
 ```
 
 - [ ] Add tests (mirror `api.test.ts` fetchMock style) asserting each hits the right URL and returns typed JSON. Example:
@@ -410,10 +424,10 @@ it('searches sources', async () => {
 
 it('builds scoped graph query', async () => {
   fetchMock.mockResolvedValueOnce(new Response(
-    JSON.stringify({ query: '', nodes: [], edges: [], sufficient: true }), { status: 200 }));
+    JSON.stringify({ center: null, nodes: [], edges: [] }), { status: 200 }));
   await getScopedGraph({ seed: ['e1', 'e2'], depth: 2, relations: ['calls'] });
   expect(fetchMock).toHaveBeenCalledWith(
-    '/api/graph?seed=e1%2Ce2&depth=2&relations=calls',
+    '/api/graph/neighbors?node_id=e1&depth=2',
     expect.objectContaining({ credentials: 'include' }));
 });
 ```
@@ -450,9 +464,12 @@ export async function getTimeline(
 ): Promise<TimelineEvent[]> {
   return (await apiFetch(`/api/timeline${qs(opts)}`)).json();
 }
-export async function getScopedGraph(scope: GraphScope): Promise<ContextPackage> {
-  return (await apiFetch(`/api/graph${qs({
-    seed: scope.seed.join(','), depth: scope.depth, relations: scope.relations?.join(','),
+// PER-319 canonical: GET /api/graph/neighbors?node_id=&depth= -> { center, nodes, edges }.
+// Seed the neighborhood from the first scope node; POST /api/context-package covers
+// multi-seed / relation-filtered expansion when richer scoping is needed.
+export async function getScopedGraph(scope: GraphScope): Promise<{ center: unknown; nodes: ContextNode[]; edges: ContextEdge[] }> {
+  return (await apiFetch(`/api/graph/neighbors${qs({
+    node_id: scope.seed[0], depth: scope.depth,
   })}`)).json();
 }
 ```
@@ -1299,7 +1316,7 @@ export default function TimelinePage() {
 
 **Files:** `apps/frontend/src/components/ScopedGraph.tsx` (new) + test; `apps/frontend/src/pages/GraphPage.tsx` (new) + test. Adapt from `GraphView.tsx` (vis-network dynamic import + click nav).
 
-**Interfaces** — Consumes: `getScopedGraph(scope)`, `ContextPackage`. Produces: `ScopedGraph` (`{ scope: GraphScope; onSelectNode?: (id: string) => void }`), `GraphPage`.
+**Interfaces** — Consumes: `getScopedGraph(scope)` → PER-319 `GET /api/graph/neighbors` `{ center, nodes, edges }` (`ContextNode[]`/`ContextEdge[]`). Produces: `ScopedGraph` (`{ scope: GraphScope; onSelectNode?: (id: string) => void }`), `GraphPage`.
 
 - [ ] Write `ScopedGraph.test.tsx` — mock `getScopedGraph`; assert it loads the scoped package and renders node/edge counts (vis-network `Network` is a dynamic import; test asserts the count summary text, not canvas):
 ```tsx
@@ -1309,7 +1326,7 @@ import ScopedGraph from './ScopedGraph';
 
 vi.mock('../api/knowledge', () => ({
   getScopedGraph: vi.fn().mockResolvedValue({
-    query: '', sufficient: true,
+    center: null,
     nodes: [
       { id: 'n1', label: 'A', kind: 'entity', confidence: 0.9, extraction_method: 'EXTRACTED', citations: [] },
       { id: 'n2', label: 'B', kind: 'entity', confidence: 0.8, extraction_method: 'INFERRED', citations: [] },

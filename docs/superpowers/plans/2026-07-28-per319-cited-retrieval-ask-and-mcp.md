@@ -134,23 +134,26 @@ tests/
 
 ## Upstream Dependencies
 
-- **PER-317 (graph construction)** — *plan file absent at authoring time.*
-  **Assumption:** L1 (SQLite) holds knowledge objects with provenance
-  (`chunk_id` + span), `extraction_method ∈ {EXTRACTED, INFERRED, AMBIGUOUS}`,
-  `confidence`, `scope`, and temporal validity; Kuzu holds derived typed nodes/edges;
-  Qdrant holds NL chunk vectors; FTS5 (`pages_fts`) indexes text. **Bridge:** we
-  build on the *current* schema (`pages`, `pages_fts`, Kuzu `Page`/`Entity`) and add
-  thin, forward-compatible helpers (`get_source_span`, typed node lookups) that
-  degrade gracefully when L1 provenance columns are missing — a node with no
-  resolvable span yields a `Citation` with `span=None` and lower confidence, never a
-  crash. Where the L1 provenance table is unavailable, citations fall back to
-  page-slug granularity (Source = page, span = None).
-- **PER-318 (Archgraph code retrieval)** — *plan file absent at authoring time.*
-  **Assumption:** a `code_retrieve(seed, scope)` returning a scoped code subgraph
-  will exist. **Bridge:** `router.py` defines a `CODE_SEARCH` slot; until PER-318
-  lands, code routing uses `graph_seed_search` + `fts_search` (graph+lexical, no
-  vectors) directly over Kuzu/FTS. When PER-318 ships, swap the code slot to call
-  `code_retrieve` without changing the fusion contract.
+Canonical upstream interfaces are defined in [2026-07-28-archivum-interface-contract.md](2026-07-28-archivum-interface-contract.md).
+
+- **PER-317 (graph construction)** — real read/provenance API. L1 (SQLite) holds
+  knowledge objects (`knowledge_objects`, `relationships`) with provenance rows in a
+  `provenance(object_id, object_table, chunk_id, span_start, span_end, extraction_method)`
+  table; `extraction_method ∈ {EXTRACTED, INFERRED, AMBIGUOUS}`, `confidence`, `scope`,
+  and temporal validity; Kuzu holds derived typed nodes/edges; Qdrant holds NL chunk
+  vectors; FTS5 indexes text. **Bridge:** citation resolution reads via PER-317
+  `get_object(id)` (`archivum/graph/store.py`) + the `provenance` table; the thin
+  helper `get_source_span` wraps that lookup and degrades gracefully when a span is
+  unresolvable — a node with no resolvable span yields a `Citation` with `span=None`
+  and lower confidence, never a crash. Where L1 provenance is unavailable, citations
+  fall back to page-slug granularity (Source = page, span = None).
+- **PER-318 (Archgraph code retrieval)** — real API:
+  `retrieve_code(conn, query, *, depth=2, max_nodes=10, scope=None, relations=None) -> ScopedSubgraph`
+  (`archivum/archgraph/retrieval.py`). **Bridge:** `router.py` defines a `CODE_SEARCH`
+  slot; until PER-318 lands, code routing uses `graph_seed_search` + `fts_search`
+  (graph+lexical, no vectors) directly over Kuzu/FTS. When PER-318 ships, swap the code
+  slot to call `retrieve_code` (mapping its `ScopedSubgraph` nodes/edges into
+  `RetrievalHit`s) without changing the fusion contract.
 - **Existing:** `archivum.db.{sqlite,qdrant_client,graph}`, `archivum.auth`
   (`CurrentUser`, `get_current_user`), `archivum.llm.*`, `archivum.config.Settings`.
 
@@ -472,7 +475,8 @@ tests/
 - Produces (sqlite.py):
   ```python
   async def get_source_span(node_id: str, wiki_id: str = "default") -> dict[str, Any] | None:
-      """Best-effort provenance lookup. If an L1 provenance/chunks table exists,
+      """Best-effort provenance lookup via PER-317 `get_object(node_id)` + the
+      `provenance` table (chunk_id + span_start/span_end). When present,
       return {source_id, source_type, title, origin_uri, chunk_id, span, excerpt}.
       Fallback: resolve node_id as a page slug → {source_id=slug,
       source_type="natural_language", title, origin_uri=None, chunk_id=None,

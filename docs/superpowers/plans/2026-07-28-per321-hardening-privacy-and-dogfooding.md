@@ -126,12 +126,17 @@ docs/ops/backup-restore.md      # operator runbook
 
 - **Architecture spec** `docs/superpowers/specs/2026-07-28-archivum-architecture-design.md`
   — CANONICAL. §2 layer/volume mapping, §4 scope, §6 trust invariants, §9 migration.
-- **PER-319 (cited retrieval, Ask, MCP)** — plan file
-  `docs/superpowers/plans/2026-07-28-per319-cited-retrieval-ask-and-mcp.md` is **absent**
-  at write time. ASSUMPTION: retrieval exposes a context-package builder and an
-  "insufficient evidence" answer path per spec §6.5 and §8. This plan defines a thin
-  `retrieval` shim interface (Task 8) so scope enforcement + the eval can proceed; when
-  PER-319 lands, re-point the shim at the real retriever (single import swap).
+- **PER-319 (cited retrieval, Ask, MCP)** — canonical interfaces in
+  [2026-07-28-archivum-interface-contract.md](2026-07-28-archivum-interface-contract.md).
+  Real surface: `hybrid_retrieve(...) -> list[RetrievalHit]`, `build_context_package(...) -> ContextPackage`,
+  `assemble_ask(...) -> AskResult`, and `has_sufficient_support(pkg)` for the §6.5
+  "insufficient evidence" path; REST `POST /api/retrieve` → `{hits: RetrievalHit[]}`,
+  `POST /api/context-package` → `ContextPackage`, `POST /api/ask` (SSE
+  citations/token/insufficient/[DONE]). This plan defines a thin `retrieval` shim
+  (Task 8, `scoped_page_search`) that **stands in for PER-319 `hybrid_retrieve` /
+  `build_context_package`** so scope enforcement + the eval can proceed; when PER-319
+  lands, re-point the shim at those and adapt callers from `list[dict]` to
+  `RetrievalHit` / `ContextPackage`.
 - **PER-320 (standalone product experience)** — plan file
   `docs/superpowers/plans/2026-07-28-per320-standalone-product-experience.md` is **absent**
   at write time. ASSUMPTION: the CLI (`packages/archivum-cli`) and Compose stack are the
@@ -361,7 +366,9 @@ Steps:
     whose `scope` not in `allowed`; owner sentinel `{"*"}` allows all.
   - `async def scoped_page_search(query: str, allowed: set[str], wiki_id: str = "default",
      limit: int = 10) -> list[dict]` in `retrieval.py` — calls
-     `sqlite.search_pages_fts` then `enforce_scope`. (This is the swap point for PER-319.)
+     `sqlite.search_pages_fts` then `enforce_scope`. (Test-time stand-in for PER-319
+     `hybrid_retrieve` / `build_context_package`; on swap, callers move from `list[dict]`
+     to `RetrievalHit` / `ContextPackage`.)
 - Consumes: `sqlite.search_pages_fts`, `scope.enforce_scope`.
 
 Steps:
@@ -659,7 +666,8 @@ Steps:
      insufficient_correct: int; avg_context_tokens: float; max_context_tokens: int`
   - `def approx_tokens(text: str) -> int` — `len(text)//4` heuristic (documented).
   - `async def run_eval(items: list[QAItem], settings: Settings) -> EvalResult` — for each
-    item, build a scoped context package via `retrieval.scoped_page_search` (owner scope),
+    item, build a scoped context package via `retrieval.scoped_page_search` (owner scope;
+    stands in for PER-319 `build_context_package` → `ContextPackage`),
     check that at least one `expected_slug` is cited for answerable items, and that
     unanswerable items yield an empty/insufficient result (spec §6.5 "insufficient
     evidence" rather than fabrication); measure context token size via `approx_tokens`.

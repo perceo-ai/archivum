@@ -67,7 +67,7 @@ apps/backend/archivum/archgraph/
         typescript_ext.py  # extract_typescript (tree-sitter-typescript, ts/tsx)
     extract.py             # extract_file(path) dispatch → {nodes, edges} + _extract_generic
     resolve.py             # resolve_cross_file(extractions) → INFERRED calls/references edges
-    mapper.py              # code dicts → PER-317 candidate Entity/Artifact/Relationship objects
+    mapper.py              # code dicts → PER-317 CandidateObject/CandidateRelationship in a CandidateBatch
     cache.py               # content-hash AST cache (load_cached/save_cached), version-namespaced
     repo.py                # RepoSnapshot: repo/commit Artifacts, git metadata, file walk
     cross_repo.py          # resolve_cross_repo(): link same symbol/package across repos+commits
@@ -104,28 +104,26 @@ tests/archgraph/
 
 ## Upstream Dependencies
 
-**PER-317 (Provenance-Aware Graph Construction)** — dependency. This plan plugs into PER-317's:
+**Canonical upstream interfaces are defined in [2026-07-28-archivum-interface-contract.md](2026-07-28-archivum-interface-contract.md).** This plan plugs into PER-317's real graph write/read API:
 
-- **Entity / Artifact / Relationship tables** in L1 SQLite (spec §4). Assumed columns per object: `id TEXT PK`, `kind TEXT` (e.g. `symbol`/`module`/`type`/`package` for Entity; `file`/`repo`/`commit`/`pr`/`test`/`deployment` for Artifact), `name TEXT`, `scope TEXT`, `confidence REAL`, `extraction_method TEXT`, plus provenance rows in a `provenance(object_id, chunk_id, span, extraction_method)` table. Relationship adds `src_id`, `dst_id`, `rel_type`.
-- **Validation layer** — a single write API that accepts candidate objects, enforces the §4 invariant (≥1 provenance link, confidence, extraction_method, valid scope), and lands them in L1. Assumed signature:
+- **L1 knowledge tables** (`archivum/graph/schema.py::KNOWLEDGE_SCHEMA`): `knowledge_objects`, `relationships`, and provenance rows in a `provenance(object_id, object_table, chunk_id, span_start, span_end, extraction_method)` table.
+- **Candidate write path** — accepts candidate objects, enforces the §4 invariant (≥1 provenance link, confidence, extraction_method, valid scope), and lands them in L1. Real signatures:
   ```python
-  # archivum/graph/validation.py (owned by PER-317)
-  async def write_candidates(conn, candidates: list[Candidate]) -> WriteResult: ...
-  # Candidate is a tagged union: CandidateEntity | CandidateArtifact | CandidateRelationship
-  # WriteResult carries .written_ids: list[str] and .rejected: list[tuple[Candidate, str]]
+  # archivum/graph/types.py, validation.py, resolution.py, store.py (owned by PER-317)
+  # Candidate types: CandidateObject, CandidateRelationship, CandidateBatch (graph/types.py)
+  ValidationLayer.validate_batch(batch: CandidateBatch) -> None   # graph/validation.py
+  async def upsert_object(obj: CandidateObject) -> str            # graph/resolution.py
+  async def insert_relationship(rel: CandidateRelationship, ref_to_id: dict[str, str]) -> str  # graph/store.py
   ```
-- **`rebuild_indexes(conn)`** — drops and rebuilds L2 (Kuzu + FTS) from L1 edges.
-- **Chunk write API** — to anchor code provenance to a `Chunk` (document span).
+- **`rebuild_indexes(targets: set[str] | None = None)`** (`graph/projectors.py`) — rebuilds L2 (Kuzu/Qdrant/FTS) from L1; `targets ⊆ {"kuzu","qdrant","fts"}`.
+- **Read API** `get_object(id) -> dict | None` and `list_objects(kind=None, scope=None)` (`graph/store.py`) for cross-repo resolution and evidence bridging.
+- **Chunk write API** — PER-315 `Chunk` (`store/models.py`) to anchor code provenance to a document span.
 
-**ASSUMPTION (PER-317 plan file absent at authoring time):** The PER-317 plan
-`docs/superpowers/plans/2026-07-28-per317-provenance-aware-graph-construction.md` was
-**not present** when this plan was written. The interfaces above are derived from spec §4/§5.
-**Task 5 defines a thin adapter (`archgraph/mapper.py`) against these assumed signatures**, isolating
-Archgraph from PER-317's exact API. If PER-317's real signatures differ, only `mapper.py` and its
-test change — every other task consumes `mapper.py`, not PER-317 directly. Before starting Task 5,
-grep for the real API (`rg "def write_candidates|class Candidate|def rebuild_indexes" apps/backend`)
-and reconcile the adapter; if absent, implement the adapter against a local in-memory fake
-(`tests/archgraph/conftest.py::FakeValidationLayer`) so Archgraph tests run standalone.
+**TEST STAND-IN:** **Task 5 defines a thin adapter (`archgraph/mapper.py`) that maps code dicts →
+PER-317 `CandidateObject` / `CandidateRelationship` inside a `CandidateBatch`**, isolating Archgraph
+from PER-317's exact write path. Every other task consumes `mapper.py`, not PER-317 directly. For
+standalone tests, the in-memory fake `tests/archgraph/conftest.py::FakeValidationLayer` **mocks
+`ValidationLayer.validate_batch`** so Archgraph tests run without a built PER-317.
 
 ---
 
@@ -307,7 +305,7 @@ and reconcile the adapter; if absent, implement the adapter against a local in-m
 **Files:** `apps/backend/archivum/archgraph/mapper.py`, `tests/archgraph/conftest.py` (add `FakeValidationLayer`), `tests/archgraph/test_mapper.py`
 
 **Interfaces:**
-- **Consumes:** `Extraction`, `CodeNode`, `CodeEdge`, PER-317 `write_candidates` (or `FakeValidationLayer`), a `chunk_id` per file (from a Chunk write for the file's source span).
+- **Consumes:** `Extraction`, `CodeNode`, `CodeEdge`, PER-317 `ValidationLayer.validate_batch(CandidateBatch)` → `upsert_object` / `insert_relationship` (or the test fake `FakeValidationLayer` that mocks `validate_batch`), a `chunk_id` per file (from a PER-315 Chunk write for the file's source span).
 - **Produces:**
   ```python
   # archgraph/mapper.py
@@ -324,13 +322,13 @@ and reconcile the adapter; if absent, implement the adapter against a local in-m
   # Candidate = CandidateEntity | CandidateArtifact | CandidateRelationship
   ```
 
-- [ ] Add `FakeValidationLayer` to `tests/archgraph/conftest.py`: an async `write_candidates(conn, cands)` recording candidates and enforcing the §4 invariant (reject any candidate with empty `provenance` or missing `extraction_method`), returning a `WriteResult(written_ids=[...], rejected=[...])`.
+- [ ] Add `FakeValidationLayer` to `tests/archgraph/conftest.py`: it **mocks PER-317 `ValidationLayer.validate_batch(batch: CandidateBatch)`**, recording candidates and enforcing the §4 invariant (reject any candidate with empty `evidence`/provenance or missing `extraction_method`); a paired fake `upsert_object`/`insert_relationship` records written ids and rejections.
 - [ ] Write `test_mapper.py::test_maps_symbol_to_entity` — an `add` `symbol` `CodeNode` maps to a `CandidateEntity(kind="symbol")` with `scope="repo:archivum"`, one `Provenance(chunk_id=..., span="L5-L6", extraction_method="EXTRACTED")`.
 - [ ] Write `test_mapper.py::test_maps_file_to_artifact` — the `file` node maps to a `CandidateArtifact(kind="file")`.
 - [ ] Write `test_mapper.py::test_maps_edge_to_relationship_preserves_method` — a `calls` `CodeEdge(method=INFERRED)` maps to `CandidateRelationship(rel_type="calls", extraction_method="INFERRED")`.
-- [ ] Write `test_mapper.py::test_validation_rejects_no_provenance` — feed a candidate with `provenance=[]` to `FakeValidationLayer.write_candidates`, assert it lands in `rejected`.
+- [ ] Write `test_mapper.py::test_validation_rejects_no_provenance` — feed a candidate with empty evidence to `FakeValidationLayer.validate_batch`, assert it lands in `rejected`.
 - [ ] Run `pytest tests/archgraph/test_mapper.py -q` → FAIL.
-- [ ] Implement `mapper.py`: `_NODE_KIND_TO_CANDIDATE` split (`file/repo/commit/pr/test/deployment` → Artifact, else Entity), `map_extraction` building candidates with provenance from each node/edge `source_location`. Before running, `rg "def write_candidates" apps/backend` and reconcile the adapter to the real signature if present (else keep the fake).
+- [ ] Implement `mapper.py`: `_NODE_KIND_TO_CANDIDATE` split (`file/repo/commit/pr/test/deployment` → Artifact, else Entity), `map_extraction` building candidates with provenance from each node/edge `source_location`. Before running, `rg "class ValidationLayer|def validate_batch|def upsert_object" apps/backend` and reconcile the adapter to PER-317's real `CandidateObject`/`CandidateRelationship`/`CandidateBatch` types if present (else keep the fake).
 - [ ] Run `pytest tests/archgraph/test_mapper.py -q` → PASS.
 - [ ] Commit: `feat(archgraph): map code extractions to PER-317 candidate objects`.
 
@@ -532,7 +530,7 @@ and reconcile the adapter; if absent, implement the adapter against a local in-m
 **Files:** `apps/backend/archivum/archgraph/ingest.py`, `tests/archgraph/test_ingest.py`
 
 **Interfaces:**
-- **Consumes:** everything above + PER-317 `write_candidates` (or `FakeValidationLayer`) + `rebuild_indexes` + chunk write.
+- **Consumes:** everything above + PER-317 `ValidationLayer.validate_batch(CandidateBatch)` → `upsert_object` / `insert_relationship` (or the test fake `FakeValidationLayer` mocking `validate_batch`) + `rebuild_indexes(targets)` + PER-315 chunk write.
 - **Produces:**
   ```python
   # archgraph/ingest.py
@@ -547,7 +545,7 @@ and reconcile the adapter; if absent, implement the adapter against a local in-m
 - [ ] Write `test_ingest.py::test_second_run_uses_cache` — run twice unchanged; assert second `report.cache_hits == report.files` and no new LLM/parse work (parse counter monkeypatched).
 - [ ] Write `test_ingest.py::test_all_edges_have_method` — assert every written relationship candidate has `extraction_method` in the enum (Global Constraint 4).
 - [ ] Run `pytest tests/archgraph/test_ingest.py -q` → FAIL.
-- [ ] Implement `ingest_repo`: `snapshot_repo` → `repo_artifacts` → `collect_files` → per file `load_cached` else `extract_file` + `save_cached` → `resolve_cross_file` → per-file Chunk write → `map_extraction` → `write_candidates` → `resolve_cross_repo` → `bridge_evidence` → `write_candidates` → `build_lexical_index` → `rebuild_indexes`. Tally `IngestReport`.
+- [ ] Implement `ingest_repo`: `snapshot_repo` → `repo_artifacts` → `collect_files` → per file `load_cached` else `extract_file` + `save_cached` → `resolve_cross_file` → per-file Chunk write → `map_extraction` → `validate_batch`/`upsert_object`/`insert_relationship` → `resolve_cross_repo` → `bridge_evidence` → `validate_batch`/`upsert_object`/`insert_relationship` → `build_lexical_index` → `rebuild_indexes`. Tally `IngestReport`.
 - [ ] Run `pytest tests/archgraph/test_ingest.py -q` → PASS.
 - [ ] Commit: `feat(archgraph): full deterministic repo ingest pipeline into L1`.
 
@@ -620,6 +618,6 @@ and reconcile the adapter; if absent, implement the adapter against a local in-m
 ## Self-Review (completed inline)
 
 - **Spec coverage:** §7 deterministic extractor (T2–T4, zero-LLM asserted T13/T16), code-typed Entity/Artifact/Relationship with method labels (T5, T13-assert), cross-repo resolver (T9), evidence bridging (T10), graph+lexical retrieval no-vectors (T11–T12, asserted). §5 AST cache (T6), `--update` incremental + dangling prune (T14). §4 invariant (≥1 provenance/confidence/method) enforced in `FakeValidationLayer` (T5) and asserted (T13). §8 scoped subgraph with citation+method+confidence (T12). Git-hook entrypoint (T15). All covered.
-- **Placeholder scan:** no `TODO`/`...`/`TBD` left as implementation; every code block is concrete. The only stubbed surface is PER-317's validation layer, explicitly isolated to `mapper.py` + `FakeValidationLayer` with a documented reconciliation step (Upstream Dependencies + T5).
+- **Placeholder scan:** no `TODO`/`...`/`TBD` left as implementation; every code block is concrete. The only stubbed surface is PER-317's `ValidationLayer.validate_batch` write path, explicitly isolated to `mapper.py` + `FakeValidationLayer` (which mocks `validate_batch`) with a documented reconciliation step (Upstream Dependencies + T5).
 - **Type consistency:** `ExtractionMethod` (enum) used everywhere for edge method; `CodeNode`/`CodeEdge`/`Extraction` produced by T1 and consumed by T3–T7; `CandidateEntity/Artifact/Relationship`/`Provenance` produced by T5 and consumed by T8–T10, T13; `ScopedSubgraph` produced by T12, consumed by T16. `LanguageConfig` produced by T2, consumed by T3–T4. Signatures match across producer/consumer tasks.
 - **Fix applied inline:** clarified that Task 4 extends `_extract_generic` (not a divergent path) so the TS extractor reuses the Python task's walker; clarified cross-repo AMBIGUOUS guard against god-node linkage (T9); made `changed_files` non-git fallback explicit (T14).
