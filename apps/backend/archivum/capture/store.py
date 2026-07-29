@@ -8,7 +8,8 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 
 from archivum.capture.canonical import content_hash, to_canonical_bytes
-from archivum.capture.schema import Conversation
+from archivum.capture.redaction import redact_turn_text
+from archivum.capture.schema import Conversation, ToolCall, Turn
 from archivum.capture.transcript import render_transcript
 from archivum.config import Settings, get_settings
 from archivum.store.blobs import BlobStore
@@ -16,6 +17,20 @@ from archivum.store.hashing import sha256_text
 from archivum.store.models import Chunk, Document, Source, new_id
 from archivum.store.repository import SourceStore
 from archivum.store.source_types import SourceType
+
+
+def _redact_conversation(conv: Conversation) -> Conversation:
+    """Return a new Conversation with hidden reasoning stripped from all Turn text and ToolCall results."""
+    import dataclasses
+
+    redacted_turns: list[Turn] = []
+    for turn in conv.turns:
+        redacted_tcs = tuple(
+            dataclasses.replace(tc, result=None if tc.result is None else redact_turn_text(tc.result))
+            for tc in turn.tool_calls
+        )
+        redacted_turns.append(dataclasses.replace(turn, text=redact_turn_text(turn.text), tool_calls=redacted_tcs))
+    return dataclasses.replace(conv, turns=tuple(redacted_turns))
 
 
 @dataclass(frozen=True, slots=True)
@@ -41,6 +56,7 @@ class CaptureStore:
         self._blobs = blob_store or BlobStore(self._settings.blob_dir)
 
     async def capture(self, conv: Conversation) -> CaptureResult:
+        conv = _redact_conversation(conv)
         raw = to_canonical_bytes(conv)
         chash = content_hash(conv)
         origin = conv.origin_uri or f"conversation:{conv.interface}:{conv.session_id}"

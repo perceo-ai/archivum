@@ -66,3 +66,18 @@ async def test_changed_content_creates_v2_without_mutating_v1(env):
     assert (r1.version, r2.version) == (1, 2)
     assert r1.content_hash != r2.content_hash
     assert r2.source_id != r1.source_id
+
+
+@pytest.mark.asyncio
+async def test_capture_strips_hidden_reasoning_from_raw_turns(env):
+    conv = Conversation(
+        session_id="leak1", interface="claude_code_native", started_at="2026-07-28T00:00:00Z",
+        turns=(Turn(role="assistant", text="<thinking>secret plan</thinking> hello", ts="t"),),
+    )
+    res = await env.capture(conv)
+    from archivum.db.sqlite import get_db
+    async with get_db() as db:
+        async with db.execute("SELECT content_hash FROM sources WHERE id=?", (res.source_id,)) as cur:
+            chash = (await cur.fetchone())["content_hash"]
+    blob_bytes = env._blobs.get(chash)
+    assert b"secret plan" not in blob_bytes
