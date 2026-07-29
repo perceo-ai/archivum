@@ -1,0 +1,21 @@
+tests/store/test_config_blob_dir.py
+  s_fca0484fc7e95a::t_811b7215018ec1 1-16
+apps/backend/archivum/config.py
+  s_fca0484fc7e95a::t_5c45326d71dc20 35
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "f38bfb2c306793e170b54db7b1bd08487e3eaa5e",
+  "prompts": {},
+  "sessions": {
+    "s_fca0484fc7e95a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f816a12e-be55-4e40-b7e3-e3e50e24344f",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Pranav Kannepalli <pranav.kannepalli@gmail.com>"
+    }
+  }
+}
