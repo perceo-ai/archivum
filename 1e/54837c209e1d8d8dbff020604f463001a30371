@@ -1,0 +1,21 @@
+tests/store/test_normalize.py
+  s_fca0484fc7e95a::t_629041e5220aaa 1-45
+apps/backend/archivum/store/normalize.py
+  s_fca0484fc7e95a::t_2950e6954d33c3 1-46
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "1e54837c209e1d8d8dbff020604f463001a30371",
+  "prompts": {},
+  "sessions": {
+    "s_fca0484fc7e95a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f816a12e-be55-4e40-b7e3-e3e50e24344f",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Pranav Kannepalli <pranav.kannepalli@gmail.com>"
+    }
+  }
+}
