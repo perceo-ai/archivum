@@ -1,0 +1,11 @@
+[
+  {
+    "title": "SQLite question",
+    "create_time": 1753660800,
+    "mapping": {
+      "n1": {"id": "n1", "message": {"author": {"role": "user"}, "create_time": 1753660800, "content": {"content_type": "text", "parts": ["is sqlite good for this?"]}}},
+      "n2": {"id": "n2", "message": {"author": {"role": "assistant"}, "create_time": 1753660805, "content": {"content_type": "text", "parts": ["Yes, SQLite fits a single-owner store."]}}},
+      "n3": {"id": "n3", "message": {"author": {"role": "assistant"}, "create_time": 1753660803, "content": {"content_type": "thoughts", "parts": ["hidden reasoning here"]}}}
+    }
+  }
+]

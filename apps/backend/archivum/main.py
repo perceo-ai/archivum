@@ -22,6 +22,7 @@ from archivum.api import share as share_routes
 from archivum.api.graph import router as graph_router
 from archivum.api.query import router as query_router
 from archivum.api.search import router as search_router
+from archivum.api.capture import router as capture_router
 from archivum.api.sources import router as sources_router
 from archivum.api.system import router as system_router
 from archivum.config import Settings, get_settings
@@ -157,6 +158,7 @@ def create_app() -> FastAPI:
     app.include_router(query_router)
     app.include_router(graph_router)
     app.include_router(sources_router)
+    app.include_router(capture_router)
     app.include_router(system_router)
     app.include_router(share_routes.router)
     app.include_router(share_routes.mgmt_router)
