@@ -1,0 +1,23 @@
+apps/backend/archivum/capture/store.py
+  s_5d44b4f1650ea4::t_146bbea80c14e2 22-35
+  s_5d44b4f1650ea4::t_c1179c58ecc324 11-12
+  s_5d44b4f1650ea4::t_c83b0f45673296 59
+tests/capture/test_store.py
+  s_5d44b4f1650ea4::t_331c42a90127cb 69-83
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "b4db164a3f08b3a0ca04da56d88c3c42ce169529",
+  "prompts": {},
+  "sessions": {
+    "s_5d44b4f1650ea4": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d16cb709-6098-46fe-95a8-ae8697de3e39",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Pranav Kannepalli <pranav.kannepalli@gmail.com>"
+    }
+  }
+}

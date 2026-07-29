@@ -1,0 +1,31 @@
+tests/capture/test_capture_api.py
+  s_5d44b4f1650ea4::t_547901a08a2ab7 51-52
+  s_5d44b4f1650ea4::t_83c54bf6960652 45-50,53-54
+apps/backend/archivum/capture/importers/claude_code.py
+  s_5d44b4f1650ea4::t_9a5a17d4af6743 101-108
+  s_5d44b4f1650ea4::t_b448ca82a4c9ac 42,63-66
+  s_5d44b4f1650ea4::t_fe050e4ef11a30 69
+  s_5d44b4f1650ea4::t_f2a85816f11cf0 100
+apps/backend/archivum/api/capture.py
+  s_5d44b4f1650ea4::t_c693e5d12ed582 126-132
+  s_5d44b4f1650ea4::t_84460eb0e341b8 5-6
+tests/capture/test_claude_code_importer.py
+  s_5d44b4f1650ea4::t_74225a8f5bbebd 1
+  s_5d44b4f1650ea4::t_2588bbfd0e93a7 29-73
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "9c6d5123ec272e80a22663a6d53266006364a8f8",
+  "prompts": {},
+  "sessions": {
+    "s_5d44b4f1650ea4": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d16cb709-6098-46fe-95a8-ae8697de3e39",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Pranav Kannepalli <pranav.kannepalli@gmail.com>"
+    }
+  }
+}
