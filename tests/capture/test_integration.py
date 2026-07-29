@@ -40,6 +40,7 @@ async def test_reimport_is_a_noop(env):
     conv = ClaudeCodeImporter().parse(FIXDIR / "claude_code_session.jsonl").conversations[0]
     await store.capture(conv)
     first = await _counts()
+    assert first["sources"] >= 1 and first["chunks"] >= 1
     again = ClaudeCodeImporter().parse(FIXDIR / "claude_code_session.jsonl").conversations[0]
     await store.capture(again)
     assert await _counts() == first
@@ -54,14 +55,12 @@ async def test_no_hidden_reasoning_from_any_source(env):
     w.record_turn("assistant", "<thinking>secret chain</thinking> ok")
     await w.flush()
 
-    async with get_db() as db:
-        async with db.execute("SELECT normalized_hash FROM documents") as cur:
-            _ = await cur.fetchall()
     # L0 blobs hold canonical JSON — verify no secret survived into any blob.
     blobs = BlobStore(settings.blob_dir)
     async with get_db() as db:
         async with db.execute("SELECT content_hash FROM sources") as cur:
             hashes = [r["content_hash"] for r in await cur.fetchall()]
+    assert len(hashes) >= 3
     corpus = " ".join(blobs.get(h).decode("utf-8") for h in hashes)
     for secret in SECRETS:
         assert secret not in corpus
