@@ -11,6 +11,8 @@ from typing import Any
 import anthropic
 from mcp.server.fastmcp import FastMCP
 
+from archivum.capture.schema import Conversation, Turn
+from archivum.capture.store import CaptureStore
 from archivum.config import Settings, get_settings
 from archivum.db import graph, qdrant_client as qdrant, sqlite
 from archivum.ingest.pipeline import ingest
@@ -459,6 +461,53 @@ async def dispatch_command(command: str, wiki_id: str = "default") -> dict[str, 
     except Exception as e:
         logger.exception("dispatch_command failed", extra={"command": raw, "wiki_id": wiki_id})
         return _err("command_failed", str(e))
+
+
+async def capture_conversation_impl(
+    *,
+    session_id: str,
+    interface: str = "claude_code_native",
+    turns: list[dict[str, Any]],
+    scope: str = "personal",
+    origin_uri: str = "",
+) -> dict[str, Any]:
+    """Core (testable) capture path: build a Conversation and persist it."""
+    conv = Conversation(
+        session_id=session_id, interface=interface, started_at="",
+        turns=tuple(
+            Turn(role=t.get("role", "user"), text=t.get("text", ""),  # type: ignore[arg-type]
+                 ts=t.get("ts", ""))
+            for t in turns
+        ),
+        scope=scope, origin_uri=origin_uri,
+    )
+    store = CaptureStore(settings=get_settings())
+    res = await store.capture(conv)
+    return {
+        "source_id": res.source_id,
+        "content_hash": res.content_hash,
+        "version": res.version,
+        "chunks": len(res.chunk_ids),
+        "deduplicated": res.deduplicated,
+    }
+
+
+@mcp.tool()
+async def capture_conversation(
+    session_id: str,
+    interface: str = "claude_code_native",
+    turns: list[dict[str, Any]] | None = None,
+    scope: str = "personal",
+) -> dict[str, Any]:
+    """Capture a user-visible AI conversation as an immutable Source.
+
+    `turns` is a list of {"role","text","ts?"} dicts. Hidden reasoning is stripped.
+    """
+    _require_key()
+    set_trace_id(new_trace_id("mcp-capture"))
+    return await capture_conversation_impl(
+        session_id=session_id, interface=interface, turns=turns or [], scope=scope,
+    )
 
 
 def main() -> None:
