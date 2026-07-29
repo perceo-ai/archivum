@@ -1,6 +1,7 @@
 {
   "name": "archivum-monorepo",
   "private": true,
+  "license": "Apache-2.0",
   "workspaces": [
     "apps/frontend",
     "packages/archivum-cli"

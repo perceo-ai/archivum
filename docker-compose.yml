@@ -56,6 +56,9 @@ services:
       - "127.0.0.1:${ARCHIVUM_FRONTEND_PORT:-8473}:8080"
     networks:
       - archivum-net
+    depends_on:
+      backend:
+        condition: service_started
 
   mcp:
     build:

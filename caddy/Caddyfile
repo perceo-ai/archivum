@@ -1,5 +1,5 @@
 {
-	email pranav.kannepalli@gmail.com
+	email {$ACME_EMAIL:admin@example.com}
 }
 
 # ─── Production (ARCHIVUM_HOST set) ──────────────────────────────────────────
