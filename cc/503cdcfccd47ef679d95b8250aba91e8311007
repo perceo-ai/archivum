@@ -1,0 +1,48 @@
+docs/superpowers/plans/2026-07-28-per320-standalone-product-experience.md
+  s_2108dcd3178033::t_36eab8d38a1902 1329
+  s_2108dcd3178033::t_1205fa7c447877 1319
+  s_2108dcd3178033::t_ec8fa6602d813c 387-388
+  s_2108dcd3178033::t_cde98d4e725ebf 88-96
+  s_2108dcd3178033::t_5dbe3d06bacf30 98,101,105-110,116-117,119,124-126,133,136-147
+  s_2108dcd3178033::t_2a870a2eee48bb 411
+  s_2108dcd3178033::t_4fb1fe8770c057 427,430
+  s_2108dcd3178033::t_2707b71405ccda 467-472
+  s_2108dcd3178033::t_6b938b4fd033b4 97
+docs/superpowers/plans/2026-07-28-per318-archgraph-developer-intelligence.md
+  s_2108dcd3178033::t_37bfd49fe29132 70
+  s_2108dcd3178033::t_6fda03865c02ba 325
+  s_2108dcd3178033::t_4c019a120bd4d3 548
+  s_2108dcd3178033::t_6226f05fae6ad8 329
+  s_2108dcd3178033::t_8ad0b2c3bcf672 331
+  s_2108dcd3178033::t_522890efbaa9b7 107,109-110,112-116,118-126
+  s_2108dcd3178033::t_5777e4e7d1b5c8 533
+  s_2108dcd3178033::t_219b29c4f6ecde 621
+  s_2108dcd3178033::t_15695a65286fe4 308
+docs/superpowers/plans/2026-07-28-per317-provenance-aware-graph-construction.md
+  s_2108dcd3178033::t_00eb1794605f16 122,124-126,130-132,134,136-137,140,142
+docs/superpowers/plans/2026-07-28-per319-cited-retrieval-ask-and-mcp.md
+  s_2108dcd3178033::t_d90515b8efadb8 137-156
+  s_2108dcd3178033::t_cd4ec604a97950 478-479
+docs/superpowers/plans/2026-07-28-archivum-interface-contract.md
+  s_2108dcd3178033::t_e4abc642bcd9dc 1-215
+docs/superpowers/plans/2026-07-28-per321-hardening-privacy-and-dogfooding.md
+  s_2108dcd3178033::t_8fdea4c6f50768 129-139
+  s_2108dcd3178033::t_dc24f79669a382 669-670
+  s_2108dcd3178033::t_5a5f84ab49568e 369-371
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.15",
+  "base_commit_sha": "cc503cdcfccd47ef679d95b8250aba91e8311007",
+  "prompts": {},
+  "sessions": {
+    "s_2108dcd3178033": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "6f51ba78-eb63-4251-b114-922c560523f4",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Pranav Kannepalli <pranav.kannepalli@gmail.com>"
+    }
+  }
+}
