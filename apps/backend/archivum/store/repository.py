@@ -116,7 +116,7 @@ class SourceStore:
                 row = await cur.fetchone()
                 return _row_to_source(row) if row else None
 
-    async def get_or_create_source(
+    async def create_source_with_lineage(
         self,
         *,
         id: str,
@@ -128,14 +128,18 @@ class SourceStore:
         recorded_at: str,
         valid_from: str,
         valid_to: str | None,
+        document: Document,
+        chunks: list[Chunk],
     ) -> tuple[Source, bool]:
-        """Atomically dedup-or-insert a source for (origin_uri, content_hash).
+        """Atomically dedup-or-insert a source AND its full L1 lineage.
 
-        Returns (source, created). If an identical source already exists,
-        returns it with created=False. Otherwise assigns version = MAX+1 and
-        inserts. The read-max and insert run inside one BEGIN IMMEDIATE
-        transaction, so concurrent writers for the same origin cannot both
-        compute the same version and collide on UNIQUE(origin_uri, version).
+        Returns (source, created). If an identical source already exists for
+        (origin_uri, content_hash) it is returned with created=False and the
+        supplied document/chunks are discarded. Otherwise assigns
+        version = MAX+1 and inserts the source, its document, and every chunk
+        inside a single BEGIN IMMEDIATE transaction — so a crash can never
+        leave a source without its document/chunks, and concurrent writers for
+        the same origin cannot collide on UNIQUE(origin_uri, version).
         """
         async with get_db() as db:
             await db.execute("BEGIN IMMEDIATE")
@@ -167,6 +171,20 @@ class SourceStore:
                         scope, ingested_at, recorded_at, valid_from, valid_to,
                     ),
                 )
+                await db.execute(
+                    "INSERT INTO documents (id, source_id, mime, normalized_hash) "
+                    "VALUES (?,?,?,?)",
+                    (document.id, document.source_id, document.mime,
+                     document.normalized_hash),
+                )
+                for chunk in chunks:
+                    await db.execute(
+                        "INSERT INTO chunks "
+                        "(id, document_id, seq, start_offset, end_offset, text_hash) "
+                        "VALUES (?,?,?,?,?,?)",
+                        (chunk.id, chunk.document_id, chunk.seq, chunk.start_offset,
+                         chunk.end_offset, chunk.text_hash),
+                    )
                 await db.commit()
             except Exception:
                 await db.rollback()

@@ -67,34 +67,36 @@ class CaptureStore:
 
         self._blobs.put(raw)  # L0 evidence, write-once (content-addressed, idempotent)
         now = datetime.now(UTC).isoformat()
-        source, created = await self._store.get_or_create_source(
-            id=new_id(), content_hash=chash, source_type=SourceType.CONVERSATION,
+
+        # Build the full L1 lineage with pre-generated ids, then persist it in one
+        # transaction so a crash can never leave a source without its doc/chunks.
+        text, spans = render_transcript(conv)
+        source_id = new_id()
+        document = Document(
+            id=new_id(), source_id=source_id, mime="text/plain",
+            normalized_hash=sha256_text(text),
+        )
+        chunks = [
+            Chunk(
+                id=new_id(), document_id=document.id, seq=seq,
+                start_offset=start, end_offset=end, text_hash=sha256_text(block),
+            )
+            for seq, (start, end, block) in enumerate(spans)
+        ]
+        source, created = await self._store.create_source_with_lineage(
+            id=source_id, content_hash=chash, source_type=SourceType.CONVERSATION,
             origin_uri=origin, scope=conv.scope, ingested_at=now, recorded_at=now,
             valid_from=conv.started_at or now, valid_to=None,
+            document=document, chunks=chunks,
         )
         if not created:
             # A concurrent capture of identical content won the version race; reuse it.
             return await self._dedup_result(source, chash)
 
-        text, spans = render_transcript(conv)
-        document = Document(
-            id=new_id(), source_id=source.id, mime="text/plain",
-            normalized_hash=sha256_text(text),
-        )
-        await self._store.insert_document(document)
-
-        chunk_ids: list[str] = []
-        for seq, (start, end, block) in enumerate(spans):
-            chunk = Chunk(
-                id=new_id(), document_id=document.id, seq=seq,
-                start_offset=start, end_offset=end, text_hash=sha256_text(block),
-            )
-            await self._store.insert_chunk(chunk)
-            chunk_ids.append(chunk.id)
-
         return CaptureResult(
             source_id=source.id, content_hash=chash, version=source.version,
-            document_id=document.id, chunk_ids=tuple(chunk_ids), deduplicated=False,
+            document_id=document.id, chunk_ids=tuple(c.id for c in chunks),
+            deduplicated=False,
         )
 
     async def _existing(self, origin: str, chash: str) -> Source | None:

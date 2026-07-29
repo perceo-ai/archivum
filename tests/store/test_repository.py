@@ -54,28 +54,62 @@ async def test_get_source_by_origin_and_hash(store):
     assert await store.get_source_by_origin_and_hash("file:///a.txt", "z" * 64) is None
 
 
+def _doc(source_id: str, doc_id: str = "d" * 32) -> Document:
+    return Document(id=doc_id, source_id=source_id, mime="text/plain", normalized_hash="n" * 64)
+
+
+def _chunk(document_id: str, seq: int, chunk_id: str) -> Chunk:
+    return Chunk(id=chunk_id, document_id=document_id, seq=seq,
+                 start_offset=seq, end_offset=seq + 1, text_hash="t" * 64)
+
+
 @pytest.mark.asyncio
-async def test_get_or_create_source_assigns_and_dedups(store):
+async def test_create_source_with_lineage_assigns_dedups_and_persists(store):
     common = dict(
         source_type=SourceType.CONVERSATION, origin_uri="conversation:x:s1",
         scope="personal", ingested_at="t", recorded_at="t", valid_from="t",
         valid_to=None,
     )
-    # first content → version 1, created
-    s1, created1 = await store.get_or_create_source(
-        id="a" * 32, content_hash="1" * 64, **common
+    doc1 = _doc("a" * 32)
+    s1, created1 = await store.create_source_with_lineage(
+        id="a" * 32, content_hash="1" * 64, document=doc1,
+        chunks=[_chunk(doc1.id, 0, "c" * 32)], **common
     )
     assert created1 is True and s1.version == 1
-    # identical (origin, hash) → dedup, NOT a new version
-    s1b, created1b = await store.get_or_create_source(
-        id="b" * 32, content_hash="1" * 64, **common
+    assert await store.get_document_for_source("a" * 32) is not None
+    assert len(await store.list_chunks(doc1.id)) == 1
+
+    # identical (origin, hash) → dedup: existing returned, supplied payload discarded
+    doc2 = _doc("b" * 32, doc_id="e" * 32)
+    s1b, created1b = await store.create_source_with_lineage(
+        id="b" * 32, content_hash="1" * 64, document=doc2, chunks=[], **common
     )
     assert created1b is False and s1b.id == s1.id and s1b.version == 1
+    assert await store.get_source("b" * 32) is None  # discarded, not written
+
     # different content, same origin → version 2
-    s2, created2 = await store.get_or_create_source(
-        id="c" * 32, content_hash="2" * 64, **common
+    doc3 = _doc("f" * 32, doc_id="g" * 32)
+    s2, created2 = await store.create_source_with_lineage(
+        id="f" * 32, content_hash="2" * 64, document=doc3, chunks=[], **common
     )
     assert created2 is True and s2.version == 2
+
+
+@pytest.mark.asyncio
+async def test_create_source_with_lineage_rolls_back_on_chunk_failure(store):
+    doc = _doc("a" * 32)
+    # two chunks with the same seq violate UNIQUE(document_id, seq) → whole txn aborts
+    bad_chunks = [_chunk(doc.id, 0, "c" * 32), _chunk(doc.id, 0, "d" * 32)]
+    with pytest.raises(Exception):
+        await store.create_source_with_lineage(
+            id="a" * 32, content_hash="1" * 64, source_type=SourceType.CONVERSATION,
+            origin_uri="conversation:x:s1", scope="personal", ingested_at="t",
+            recorded_at="t", valid_from="t", valid_to=None, document=doc,
+            chunks=bad_chunks,
+        )
+    # atomic: neither the source nor the document was left behind
+    assert await store.get_source("a" * 32) is None
+    assert await store.get_document_for_source("a" * 32) is None
 
 
 @pytest.mark.asyncio
