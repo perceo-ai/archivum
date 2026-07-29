@@ -1,0 +1,21 @@
+apps/backend/archivum/store/ingest.py
+  s_fca0484fc7e95a::t_9f510ca1bbdcf3 1-123
+tests/store/test_ingest.py
+  s_fca0484fc7e95a::t_3d66db433292cc 1-97
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "dec021eed1403296aac67192f26e395fd02db5cd",
+  "prompts": {},
+  "sessions": {
+    "s_fca0484fc7e95a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f816a12e-be55-4e40-b7e3-e3e50e24344f",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Pranav Kannepalli <pranav.kannepalli@gmail.com>"
+    }
+  }
+}
