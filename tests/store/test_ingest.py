@@ -95,3 +95,37 @@ async def test_evidence_blob_is_never_overwritten(env):
             store=store, blob_store=blobs, settings=settings,
         )
     assert blobs.get(r.source.content_hash) == b"original"
+
+
+@pytest.mark.asyncio
+async def test_identical_bytes_from_two_origins_are_distinct_sources(env):
+    # Same file saved at two paths: version lineage is per-origin, so each is a
+    # fresh version 1. Must NOT collide on the (origin_uri, version) uniqueness
+    # constraint, and must NOT be treated as a dedup of the other origin.
+    settings, store, blobs = env
+    with _patch_normalize("shared bytes"):
+        a = await ingest_source(
+            origin_uri="file:///a.txt", raw_bytes=b"shared bytes",
+            store=store, blob_store=blobs, settings=settings,
+        )
+    with _patch_normalize("shared bytes"):
+        b = await ingest_source(
+            origin_uri="file:///b.txt", raw_bytes=b"shared bytes",
+            store=store, blob_store=blobs, settings=settings,
+        )
+    assert a.deduplicated is False
+    assert b.deduplicated is False
+    assert a.source.id != b.source.id
+    assert a.source.version == 1
+    assert b.source.version == 1
+    # Same evidence bytes → same content-addressed blob (L0 dedup is fine).
+    assert a.source.content_hash == b.source.content_hash
+    # Re-ingesting the same bytes at origin A again still dedups within A.
+    with _patch_normalize("shared bytes"):
+        a2 = await ingest_source(
+            origin_uri="file:///a.txt", raw_bytes=b"shared bytes",
+            store=store, blob_store=blobs, settings=settings,
+        )
+    assert a2.deduplicated is True
+    assert a2.source.id == a.source.id
+    assert await store.latest_version_for_origin("file:///a.txt") == 1

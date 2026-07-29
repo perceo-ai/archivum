@@ -14,7 +14,10 @@ CREATE TABLE IF NOT EXISTS sources (
     recorded_at   TEXT    NOT NULL,
     valid_from    TEXT    NOT NULL,
     valid_to      TEXT,
-    UNIQUE(content_hash, version)
+    -- Version lineage is per-origin (see latest_version_for_origin); identical
+    -- bytes ingested from two different origins are distinct sources, each at
+    -- its own version 1. Uniqueness is therefore scoped to (origin_uri, version).
+    UNIQUE(origin_uri, version)
 );
 
 CREATE INDEX IF NOT EXISTS idx_sources_content_hash ON sources(content_hash);
