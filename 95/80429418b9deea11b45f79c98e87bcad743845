@@ -1,0 +1,31 @@
+docs/superpowers/plans/2026-07-28-per315-immutable-source-store-and-ingestion.md
+  s_2108dcd3178033::t_6f6f62951cf60e 1-2285
+docs/superpowers/plans/2026-07-28-per321-hardening-privacy-and-dogfooding.md
+  s_2108dcd3178033::t_813eeb626c41ac 1-718
+docs/superpowers/plans/2026-07-28-per319-cited-retrieval-ask-and-mcp.md
+  s_2108dcd3178033::t_0e600b77c6c934 1-861
+docs/superpowers/plans/2026-07-28-per317-provenance-aware-graph-construction.md
+  s_2108dcd3178033::t_09d224a4059e00 1-550
+docs/superpowers/plans/2026-07-28-per318-archgraph-developer-intelligence.md
+  s_2108dcd3178033::t_9643ed09c9aa9b 1-625
+docs/superpowers/plans/2026-07-28-per316-capture-conversations-and-agent-activity.md
+  s_2108dcd3178033::t_da920870a583ba 1-1158
+docs/superpowers/plans/2026-07-28-per320-standalone-product-experience.md
+  s_2108dcd3178033::t_3aef424ae82558 1-1662
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.15",
+  "base_commit_sha": "9580429418b9deea11b45f79c98e87bcad743845",
+  "prompts": {},
+  "sessions": {
+    "s_2108dcd3178033": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "6f51ba78-eb63-4251-b114-922c560523f4",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Pranav Kannepalli <pranav.kannepalli@gmail.com>"
+    }
+  }
+}
