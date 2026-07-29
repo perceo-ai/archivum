@@ -18,18 +18,21 @@ class ChatGptImporter:
     interface = _INTERFACE
 
     def can_handle(self, path: Path) -> bool:
-        if path.suffix != ".json":
-            return False
-        try:
-            data = json.loads(path.read_text(encoding="utf-8"))
-        except (json.JSONDecodeError, OSError):
-            return False
-        return isinstance(data, list) and all(
-            isinstance(e, dict) and "mapping" in e for e in data
-        )
+        # Cheap dispatch predicate (like ClaudeCodeImporter): match by suffix and
+        # let parse do the single read + shape validation. Avoids reading the file
+        # twice for large exports.
+        return path.suffix == ".json"
 
     def parse(self, path: Path) -> ImportResult:
-        data = json.loads(path.read_text(encoding="utf-8"))
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError) as exc:
+            raise ValueError(f"cannot parse {path}") from exc
+        if not (
+            isinstance(data, list)
+            and all(isinstance(e, dict) and "mapping" in e for e in data)
+        ):
+            raise ValueError(f"not a ChatGPT export: {path}")
         conversations: list[Conversation] = []
         for entry in data:
             title = str(entry.get("title", ""))

@@ -37,9 +37,20 @@ def test_capture_endpoint_persists_conversation(client):
     assert len(body["content_hash"]) == 64
 
 
-def test_import_endpoint_rejects_unknown_file(client):
-    resp = client.post("/api/sources/capture/import", json={"path": "/tmp/x.unknown"})
+def test_import_endpoint_rejects_unknown_extension(client, tmp_path):
+    f = tmp_path / "x.unknown"
+    f.write_text("whatever", encoding="utf-8")
+    resp = client.post("/api/sources/capture/import", json={"path": str(f)})
     assert resp.status_code == 400
+    assert resp.json()["detail"]["code"] == "no_importer"
+
+
+def test_import_endpoint_missing_file_reports_unreadable(client):
+    resp = client.post(
+        "/api/sources/capture/import", json={"path": "/tmp/definitely-missing-x9.json"}
+    )
+    assert resp.status_code == 400
+    assert resp.json()["detail"]["code"] == "unreadable_source"
 
 
 def test_import_endpoint_returns_400_for_malformed_jsonl(client, tmp_path):

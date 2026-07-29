@@ -111,16 +111,16 @@ async def capture_import_endpoint(
     settings: Settings = Depends(get_settings),
 ) -> CaptureImportResponse:
     path = Path(body.path)
+    if not path.is_file():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={"detail": f"cannot read {body.path}", "code": "unreadable_source"},
+        )
     connector = connector_for(path)
     if connector is None:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail={"detail": f"no importer for {body.path}", "code": "no_importer"},
-        )
-    if not path.is_file():
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail={"detail": f"cannot read {body.path}", "code": "unreadable_source"},
         )
     store = CaptureStore(settings=settings)
     try:

@@ -43,6 +43,18 @@ async def test_get_missing_source_returns_none(store):
 
 
 @pytest.mark.asyncio
+async def test_get_source_by_origin_and_hash(store):
+    src = _make_source(origin_uri="file:///a.txt", content_hash="a" * 64)
+    await store.insert_source(src)
+    # exact (origin, hash) match in one query
+    assert await store.get_source_by_origin_and_hash("file:///a.txt", "a" * 64) == src
+    # right hash, wrong origin → no match (dedup is origin-scoped)
+    assert await store.get_source_by_origin_and_hash("file:///other.txt", "a" * 64) is None
+    # unknown → None
+    assert await store.get_source_by_origin_and_hash("file:///a.txt", "z" * 64) is None
+
+
+@pytest.mark.asyncio
 async def test_insert_document_and_chunk(store):
     src = _make_source()
     await store.insert_source(src)

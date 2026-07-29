@@ -106,9 +106,4 @@ class CaptureStore:
         )
 
     async def _existing(self, origin: str, chash: str) -> Source | None:
-        latest = await self._store.latest_version_for_origin(origin)
-        for version in range(1, latest + 1):
-            match = await self._store.get_source_by_hash_and_version(chash, version)
-            if match is not None and match.origin_uri == origin:
-                return match
-        return None
+        return await self._store.get_source_by_origin_and_hash(origin, chash)

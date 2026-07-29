@@ -102,6 +102,20 @@ class SourceStore:
                 row = await cur.fetchone()
                 return _row_to_source(row) if row else None
 
+    async def get_source_by_origin_and_hash(
+        self, origin_uri: str, content_hash: str
+    ) -> Source | None:
+        """Return the source for this exact (origin_uri, content_hash) in one
+        indexed query (highest version if duplicates ever exist), else None."""
+        async with get_db() as db:
+            async with db.execute(
+                "SELECT * FROM sources WHERE origin_uri=? AND content_hash=? "
+                "ORDER BY version DESC LIMIT 1",
+                (origin_uri, content_hash),
+            ) as cur:
+                row = await cur.fetchone()
+                return _row_to_source(row) if row else None
+
     async def latest_version_for_origin(self, origin_uri: str) -> int:
         async with get_db() as db:
             async with db.execute(
