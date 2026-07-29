@@ -1,0 +1,19 @@
+tests/store/test_ingest_e2e.py
+  s_fca0484fc7e95a::t_1c039ffe86fd97 1-85
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "fc50193f9efa85132f9ba3d95bf414e3336dc9eb",
+  "prompts": {},
+  "sessions": {
+    "s_fca0484fc7e95a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f816a12e-be55-4e40-b7e3-e3e50e24344f",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Pranav Kannepalli <pranav.kannepalli@gmail.com>"
+    }
+  }
+}
