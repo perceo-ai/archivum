@@ -1,0 +1,19 @@
+docs/superpowers/specs/2026-07-28-archivum-architecture-design.md
+  s_2108dcd3178033::t_152fa00c6f6728 1-262
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.15",
+  "base_commit_sha": "f57d35ddd170e7192f6de296483c71d8ee562f72",
+  "prompts": {},
+  "sessions": {
+    "s_2108dcd3178033": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "6f51ba78-eb63-4251-b114-922c560523f4",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Pranav Kannepalli <pranav.kannepalli@gmail.com>"
+    }
+  }
+}
