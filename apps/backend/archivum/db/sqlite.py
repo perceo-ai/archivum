@@ -11,6 +11,7 @@ from typing import Any, AsyncGenerator
 import aiosqlite
 
 from archivum.config import Settings, get_settings
+from archivum.store.schema import EVIDENCE_SCHEMA
 
 # ── Schema ────────────────────────────────────────────────────────────────────
 
@@ -252,6 +253,7 @@ async def init_db(settings: Settings) -> None:
     configure(settings)
     async with get_db() as db:
         await db.executescript(_SCHEMA)
+        await db.executescript(EVIDENCE_SCHEMA)
         await db.commit()
 
 
