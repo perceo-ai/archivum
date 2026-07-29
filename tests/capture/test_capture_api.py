@@ -9,6 +9,7 @@ from archivum.config import Settings, get_settings
 async def client(tmp_path, monkeypatch):
     settings = Settings(db_path=tmp_path / "archivum.db", blob_dir=tmp_path / "blobs")
     await sqlite_mod.init_db(settings)
+    monkeypatch.setattr("archivum.api.capture.get_settings", lambda: settings)
 
     from archivum.api.capture import router
     from archivum.auth import require_writer
