@@ -22,6 +22,26 @@ def _row_to_source(row) -> Source:
     )
 
 
+def _row_to_document(row) -> Document:
+    return Document(
+        id=row["id"],
+        source_id=row["source_id"],
+        mime=row["mime"],
+        normalized_hash=row["normalized_hash"],
+    )
+
+
+def _row_to_chunk(row) -> Chunk:
+    return Chunk(
+        id=row["id"],
+        document_id=row["document_id"],
+        seq=row["seq"],
+        start_offset=row["start_offset"],
+        end_offset=row["end_offset"],
+        text_hash=row["text_hash"],
+    )
+
+
 class SourceStore:
     """Async repository over sources/documents/chunks (L1)."""
 
@@ -70,3 +90,40 @@ class SourceStore:
             ) as cur:
                 row = await cur.fetchone()
                 return _row_to_source(row) if row else None
+
+    async def get_source_by_hash_and_version(
+        self, content_hash: str, version: int
+    ) -> Source | None:
+        async with get_db() as db:
+            async with db.execute(
+                "SELECT * FROM sources WHERE content_hash=? AND version=?",
+                (content_hash, version),
+            ) as cur:
+                row = await cur.fetchone()
+                return _row_to_source(row) if row else None
+
+    async def latest_version_for_origin(self, origin_uri: str) -> int:
+        async with get_db() as db:
+            async with db.execute(
+                "SELECT MAX(version) AS v FROM sources WHERE origin_uri=?",
+                (origin_uri,),
+            ) as cur:
+                row = await cur.fetchone()
+                return int(row["v"]) if row and row["v"] is not None else 0
+
+    async def get_document_for_source(self, source_id: str) -> Document | None:
+        async with get_db() as db:
+            async with db.execute(
+                "SELECT * FROM documents WHERE source_id=? LIMIT 1", (source_id,)
+            ) as cur:
+                row = await cur.fetchone()
+                return _row_to_document(row) if row else None
+
+    async def list_chunks(self, document_id: str) -> list[Chunk]:
+        async with get_db() as db:
+            async with db.execute(
+                "SELECT * FROM chunks WHERE document_id=? ORDER BY seq ASC",
+                (document_id,),
+            ) as cur:
+                rows = await cur.fetchall()
+                return [_row_to_chunk(r) for r in rows]
