@@ -43,7 +43,7 @@ Package: `apps/backend/archivum/store/`
 - `async def ingest_source(*, origin_uri: str, raw_bytes: bytes, scope: str = "personal", explicit_type: SourceType | str | None = None, store: SourceStore | None = None, blob_store: BlobStore | None = None, settings: Settings | None = None) -> IngestResult`.
 
 ### SQLite tables (`store/schema.py`, `EVIDENCE_SCHEMA`, applied in `init_db`)
-- `sources`, `documents`, `chunks` (spec §4 field set; `sources UNIQUE(content_hash, version)`, `chunks UNIQUE(document_id, seq)`).
+- `sources`, `documents`, `chunks` (spec §4 field set; `sources UNIQUE(origin_uri, version)` — version lineage is per-origin, so identical bytes ingested from two different origins are distinct sources each at version 1; `chunks UNIQUE(document_id, seq)`).
 
 ### REST (`api/sources.py`, prefix `/api/sources`)
 - `POST /api/sources/ingest` — body `SourceIngestRequest(origin_uri, scope="personal", source_type=None)` → `SourceResponse(id, content_hash, version, source_type, origin_uri, scope, deduplicated, chunk_count)`.

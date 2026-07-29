@@ -32,6 +32,7 @@ class Settings(BaseSettings):
     # ── Data paths ─────────────────────────────────────────────────────────
     wiki_dir: Path = Path("/data/wiki")
     raw_dir: Path = Path("/data/raw")
+    blob_dir: Path = Path("/data/blobs")
     db_path: Path = Path("/data/archivum.db")
     kuzu_path: Path = Path("/data/kuzu")
 
