@@ -1,0 +1,21 @@
+tests/store/test_chunking.py
+  s_fca0484fc7e95a::t_8135533459e0c2 1-39
+apps/backend/archivum/store/chunking.py
+  s_fca0484fc7e95a::t_d370179c451b2f 1-55
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "0d9012784cf77a8b948b30bcc9912eb80e2c76e9",
+  "prompts": {},
+  "sessions": {
+    "s_fca0484fc7e95a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f816a12e-be55-4e40-b7e3-e3e50e24344f",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Pranav Kannepalli <pranav.kannepalli@gmail.com>"
+    }
+  }
+}
