@@ -101,6 +101,7 @@ async def lifespan(app: FastAPI):
     settings.raw_dir.mkdir(parents=True, exist_ok=True)
     settings.db_path.parent.mkdir(parents=True, exist_ok=True)
     settings.kuzu_path.mkdir(parents=True, exist_ok=True)
+    settings.blob_dir.mkdir(parents=True, exist_ok=True)
 
     # Init derived stores
     await sqlite.init_db(settings)
