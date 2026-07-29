@@ -1,11 +1,14 @@
 import pytest
 
 import archivum.db.sqlite as sqlite_mod
+from archivum.capture.canonical import content_hash
 from archivum.capture.schema import Conversation, ToolCall, Turn
 from archivum.capture.store import CaptureResult, CaptureStore
 from archivum.config import Settings
 from archivum.store.blobs import BlobStore
+from archivum.store.models import Source, new_id
 from archivum.store.repository import SourceStore
+from archivum.store.source_types import SourceType
 
 
 @pytest.fixture
@@ -23,6 +26,26 @@ def _conv():
         turns=(Turn(role="user", text="do X", ts="t"),
                Turn(role="assistant", text="did X", ts="t", tool_calls=(tc,))),
     )
+
+
+@pytest.mark.asyncio
+async def test_dedup_readback_raises_on_source_without_document(env):
+    # Simulate an inconsistent store: a source row matching (origin, hash) that
+    # has no document. capture() must raise a meaningful error, not AttributeError.
+    conv = _conv()
+    from archivum.capture.store import _redact_conversation
+
+    redacted = _redact_conversation(conv)
+    chash = content_hash(redacted)
+    origin = f"conversation:{conv.interface}:{conv.session_id}"
+    orphan = Source(
+        id=new_id(), content_hash=chash, version=1,
+        source_type=SourceType.CONVERSATION, origin_uri=origin, scope="personal",
+        ingested_at="t", recorded_at="t", valid_from="t", valid_to=None,
+    )
+    await SourceStore().insert_source(orphan)  # no document inserted
+    with pytest.raises(RuntimeError, match="inconsistent"):
+        await env.capture(conv)
 
 
 @pytest.mark.asyncio

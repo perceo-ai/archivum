@@ -55,6 +55,30 @@ async def test_get_source_by_origin_and_hash(store):
 
 
 @pytest.mark.asyncio
+async def test_get_or_create_source_assigns_and_dedups(store):
+    common = dict(
+        source_type=SourceType.CONVERSATION, origin_uri="conversation:x:s1",
+        scope="personal", ingested_at="t", recorded_at="t", valid_from="t",
+        valid_to=None,
+    )
+    # first content → version 1, created
+    s1, created1 = await store.get_or_create_source(
+        id="a" * 32, content_hash="1" * 64, **common
+    )
+    assert created1 is True and s1.version == 1
+    # identical (origin, hash) → dedup, NOT a new version
+    s1b, created1b = await store.get_or_create_source(
+        id="b" * 32, content_hash="1" * 64, **common
+    )
+    assert created1b is False and s1b.id == s1.id and s1b.version == 1
+    # different content, same origin → version 2
+    s2, created2 = await store.get_or_create_source(
+        id="c" * 32, content_hash="2" * 64, **common
+    )
+    assert created2 is True and s2.version == 2
+
+
+@pytest.mark.asyncio
 async def test_insert_document_and_chunk(store):
     src = _make_source()
     await store.insert_source(src)

@@ -63,28 +63,20 @@ class CaptureStore:
 
         existing = await self._existing(origin, chash)
         if existing is not None:
-            document = await self._store.get_document_for_source(existing.id)
-            assert document is not None
-            chunks = await self._store.list_chunks(document.id)
-            return CaptureResult(
-                source_id=existing.id, content_hash=chash, version=existing.version,
-                document_id=document.id, chunk_ids=tuple(c.id for c in chunks),
-                deduplicated=True,
-            )
+            return await self._dedup_result(existing, chash)
 
-        version = await self._store.latest_version_for_origin(origin) + 1
-        self._blobs.put(raw)  # L0 evidence, write-once
+        self._blobs.put(raw)  # L0 evidence, write-once (content-addressed, idempotent)
+        now = datetime.now(UTC).isoformat()
+        source, created = await self._store.get_or_create_source(
+            id=new_id(), content_hash=chash, source_type=SourceType.CONVERSATION,
+            origin_uri=origin, scope=conv.scope, ingested_at=now, recorded_at=now,
+            valid_from=conv.started_at or now, valid_to=None,
+        )
+        if not created:
+            # A concurrent capture of identical content won the version race; reuse it.
+            return await self._dedup_result(source, chash)
 
         text, spans = render_transcript(conv)
-        now = datetime.now(UTC).isoformat()
-        source = Source(
-            id=new_id(), content_hash=chash, version=version,
-            source_type=SourceType.CONVERSATION, origin_uri=origin, scope=conv.scope,
-            ingested_at=now, recorded_at=now, valid_from=conv.started_at or now,
-            valid_to=None,
-        )
-        await self._store.insert_source(source)
-
         document = Document(
             id=new_id(), source_id=source.id, mime="text/plain",
             normalized_hash=sha256_text(text),
@@ -101,9 +93,25 @@ class CaptureStore:
             chunk_ids.append(chunk.id)
 
         return CaptureResult(
-            source_id=source.id, content_hash=chash, version=version,
+            source_id=source.id, content_hash=chash, version=source.version,
             document_id=document.id, chunk_ids=tuple(chunk_ids), deduplicated=False,
         )
 
     async def _existing(self, origin: str, chash: str) -> Source | None:
         return await self._store.get_source_by_origin_and_hash(origin, chash)
+
+    async def _dedup_result(self, source: Source, chash: str) -> CaptureResult:
+        """Build a deduplicated CaptureResult by reading back an existing
+        source's document and chunks."""
+        document = await self._store.get_document_for_source(source.id)
+        if document is None:
+            raise RuntimeError(
+                f"source {source.id!r} exists but has no associated document — "
+                "store is inconsistent"
+            )
+        chunks = await self._store.list_chunks(document.id)
+        return CaptureResult(
+            source_id=source.id, content_hash=chash, version=source.version,
+            document_id=document.id, chunk_ids=tuple(c.id for c in chunks),
+            deduplicated=True,
+        )

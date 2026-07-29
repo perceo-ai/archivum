@@ -116,6 +116,71 @@ class SourceStore:
                 row = await cur.fetchone()
                 return _row_to_source(row) if row else None
 
+    async def get_or_create_source(
+        self,
+        *,
+        id: str,
+        content_hash: str,
+        source_type: SourceType,
+        origin_uri: str,
+        scope: str,
+        ingested_at: str,
+        recorded_at: str,
+        valid_from: str,
+        valid_to: str | None,
+    ) -> tuple[Source, bool]:
+        """Atomically dedup-or-insert a source for (origin_uri, content_hash).
+
+        Returns (source, created). If an identical source already exists,
+        returns it with created=False. Otherwise assigns version = MAX+1 and
+        inserts. The read-max and insert run inside one BEGIN IMMEDIATE
+        transaction, so concurrent writers for the same origin cannot both
+        compute the same version and collide on UNIQUE(origin_uri, version).
+        """
+        async with get_db() as db:
+            await db.execute("BEGIN IMMEDIATE")
+            try:
+                async with db.execute(
+                    "SELECT * FROM sources WHERE origin_uri=? AND content_hash=? "
+                    "ORDER BY version DESC LIMIT 1",
+                    (origin_uri, content_hash),
+                ) as cur:
+                    row = await cur.fetchone()
+                if row is not None:
+                    await db.commit()
+                    return _row_to_source(row), False
+
+                async with db.execute(
+                    "SELECT MAX(version) AS v FROM sources WHERE origin_uri=?",
+                    (origin_uri,),
+                ) as cur:
+                    r = await cur.fetchone()
+                    version = (int(r["v"]) if r and r["v"] is not None else 0) + 1
+
+                await db.execute(
+                    "INSERT INTO sources "
+                    "(id, content_hash, version, source_type, origin_uri, scope, "
+                    " ingested_at, recorded_at, valid_from, valid_to) "
+                    "VALUES (?,?,?,?,?,?,?,?,?,?)",
+                    (
+                        id, content_hash, version, source_type.value, origin_uri,
+                        scope, ingested_at, recorded_at, valid_from, valid_to,
+                    ),
+                )
+                await db.commit()
+            except Exception:
+                await db.rollback()
+                raise
+        return (
+            Source(
+                id=id, content_hash=content_hash, version=version,
+                source_type=source_type, origin_uri=origin_uri, scope=scope,
+                ingested_at=ingested_at, recorded_at=recorded_at,
+                valid_from=valid_from, valid_to=valid_to,
+            ),
+            True,
+        )
+
     async def latest_version_for_origin(self, origin_uri: str) -> int:
         async with get_db() as db:
             async with db.execute(
