@@ -39,7 +39,7 @@ class ClaudeCodeImporter:
             role = message.get("role", obj.get("type", "user"))
             content = message.get("content", "")
 
-            # Fill any tool_results into the ToolCall they answer, don't emit a turn.
+            # Fill any tool_results into the ToolCall they answer.
             results = self._tool_results(content)
             if results:
                 for call_id, result_text in results.items():
@@ -60,10 +60,13 @@ class ClaudeCodeImporter:
                             filled if tc.call_id == call_id else tc for tc in turn.tool_calls
                         ),
                     )
-                continue
+                # Also emit a turn for any visible text blocks bundled with tool_results.
+                visible_text = self._text_only_blocks(content)
+                if not visible_text:
+                    continue
 
             calls = self._tool_uses(content)
-            text = visible_text_from_blocks(content)
+            text = self._text_only_blocks(content) if results else visible_text_from_blocks(content)
             if not text and not calls:
                 continue
             turn = Turn(role=role, text=text, ts=obj.get("timestamp", ""),
@@ -93,6 +96,15 @@ class ClaudeCodeImporter:
                     result=None, call_id=block.get("id"),
                 ))
         return out
+
+    @staticmethod
+    def _text_only_blocks(content: object) -> str:
+        """Return visible text from only `text`-type blocks (excludes tool_result/thinking)."""
+        from archivum.capture.redaction import visible_text_from_blocks
+        if not isinstance(content, list):
+            return visible_text_from_blocks(content)
+        text_blocks = [b for b in content if isinstance(b, dict) and b.get("type") == "text"]
+        return visible_text_from_blocks(text_blocks)
 
     @staticmethod
     def _tool_results(content: object) -> dict[str, str]:

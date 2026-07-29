@@ -42,6 +42,16 @@ def test_import_endpoint_rejects_unknown_file(client):
     assert resp.status_code == 400
 
 
+def test_import_endpoint_returns_400_for_malformed_jsonl(client, tmp_path):
+    bad = tmp_path / "bad.jsonl"
+    bad.write_text("this is not json\n", encoding="utf-8")
+    resp = client.post("/api/sources/capture/import", json={"path": str(bad)})
+    assert resp.status_code == 400
+    body = resp.json()
+    detail = body.get("detail", {})
+    assert detail.get("code") == "unparseable_source"
+
+
 def test_capture_route_registered_on_app():
     from archivum.main import create_app
 

@@ -13,16 +13,6 @@ def test_conversation_is_frozen_and_nests_tool_calls():
     assert conv.turns[0].tool_calls[0].name == "Read"
     assert conv.turns[0].tool_calls[0].ok is True
     assert conv.scope == "personal"
-    with dataclasses.FrozenInstanceError if False else _expect_frozen():
-        pass
-
-
-import contextlib
-
-
-@contextlib.contextmanager
-def _expect_frozen():
-    yield
 
 
 def test_frozen_assignment_raises():

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import dataclasses
+import json
 import logging
 from pathlib import Path
 
@@ -121,7 +123,13 @@ async def capture_import_endpoint(
             detail={"detail": f"cannot read {body.path}", "code": "unreadable_source"},
         )
     store = CaptureStore(settings=settings)
-    result = connector.parse(path)
+    try:
+        result = connector.parse(path)
+    except (json.JSONDecodeError, ValueError, OSError):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={"detail": f"cannot parse {body.path}", "code": "unparseable_source"},
+        )
     responses: list[CaptureResponse] = []
     for conv in result.conversations:
         scoped = conv if body.scope == "personal" else _rescope(conv, body.scope)
@@ -130,6 +138,4 @@ async def capture_import_endpoint(
 
 
 def _rescope(conv: Conversation, scope: str) -> Conversation:
-    import dataclasses
-
     return dataclasses.replace(conv, scope=scope)
