@@ -1,0 +1,23 @@
+tests/capture/test_chatgpt_importer.py
+  s_5d44b4f1650ea4::t_7a0186569a25cd 1-18
+apps/backend/archivum/capture/importers/chatgpt.py
+  s_5d44b4f1650ea4::t_96cd4f7184c74e 1-64
+tests/fixtures/capture/chatgpt_export.json
+  s_5d44b4f1650ea4::t_161f0bdc0c7525 1-11
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "5460ddb90b5e1e3f5b921882291a8f4d1b0f375c",
+  "prompts": {},
+  "sessions": {
+    "s_5d44b4f1650ea4": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d16cb709-6098-46fe-95a8-ae8697de3e39",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Pranav Kannepalli <pranav.kannepalli@gmail.com>"
+    }
+  }
+}
