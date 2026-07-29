@@ -1,0 +1,23 @@
+apps/backend/archivum/store/__init__.py
+  s_fca0484fc7e95a::t_71e7625b4ef38b 1
+tests/store/test_hashing.py
+  s_fca0484fc7e95a::t_622e747d221013 1-26
+apps/backend/archivum/store/hashing.py
+  s_fca0484fc7e95a::t_766624c4a0d42d 1-15
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "f04db9ee272f6dd3e5f79937173485bf744178fa",
+  "prompts": {},
+  "sessions": {
+    "s_fca0484fc7e95a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f816a12e-be55-4e40-b7e3-e3e50e24344f",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Pranav Kannepalli <pranav.kannepalli@gmail.com>"
+    }
+  }
+}
