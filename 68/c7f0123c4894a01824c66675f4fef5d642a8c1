@@ -1,0 +1,32 @@
+apps/backend/archivum/capture/store.py
+  s_5d44b4f1650ea4::t_9826c095ae5d04 109
+apps/backend/archivum/capture/importers/chatgpt.py
+  s_5d44b4f1650ea4::t_6efbd2437c812e 21-24,27-35
+tests/capture/test_chatgpt_importer.py
+  s_5d44b4f1650ea4::t_52dfdfa35caca4 3-4,10-29
+apps/backend/archivum/api/capture.py
+  s_5d44b4f1650ea4::t_4bea322ee4dfa7 114,117,119-120,123
+tests/store/test_repository.py
+  s_5d44b4f1650ea4::t_a6a8c689707c0e 46-56
+  s_5d44b4f1650ea4::t_dbb2f3b0f9fb52 45
+apps/backend/archivum/store/repository.py
+  s_5d44b4f1650ea4::t_f03547cafa4f82 105-118
+tests/capture/test_capture_api.py
+  s_5d44b4f1650ea4::t_a745330a3d2f7a 40-43,45-53
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "68c7f0123c4894a01824c66675f4fef5d642a8c1",
+  "prompts": {},
+  "sessions": {
+    "s_5d44b4f1650ea4": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d16cb709-6098-46fe-95a8-ae8697de3e39",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Pranav Kannepalli <pranav.kannepalli@gmail.com>"
+    }
+  }
+}
