@@ -1,0 +1,21 @@
+apps/backend/archivum/store/models.py
+  s_fca0484fc7e95a::t_8a70eae9fbfb04 1-60
+tests/store/test_models.py
+  s_fca0484fc7e95a::t_ad482c4d6fceed 1-63
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "7fc970d8eec618942ce34f39365c616dc2db5e0d",
+  "prompts": {},
+  "sessions": {
+    "s_fca0484fc7e95a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f816a12e-be55-4e40-b7e3-e3e50e24344f",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Pranav Kannepalli <pranav.kannepalli@gmail.com>"
+    }
+  }
+}
