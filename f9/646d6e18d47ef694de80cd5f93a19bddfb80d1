@@ -1,0 +1,26 @@
+docs/superpowers/plans/2026-07-28-archivum-interface-contract.md
+  s_fca0484fc7e95a::t_69cac29d28bb44 46
+tests/store/test_schema.py
+  s_fca0484fc7e95a::t_b6a92b3ba65bcc 25-31,34-36,38-39,44-54
+  s_fca0484fc7e95a::t_b6e543fe69550d 55-56
+tests/store/test_ingest.py
+  s_fca0484fc7e95a::t_278e2f346c364b 98-131
+apps/backend/archivum/store/schema.py
+  s_fca0484fc7e95a::t_cceb96f97cf5d3 17-20
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "f9646d6e18d47ef694de80cd5f93a19bddfb80d1",
+  "prompts": {},
+  "sessions": {
+    "s_fca0484fc7e95a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f816a12e-be55-4e40-b7e3-e3e50e24344f",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Pranav Kannepalli <pranav.kannepalli@gmail.com>"
+    }
+  }
+}
