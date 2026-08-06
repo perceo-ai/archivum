@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -15,6 +16,7 @@ from archivum.archgraph.mapper import (
     map_extraction,
 )
 from archivum.archgraph.models import Extraction
+from archivum.archgraph.registry import CODE_SUFFIXES
 from archivum.archgraph.repo import collect_files, repo_artifacts, snapshot_repo
 from archivum.archgraph.resolve import resolve_cross_file
 from archivum.archgraph.cross_repo import resolve_cross_repo
@@ -67,6 +69,80 @@ class _L1View:
         ]
 
 
+def changed_files(root: Path, since_sha: str | None) -> tuple[list[Path], list[Path]]:
+    """Return (changed_or_added, deleted) absolute Paths, code files only.
+
+    Falls back to (collect_files(root), []) when since_sha is None,
+    root is not a git repo, or any subprocess error occurs.
+    """
+    if since_sha is None:
+        return collect_files(root), []
+
+    try:
+        result = subprocess.run(
+            ["git", "-C", str(root), "diff", "--name-status", f"{since_sha}..HEAD"],
+            capture_output=True,
+            text=True,
+        )
+        if result.returncode != 0:
+            return collect_files(root), []
+    except (FileNotFoundError, subprocess.SubprocessError):
+        return collect_files(root), []
+
+    changed: list[Path] = []
+    deleted: list[Path] = []
+
+    for line in result.stdout.splitlines():
+        if not line.strip():
+            continue
+        parts = line.split("\t", 1)
+        if len(parts) < 2:
+            continue
+        status, rel_path = parts[0].strip(), parts[1].strip()
+        # Rename lines look like "R100\told_name\tnew_name" — take the new name
+        if status.startswith("R"):
+            sub = rel_path.split("\t", 1)
+            rel_path = sub[1] if len(sub) == 2 else rel_path
+            status = "R"
+
+        abs_path = root / rel_path
+        if abs_path.suffix not in CODE_SUFFIXES:
+            continue
+
+        if status == "D":
+            deleted.append(abs_path)
+        else:
+            changed.append(abs_path)
+
+    return changed, deleted
+
+
+def prune_dangling(candidates: list, deleted_files: set[str]) -> tuple[list, int]:
+    """Drop candidates whose provenance ALL cite a deleted file.
+
+    A candidate is pruned only when it has at least one provenance entry
+    AND every provenance chunk_id is in deleted_files.
+    Candidates with no provenance are kept.
+    Returns (kept, pruned_count).
+    """
+    kept: list = []
+    pruned_count = 0
+
+    for candidate in candidates:
+        provenance: list[Provenance] = getattr(candidate, "provenance", [])
+        if not provenance:
+            kept.append(candidate)
+            continue
+
+        all_deleted = all(p.chunk_id in deleted_files for p in provenance)
+        if all_deleted:
+            pruned_count += 1
+        else:
+            kept.append(candidate)
+
+    return kept, pruned_count
+
+
 async def ingest_repo(
     root: Path,
     *,
@@ -74,19 +150,27 @@ async def ingest_repo(
     cache_dir: Path,
     validation,
     lexical_conn: aiosqlite.Connection,
+    update: bool = False,
+    since_sha: str | None = None,
 ) -> IngestReport:
     # Step 1: snapshot repo and collect repo-level artifacts
     snap = snapshot_repo(root)
     repo_cands = repo_artifacts(snap, scope=scope)
 
-    # Step 2: collect files and extract (or load from cache)
-    files = collect_files(root)
+    # Step 2: collect files (full or incremental) and extract (or load from cache)
+    if update:
+        files, deleted = changed_files(root, since_sha)
+    else:
+        files = collect_files(root)
+        deleted = []
+
     all_extractions: list[Extraction] = []
     file_chunk_ids: list[tuple[Path, str]] = []
     cache_hits = 0
 
     for file in files:
-        chunk_id = content_hash(file)
+        # Use str(file) as chunk_id so prune_dangling can match by file path
+        chunk_id = str(file)
         ext = load_cached(file, cache_dir)
         if ext is None:
             ext = extract_file(file)
@@ -100,7 +184,6 @@ async def ingest_repo(
     inferred_edges = resolve_cross_file(all_extractions)
     if inferred_edges:
         cross_file_ext = Extraction(nodes=[], edges=inferred_edges, error=None)
-        # Use a stable chunk_id for cross-file provenance
         cross_chunk_id = f"cross_file:{snap.repo_id}:{snap.commit_sha}"
         all_extractions.append(cross_file_ext)
         file_chunk_ids.append((root, cross_chunk_id))
@@ -111,12 +194,17 @@ async def ingest_repo(
         mapped = map_extraction(ext, scope=scope, chunk_id=chunk_id)
         all_candidates.extend(mapped)
 
-    # Step 5: validate first batch
+    # Step 5 (incremental only): prune candidates from deleted files
+    if update and deleted:
+        deleted_strs = {str(p) for p in deleted}
+        all_candidates, _ = prune_dangling(all_candidates, deleted_strs)
+
+    # Step 6: validate first batch
     accepted_before = len(validation.accepted)
     rejected_before = len(validation.rejected)
     validation.validate_batch(all_candidates)
 
-    # Step 6: build L1 view from currently accepted candidates and run cross-repo + bridge
+    # Step 7: build L1 view from currently accepted candidates and run cross-repo + bridge
     l1_view = _L1View(validation.accepted)
     cross_repo_rels = await resolve_cross_repo(l1_view)
     bridge_rels = await bridge_evidence(l1_view)
@@ -124,7 +212,7 @@ async def ingest_repo(
     if extra_rels:
         validation.validate_batch(extra_rels)
 
-    # Step 7: build lexical index from accepted entity/artifact candidates
+    # Step 8: build lexical index from accepted entity/artifact candidates
     code_nodes = [
         (c.id, c.name)
         for c in validation.accepted
@@ -132,7 +220,7 @@ async def ingest_repo(
     ]
     await build_lexical_index(lexical_conn, code_nodes)
 
-    # Step 8: compute report counts as deltas from this run
+    # Step 9: compute report counts as deltas from this run
     accepted_after = len(validation.accepted)
     rejected_after = len(validation.rejected)
 

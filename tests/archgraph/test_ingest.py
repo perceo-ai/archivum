@@ -1,11 +1,15 @@
 from __future__ import annotations
 
+import os
+import shutil
+import subprocess
 from pathlib import Path
 
 import aiosqlite
 import pytest
 
-from archivum.archgraph.ingest import ingest_repo
+from archivum.archgraph.ingest import changed_files, ingest_repo, prune_dangling
+from archivum.archgraph.mapper import CandidateEntity, Provenance
 
 
 class FakeValidationLayer:
@@ -111,3 +115,200 @@ async def test_all_relationships_have_method(git_repo, cache_dir, tmp_path, fake
         assert rel.extraction_method in valid_methods, (
             f"Relationship {rel.id!r} has invalid method {rel.extraction_method!r}"
         )
+
+
+# ---------------------------------------------------------------------------
+# Task 14 — incremental re-index + dangling pruning
+# ---------------------------------------------------------------------------
+
+def _git_env() -> dict:
+    return {
+        **os.environ,
+        "GIT_AUTHOR_NAME": "t",
+        "GIT_AUTHOR_EMAIL": "t@t",
+        "GIT_COMMITTER_NAME": "t",
+        "GIT_COMMITTER_EMAIL": "t@t",
+    }
+
+
+def _run_git(args: list[str], cwd: Path) -> str:
+    result = subprocess.run(
+        ["git", *args], cwd=cwd, check=True, capture_output=True, text=True, env=_git_env()
+    )
+    return result.stdout.strip()
+
+
+def _make_two_file_repo(tmp_path: Path) -> Path:
+    """Create a git repo with two Python files."""
+    repo = tmp_path / "two_file_repo"
+    repo.mkdir()
+    (repo / "calc.py").write_text(
+        "class Calc:\n    def add(self, a, b):\n        return a + b\n"
+    )
+    (repo / "utils.py").write_text(
+        "class Helper:\n    def greet(self, name):\n        return f'hi {name}'\n"
+    )
+    env = _git_env()
+    for args in (["init", "-q"], ["add", "-A"], ["commit", "-q", "-m", "init"]):
+        subprocess.run(["git", *args], cwd=repo, check=True, env=env)
+    return repo
+
+
+async def test_update_reextracts_only_changed(tmp_path, fake_validation):
+    """Incremental update only processes the changed file and finds new symbols."""
+    if shutil.which("git") is None:
+        pytest.skip("git not available")
+
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / "calc.py").write_text(
+        "class Calculator:\n    def add(self, a, b):\n        return a + b\n"
+    )
+    for args in (["init", "-q"], ["add", "-A"], ["commit", "-q", "-m", "init"]):
+        subprocess.run(["git", *args], cwd=repo, check=True, env=_git_env())
+
+    first_sha = _run_git(["rev-parse", "HEAD"], repo)
+    cache_dir = tmp_path / "cache"
+    cache_dir.mkdir()
+
+    # Full ingest at first commit
+    fv1 = FakeValidationLayer()
+    async with aiosqlite.connect(tmp_path / "lex1.db") as conn:
+        await ingest_repo(
+            repo,
+            scope="repo:test",
+            cache_dir=cache_dir,
+            validation=fv1,
+            lexical_conn=conn,
+        )
+
+    # Modify calc.py and commit
+    with open(repo / "calc.py", "a") as f:
+        f.write("\ndef new_function():\n    return 42\n")
+    subprocess.run(["git", "add", "-A"], cwd=repo, check=True, env=_git_env())
+    subprocess.run(["git", "commit", "-q", "-m", "add new_function"], cwd=repo, check=True, env=_git_env())
+
+    # Incremental update
+    fv2 = FakeValidationLayer()
+    async with aiosqlite.connect(tmp_path / "lex2.db") as conn:
+        report = await ingest_repo(
+            repo,
+            scope="repo:test",
+            cache_dir=cache_dir,
+            validation=fv2,
+            lexical_conn=conn,
+            update=True,
+            since_sha=first_sha,
+        )
+
+    # Only calc.py was changed — exactly 1 file processed
+    assert report.files == 1, f"Expected 1 changed file processed, got {report.files}"
+    names = {c.name for c in fv2.accepted if hasattr(c, "name")}
+    assert "new_function" in names, f"Expected 'new_function' in accepted names, got: {names}"
+
+
+async def test_update_prunes_deleted_file(tmp_path, fake_validation):
+    """After deleting a file and running update, that file's objects are pruned."""
+    if shutil.which("git") is None:
+        pytest.skip("git not available")
+
+    repo = _make_two_file_repo(tmp_path)
+    first_sha = _run_git(["rev-parse", "HEAD"], repo)
+    cache_dir = tmp_path / "cache"
+    cache_dir.mkdir()
+
+    # Full ingest
+    fv1 = FakeValidationLayer()
+    async with aiosqlite.connect(tmp_path / "lex1.db") as conn:
+        report1 = await ingest_repo(
+            repo,
+            scope="repo:test",
+            cache_dir=cache_dir,
+            validation=fv1,
+            lexical_conn=conn,
+        )
+    assert report1.files == 2
+
+    # Delete utils.py and commit
+    (repo / "utils.py").unlink()
+    subprocess.run(["git", "add", "-A"], cwd=repo, check=True, env=_git_env())
+    subprocess.run(["git", "commit", "-q", "-m", "delete utils.py"], cwd=repo, check=True, env=_git_env())
+
+    # Incremental update — utils.py objects should be pruned
+    fv2 = FakeValidationLayer()
+    async with aiosqlite.connect(tmp_path / "lex2.db") as conn:
+        report2 = await ingest_repo(
+            repo,
+            scope="repo:test",
+            cache_dir=cache_dir,
+            validation=fv2,
+            lexical_conn=conn,
+            update=True,
+            since_sha=first_sha,
+        )
+
+    names = {c.name for c in fv2.accepted if hasattr(c, "name")}
+    assert "Helper" not in names, f"'Helper' from deleted utils.py should be pruned, got: {names}"
+
+
+def test_prune_dangling_pure():
+    """Unit-test prune_dangling with hand-built candidates."""
+    deleted = {"/repo/dead.py"}
+
+    # Candidate whose only provenance is from deleted file -> pruned
+    dead_prov = Provenance(chunk_id="/repo/dead.py", span="L1", extraction_method="EXTRACTED")
+    dead_candidate = CandidateEntity(
+        id="dead_1",
+        kind="function",
+        name="dead_func",
+        scope="repo:test",
+        confidence=1.0,
+        extraction_method="EXTRACTED",
+        provenance=[dead_prov],
+    )
+
+    # Candidate whose provenance is from live file -> kept
+    live_prov = Provenance(chunk_id="/repo/live.py", span="L1", extraction_method="EXTRACTED")
+    live_candidate = CandidateEntity(
+        id="live_1",
+        kind="function",
+        name="live_func",
+        scope="repo:test",
+        confidence=1.0,
+        extraction_method="EXTRACTED",
+        provenance=[live_prov],
+    )
+
+    # Candidate with mixed provenance (one dead, one live) -> kept
+    mixed_candidate = CandidateEntity(
+        id="mixed_1",
+        kind="function",
+        name="mixed_func",
+        scope="repo:test",
+        confidence=1.0,
+        extraction_method="EXTRACTED",
+        provenance=[dead_prov, live_prov],
+    )
+
+    # Candidate with no provenance -> kept (no evidence to prune)
+    no_prov_candidate = CandidateEntity(
+        id="noprov_1",
+        kind="function",
+        name="no_prov_func",
+        scope="repo:test",
+        confidence=1.0,
+        extraction_method="EXTRACTED",
+        provenance=[],
+    )
+
+    kept, pruned_count = prune_dangling(
+        [dead_candidate, live_candidate, mixed_candidate, no_prov_candidate],
+        deleted,
+    )
+
+    assert pruned_count == 1, f"Expected 1 pruned, got {pruned_count}"
+    kept_names = {c.name for c in kept}
+    assert "dead_func" not in kept_names, "dead_func should be pruned"
+    assert "live_func" in kept_names
+    assert "mixed_func" in kept_names
+    assert "no_prov_func" in kept_names
