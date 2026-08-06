@@ -251,6 +251,51 @@ async def test_update_prunes_deleted_file(tmp_path, fake_validation):
     assert "Helper" not in names, f"'Helper' from deleted utils.py should be pruned, got: {names}"
 
 
+async def test_cross_file_edge_provenance_is_file_addressable_and_prunable(tmp_path, fake_validation):
+    """A cross-file INFERRED edge must be anchored to its source FILE (not a
+    synthetic repo-level key) so prune_dangling can reach it when that file is
+    deleted — otherwise the edge would dangle forever after a file removal."""
+    if shutil.which("git") is None:
+        pytest.skip("git not available")
+
+    repo = tmp_path / "xrepo"
+    repo.mkdir()
+    (repo / "b.py").write_text("def helper():\n    return 1\n")
+    (repo / "a.py").write_text("from b import helper\n\ndef run():\n    return helper()\n")
+    for args in (["init", "-q"], ["add", "-A"], ["commit", "-q", "-m", "init"]):
+        subprocess.run(["git", *args], cwd=repo, check=True, env=_git_env())
+
+    cache_dir = tmp_path / "cache"
+    cache_dir.mkdir()
+    fv = FakeValidationLayer()
+    async with aiosqlite.connect(tmp_path / "lex.db") as conn:
+        await ingest_repo(
+            repo, scope="repo:test", cache_dir=cache_dir, validation=fv, lexical_conn=conn
+        )
+
+    inferred = [
+        c for c in fv.accepted
+        if getattr(c, "extraction_method", None) == "INFERRED" and hasattr(c, "src_id")
+    ]
+    assert inferred, "expected a cross-file INFERRED relationship (a.run -> b.helper)"
+    a_py = str(repo / "a.py")
+    for c in inferred:
+        chunk_ids = {p.chunk_id for p in c.provenance}
+        # file-addressable, NOT the old synthetic "cross_file:..." key
+        assert all(not cid.startswith("cross_file:") for cid in chunk_ids), chunk_ids
+        assert any(cid.endswith("a.py") or cid.endswith("b.py") for cid in chunk_ids), chunk_ids
+
+    # Deleting a.py must let prune_dangling remove its cross-file edge.
+    kept, pruned = prune_dangling(fv.accepted, {a_py})
+    assert pruned >= 1
+    stale = [
+        c for c in kept
+        if getattr(c, "extraction_method", None) == "INFERRED"
+        and any(p.chunk_id == a_py for p in getattr(c, "provenance", []))
+    ]
+    assert not stale, f"cross-file edge from deleted a.py should be prunable, got {stale}"
+
+
 def test_prune_dangling_pure():
     """Unit-test prune_dangling with hand-built candidates."""
     deleted = {"/repo/dead.py"}

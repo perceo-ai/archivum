@@ -71,7 +71,11 @@ def export_graph(candidates: list, out_dir: Path) -> tuple[Path, Path]:
 
 def _render_html(graph: dict) -> str:
     """Return a self-contained HTML string embedding the graph via vis-network CDN."""
-    graph_json = json.dumps(graph, indent=2, sort_keys=True)
+    # Escape "</" so a node label or citation containing "</script>" cannot close
+    # the embedded <script> block early. Archgraph ingests arbitrary repos, whose
+    # paths/identifiers are untrusted; the browser scans for "</script>" regardless
+    # of JS context, and "<\/" is a valid JSON/JS spelling of the same slash.
+    graph_json = json.dumps(graph, indent=2, sort_keys=True).replace("</", "<\\/")
 
     return f"""<!DOCTYPE html>
 <html lang="en">

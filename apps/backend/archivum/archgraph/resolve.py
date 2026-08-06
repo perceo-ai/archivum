@@ -31,9 +31,11 @@ def resolve_cross_file(extractions: list[Extraction]) -> list[CodeEdge]:
             all_node_ids.add(node.id)
             node_file[node.id] = node.source_file
 
-    # Symbol table: bare_name -> list of node ids
+    # Symbol table: bare_name -> list of node ids. Iterate sorted so candidate
+    # order (and thus AMBIGUOUS edge emission order) is stable across processes,
+    # not dependent on set iteration / PYTHONHASHSEED.
     symbol_table: dict[str, list[str]] = defaultdict(list)
-    for node_id in all_node_ids:
+    for node_id in sorted(all_node_ids):
         symbol_table[_bare_name(node_id)].append(node_id)
 
     # Existing EXTRACTED edges keyed by (source, target, relation)
@@ -55,6 +57,10 @@ def resolve_cross_file(extractions: list[Extraction]) -> list[CodeEdge]:
 
             # Unresolved: look up bare name of target
             key = _bare_name(edge.target)
+            # Skip ultra-short bare names (e.g. "id", "os", "x"): they match too
+            # promiscuously and would fabricate low-value AMBIGUOUS edges.
+            if len(key) < 3:
+                continue
             candidates = symbol_table.get(key, [])
 
             # Filter out candidates in same file as edge source

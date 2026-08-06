@@ -34,7 +34,15 @@ class IngestReport:
 
 
 class _L1View:
-    """Minimal L1 read API built from accepted entity/artifact candidates."""
+    """Minimal L1 read API built from accepted entity/artifact candidates.
+
+    Note on evidence bridging: code candidates carry no free-text body, so the
+    ``text`` field is passed through from the candidate when present and is
+    otherwise empty. ``bridge_evidence`` matches on that text, so in a code-only
+    ingest it correctly emits nothing — bridging is *evidence-gated*: it fires
+    only once L1 also holds PR/conversation/deploy objects (with text) from
+    PER-316 capture / PER-317. That is by design, not a silent no-op.
+    """
 
     def __init__(self, candidates: list[object]) -> None:
         self._objects: list[dict] = []
@@ -46,7 +54,7 @@ class _L1View:
                         "kind": c.kind,
                         "scope": c.scope,
                         "label": c.name,
-                        "text": "",
+                        "text": getattr(c, "text", ""),
                     }
                 )
             elif isinstance(c, CandidateRelationship):
@@ -180,13 +188,18 @@ async def ingest_repo(
         all_extractions.append(ext)
         file_chunk_ids.append((file, chunk_id))
 
-    # Step 3: resolve cross-file edges and wrap them in a synthetic Extraction
+    # Step 3: resolve cross-file edges. Anchor each edge's provenance to ITS OWN
+    # source file (the calling site), not a synthetic repo-level key — otherwise
+    # a cross-file edge whose source file is later deleted would be un-prunable on
+    # --update and dangle forever. Grouping by source_file keeps chunk_id file-
+    # addressable so prune_dangling reaches it. Sorted for deterministic emission.
     inferred_edges = resolve_cross_file(all_extractions)
-    if inferred_edges:
-        cross_file_ext = Extraction(nodes=[], edges=inferred_edges, error=None)
-        cross_chunk_id = f"cross_file:{snap.repo_id}:{snap.commit_sha}"
-        all_extractions.append(cross_file_ext)
-        file_chunk_ids.append((root, cross_chunk_id))
+    edges_by_file: dict[str, list] = {}
+    for edge in inferred_edges:
+        edges_by_file.setdefault(edge.source_file, []).append(edge)
+    for src_file in sorted(edges_by_file):
+        all_extractions.append(Extraction(nodes=[], edges=edges_by_file[src_file], error=None))
+        file_chunk_ids.append((Path(src_file), src_file))
 
     # Step 4: map all extractions into candidates
     all_candidates: list[object] = list(repo_cands)

@@ -3,9 +3,11 @@
 Stand-in design
 ---------------
 PER-317's real ValidationLayer is not yet built.  ``_CollectingSink`` below is
-a temporary stand-in that accepts every candidate (records them in
-``self.accepted``; ``self.rejected`` stays empty).  When PER-317 lands, swap
-``_CollectingSink`` for the real ``ValidationLayer`` in ``_run_ingest``.
+a temporary stand-in that enforces the spec §4 invariant (every candidate must
+carry ≥1 provenance link and a valid extraction_method) exactly as the real
+ValidationLayer will — valid candidates go to ``self.accepted``, invalid ones to
+``self.rejected``.  When PER-317 lands, swap ``_CollectingSink`` for the real
+``ValidationLayer`` in ``_run_ingest``.
 
 ``_run_ingest`` also opens an ephemeral aiosqlite connection to
 ``<cache_dir>/index.db``; this is a placeholder DB used only by the lexical
@@ -28,15 +30,30 @@ from archivum.archgraph.ingest import IngestReport, ingest_repo
 # Stand-in validation sink (replace with real ValidationLayer when PER-317 lands)
 # ---------------------------------------------------------------------------
 
+_VALID_METHODS = frozenset({"EXTRACTED", "INFERRED", "AMBIGUOUS"})
+
+
 class _CollectingSink:
-    """Accept-all stand-in for PER-317's ValidationLayer."""
+    """Provenance-enforcing stand-in for PER-317's ValidationLayer.
+
+    Mirrors the §4 invariant the real layer enforces: a candidate is accepted
+    only if it has ≥1 provenance entry and an extraction_method in the enum.
+    Anything else is recorded in ``self.rejected`` (never raised — a bad
+    candidate must not abort the whole ingest).
+    """
 
     def __init__(self) -> None:
         self.accepted: list[object] = []
         self.rejected: list[object] = []
 
     def validate_batch(self, candidates: list) -> None:
-        self.accepted.extend(candidates)
+        for c in candidates:
+            provenance = getattr(c, "provenance", None)
+            method = getattr(c, "extraction_method", None)
+            if provenance and method in _VALID_METHODS:
+                self.accepted.append(c)
+            else:
+                self.rejected.append(c)
 
 
 # ---------------------------------------------------------------------------
