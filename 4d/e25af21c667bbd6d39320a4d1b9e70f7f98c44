@@ -1,0 +1,23 @@
+tests/archgraph/test_registry.py
+  s_5d44b4f1650ea4::t_8e311d87b8d0b2 1-35
+apps/backend/archivum/archgraph/extractors/base.py
+  s_5d44b4f1650ea4::t_0224cb27f0520f 1-30
+apps/backend/archivum/archgraph/registry.py
+  s_5d44b4f1650ea4::t_5c82912466f9f3 1-72
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "4de25af21c667bbd6d39320a4d1b9e70f7f98c44",
+  "prompts": {},
+  "sessions": {
+    "s_5d44b4f1650ea4": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d16cb709-6098-46fe-95a8-ae8697de3e39",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Pranav Kannepalli <pranav.kannepalli@gmail.com>"
+    }
+  }
+}
