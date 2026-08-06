@@ -1,0 +1,32 @@
+tests/archgraph/test_extract_typescript.py
+  s_5d44b4f1650ea4::t_6e84b936127402 1-67
+apps/backend/archivum/archgraph/extract.py
+  s_5d44b4f1650ea4::t_17030bd6e34c0f 35-37
+  s_5d44b4f1650ea4::t_21baa7067fd5c2 122-168
+  s_5d44b4f1650ea4::t_0a4da7f2fd726d 224-226,228-233
+  s_5d44b4f1650ea4::t_06c360a64c48fc 235-237,239-240,246-247
+apps/backend/archivum/archgraph/extractors/typescript_ext.py
+  s_5d44b4f1650ea4::t_908e55e977e0bf 1-14
+tests/archgraph/fixtures/ts_sample/format.ts
+  s_5d44b4f1650ea4::t_4f66354a47acc7 1
+tests/archgraph/fixtures/ts_sample/user.ts
+  s_5d44b4f1650ea4::t_d61b25846246e9 1-8
+tests/archgraph/fixtures/ts_sample/widget.tsx
+  s_5d44b4f1650ea4::t_cd0ec65f3ad0ee 1-4
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "f17130155e5465e4569af785749ce173eaa68938",
+  "prompts": {},
+  "sessions": {
+    "s_5d44b4f1650ea4": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d16cb709-6098-46fe-95a8-ae8697de3e39",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Pranav Kannepalli <pranav.kannepalli@gmail.com>"
+    }
+  }
+}
