@@ -1,0 +1,22 @@
+tests/archgraph/test_resolve.py
+  s_5d44b4f1650ea4::t_c96ea25a8ee27a 1-27,35,38-39,41-83
+  s_5d44b4f1650ea4::t_54c61236a5f3d6 28-34,36-37,40
+apps/backend/archivum/archgraph/resolve.py
+  s_5d44b4f1650ea4::t_489c9278aedbed 1-102
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "808d684430402ce58d4475f1970e34a82baefefb",
+  "prompts": {},
+  "sessions": {
+    "s_5d44b4f1650ea4": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d16cb709-6098-46fe-95a8-ae8697de3e39",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Pranav Kannepalli <pranav.kannepalli@gmail.com>"
+    }
+  }
+}
