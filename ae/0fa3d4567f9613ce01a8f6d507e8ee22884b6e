@@ -1,0 +1,24 @@
+apps/backend/pyproject.toml
+  s_5d44b4f1650ea4::t_4e46417e3ecb2f 49-51
+  s_5d44b4f1650ea4::t_609af25934604c 32-34
+apps/backend/archivum/archgraph/hook.py
+  s_5d44b4f1650ea4::t_07ac635353e170 1-124
+tests/archgraph/test_hook.py
+  s_5d44b4f1650ea4::t_f77bf70e668607 1-76
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "ae0fa3d4567f9613ce01a8f6d507e8ee22884b6e",
+  "prompts": {},
+  "sessions": {
+    "s_5d44b4f1650ea4": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d16cb709-6098-46fe-95a8-ae8697de3e39",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Pranav Kannepalli <pranav.kannepalli@gmail.com>"
+    }
+  }
+}
