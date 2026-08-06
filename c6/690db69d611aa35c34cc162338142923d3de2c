@@ -1,0 +1,25 @@
+apps/backend/archivum/archgraph/mapper.py
+  s_5d44b4f1650ea4::t_dffa7dfe6642f5 1-127
+tests/archgraph/conftest.py
+  s_5d44b4f1650ea4::t_c6adbf95c49e3d 1-27
+tests/archgraph/test_mapper.py
+  s_5d44b4f1650ea4::t_334d4a9e97e9cc 105
+  s_5d44b4f1650ea4::t_9eb4ade35c551b 1-48,50-70,72-84,86-104,106-118,120-126
+  s_5d44b4f1650ea4::t_5e4e7929ef8395 49,71,85,119
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "c6690db69d611aa35c34cc162338142923d3de2c",
+  "prompts": {},
+  "sessions": {
+    "s_5d44b4f1650ea4": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d16cb709-6098-46fe-95a8-ae8697de3e39",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Pranav Kannepalli <pranav.kannepalli@gmail.com>"
+    }
+  }
+}
