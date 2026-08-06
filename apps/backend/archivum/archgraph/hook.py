@@ -59,6 +59,27 @@ async def _run_ingest(repo: Path, scope: str, cache_dir: Path, update: bool) -> 
     return report
 
 
+async def _run_ingest_and_export(
+    repo: Path, scope: str, cache_dir: Path, update: bool, export_dir: Path
+) -> tuple[IngestReport, Path]:
+    """Like _run_ingest but also runs the export pipeline and returns (report, json_path)."""
+    from archivum.archgraph.export import export_graph
+
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    sink = _CollectingSink()
+    async with aiosqlite.connect(cache_dir / "index.db") as conn:
+        report = await ingest_repo(
+            repo,
+            scope=scope,
+            cache_dir=cache_dir,
+            validation=sink,
+            lexical_conn=conn,
+            update=update,
+        )
+    json_path, _ = export_graph(sink.accepted, export_dir)
+    return report, json_path
+
+
 # ---------------------------------------------------------------------------
 # git post-commit hook installer
 # ---------------------------------------------------------------------------
@@ -101,6 +122,7 @@ def main(argv: list[str] | None = None) -> int:
     ingest_parser.add_argument("--scope", default=None, help="Scope string (default: repo:<name>)")
     ingest_parser.add_argument("--update", action="store_true", help="Incremental update mode")
     ingest_parser.add_argument("--cache-dir", type=Path, default=None, dest="cache_dir", help="Cache directory")
+    ingest_parser.add_argument("--export", type=Path, default=None, dest="export_dir", metavar="DIR", help="Export graph.json + graph.html to DIR")
 
     try:
         args = parser.parse_args(argv)
@@ -112,7 +134,13 @@ def main(argv: list[str] | None = None) -> int:
     cache_dir = args.cache_dir if args.cache_dir is not None else repo / ".archivum-cache"
 
     try:
-        report = asyncio.run(_run_ingest(repo, scope, cache_dir, args.update))
+        if args.export_dir is not None:
+            report, json_path = asyncio.run(
+                _run_ingest_and_export(repo, scope, cache_dir, args.update, args.export_dir)
+            )
+            print(f"archgraph: exported {json_path}")
+        else:
+            report = asyncio.run(_run_ingest(repo, scope, cache_dir, args.update))
     except Exception as exc:  # noqa: BLE001
         print(f"archgraph: error — {exc}", file=sys.stderr)
         return 1
