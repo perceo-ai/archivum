@@ -1,0 +1,19 @@
+docs/superpowers/plans/2026-07-28-per318-archgraph-developer-intelligence.md
+  s_5d44b4f1650ea4::t_9d893a0f88a1a4 624-655
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "35031deffbe566b9e76ce39c395ecd5d4944b7f1",
+  "prompts": {},
+  "sessions": {
+    "s_5d44b4f1650ea4": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d16cb709-6098-46fe-95a8-ae8697de3e39",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Pranav Kannepalli <pranav.kannepalli@gmail.com>"
+    }
+  }
+}
