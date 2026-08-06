@@ -47,3 +47,19 @@ def git_repo(tmp_path):
     for args in (["init", "-q"], ["add", "-A"], ["commit", "-q", "-m", "init"]):
         subprocess.run(["git", *args], cwd=repo, check=True, env=env)
     return repo
+
+
+class FakeL1:
+    """In-memory stand-in for PER-317's L1 read API used by archgraph resolvers."""
+
+    def __init__(self, objects=None):
+        # each object: dict with keys: id, kind, scope, label, and optional 'text' (for chunk/pr bodies)
+        self._objects = list(objects or [])
+
+    async def list_objects(self, kind=None, scope=None):
+        return [
+            o
+            for o in self._objects
+            if (kind is None or o.get("kind") == kind)
+            and (scope is None or o.get("scope") == scope)
+        ]
