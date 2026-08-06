@@ -1,0 +1,30 @@
+apps/backend/archivum/archgraph/export.py
+  s_5d44b4f1650ea4::t_61a142069daba8 74-78
+apps/backend/archivum/archgraph/ingest.py
+  s_5d44b4f1650ea4::t_c360a768c1cd7d 191-195,197-202
+  s_5d44b4f1650ea4::t_bf2c0c57eeb30c 37-45,57
+tests/archgraph/test_ingest.py
+  s_5d44b4f1650ea4::t_27d9bfe5cc4ead 254-298
+apps/backend/archivum/archgraph/hook.py
+  s_5d44b4f1650ea4::t_1348c7e4870a13 6-10
+  s_5d44b4f1650ea4::t_4386ec16898f60 33-35,37-43,50-56
+apps/backend/archivum/archgraph/resolve.py
+  s_5d44b4f1650ea4::t_1fb9d1d8e96518 60-63
+  s_5d44b4f1650ea4::t_5a02903af844ce 34-36,38
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "9b841d211469583a2ffc49163a66c6aa3a7eca85",
+  "prompts": {},
+  "sessions": {
+    "s_5d44b4f1650ea4": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d16cb709-6098-46fe-95a8-ae8697de3e39",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Pranav Kannepalli <pranav.kannepalli@gmail.com>"
+    }
+  }
+}
