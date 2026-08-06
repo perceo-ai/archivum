@@ -1,0 +1,24 @@
+tests/archgraph/test_cross_repo.py
+  s_5d44b4f1650ea4::t_40799fa9e3b340 1-5,21-57
+  s_5d44b4f1650ea4::t_1e07e6a1fcb69c 6-20
+tests/archgraph/conftest.py
+  s_5d44b4f1650ea4::t_25b3dfa08f7c9a 50-65
+apps/backend/archivum/archgraph/cross_repo.py
+  s_5d44b4f1650ea4::t_d5fe52a47dd9cb 1-77
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "3904c3ac74404be177b7b66802a0c3240e7a89df",
+  "prompts": {},
+  "sessions": {
+    "s_5d44b4f1650ea4": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d16cb709-6098-46fe-95a8-ae8697de3e39",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Pranav Kannepalli <pranav.kannepalli@gmail.com>"
+    }
+  }
+}
