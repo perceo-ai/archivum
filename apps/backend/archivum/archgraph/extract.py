@@ -32,6 +32,9 @@ def _extract_generic(path: Path, cfg: LanguageConfig) -> Extraction:
 
     nodes: list[CodeNode] = []
     edges: list[CodeEdge] = []
+    # Maps locally-imported names to their canonical target ids.
+    # Built during _emit_import; consumed by _emit_call for bare-name resolution.
+    named_imports: dict[str, str] = {}
 
     stem = _file_stem(path)
     file_id = _make_id(stem)
@@ -116,26 +119,54 @@ def _extract_generic(path: Path, cfg: LanguageConfig) -> Extraction:
     def _emit_import(node) -> None:
         """Emit an imports edge from the file node to the imported module."""
         if node.type == "import_statement":
-            # import math  OR  import os, sys
-            # children: "import" keyword, then name nodes
-            for child in node.children:
-                if child.type in ("dotted_name", "aliased_import"):
-                    # dotted_name for simple imports; get first dotted_name inside aliased_import
-                    actual = child
-                    if child.type == "aliased_import":
-                        actual = child.children[0]  # the module name part
-                    module_name = _read_text(actual, source).split(".")[0]
-                    target_id = _make_id(module_name)
-                    edges.append(
-                        CodeEdge(
-                            source=file_id,
-                            target=target_id,
-                            relation="imports",
-                            method=ExtractionMethod.EXTRACTED,
-                            source_file=str(path),
-                            source_location=_source_location(node),
+            source_node = node.child_by_field_name("source")
+            if source_node is not None:
+                # TypeScript ES-module import: import { X } from "./module"
+                # source field is the string literal with the module path.
+                raw_path = _read_text(source_node, source).strip("\"'")
+                module_stem = Path(raw_path).stem
+                # Walk import_clause > named_imports > import_specifier
+                for clause in node.children:
+                    if clause.type == "import_clause":
+                        for named in clause.children:
+                            if named.type == "named_imports":
+                                for specifier in named.children:
+                                    if specifier.type == "import_specifier":
+                                        name_field = specifier.child_by_field_name("name")
+                                        if name_field is not None:
+                                            local_name = _read_text(name_field, source)
+                                            target_id = _make_id(module_stem, local_name)
+                                            named_imports[local_name] = target_id
+                                            edges.append(
+                                                CodeEdge(
+                                                    source=file_id,
+                                                    target=target_id,
+                                                    relation="imports",
+                                                    method=ExtractionMethod.EXTRACTED,
+                                                    source_file=str(path),
+                                                    source_location=_source_location(node),
+                                                )
+                                            )
+            else:
+                # Python-style bare import: import math  OR  import os, sys
+                for child in node.children:
+                    if child.type in ("dotted_name", "aliased_import"):
+                        # dotted_name for simple imports; get first dotted_name inside aliased_import
+                        actual = child
+                        if child.type == "aliased_import":
+                            actual = child.children[0]  # the module name part
+                        module_name = _read_text(actual, source).split(".")[0]
+                        target_id = _make_id(module_name)
+                        edges.append(
+                            CodeEdge(
+                                source=file_id,
+                                target=target_id,
+                                relation="imports",
+                                method=ExtractionMethod.EXTRACTED,
+                                source_file=str(path),
+                                source_location=_source_location(node),
+                            )
                         )
-                    )
         elif node.type == "import_from_statement":
             # from x import y  -> module is x
             mod_node = node.child_by_field_name("module_name")
@@ -190,24 +221,30 @@ def _extract_generic(path: Path, cfg: LanguageConfig) -> Extraction:
         if fn_child.type == "identifier":
             # bare name call: foo(...)
             callee_name = _read_text(fn_child, source)
-            # best-effort: check if there's a class node with this method in same file
-            enc_fn_class = _get_enclosing_class_for_function_id(caller_id)
-            if enc_fn_class is not None and _make_id(stem, enc_fn_class, callee_name) in {n.id for n in nodes}:
-                target_id = _make_id(stem, enc_fn_class, callee_name)
+            # Check named imports first (e.g. TypeScript: import { formatName } from "./format")
+            if callee_name in named_imports:
+                target_id = named_imports[callee_name]
             else:
-                target_id = _make_id(callee_name)
+                # best-effort: check if there's a class node with this method in same file
+                enc_fn_class = _get_enclosing_class_for_function_id(caller_id)
+                if enc_fn_class is not None and _make_id(stem, enc_fn_class, callee_name) in {n.id for n in nodes}:
+                    target_id = _make_id(stem, enc_fn_class, callee_name)
+                else:
+                    target_id = _make_id(callee_name)
 
-        elif fn_child.type == "attribute":
-            # attribute call: obj.method(...)
+        elif fn_child.type in ("attribute", "member_expression"):
+            # Python attribute call: obj.method(...)
+            # TypeScript member_expression call: obj.method(...)
             obj_node = fn_child.child_by_field_name("object")
-            attr_node = fn_child.child_by_field_name("attribute")
+            # Python uses "attribute" field; TypeScript uses "property" field
+            attr_node = fn_child.child_by_field_name("attribute") or fn_child.child_by_field_name("property")
             if obj_node is None or attr_node is None:
                 return
             obj_text = _read_text(obj_node, source)
             attr_text = _read_text(attr_node, source)
 
-            if obj_text == "self":
-                # self.method -> resolve to same-class method
+            if obj_text in ("self", "this"):
+                # self.method / this.method -> resolve to same-class method
                 enc_fn_class = _get_enclosing_class_for_function_id(caller_id)
                 if enc_fn_class is not None:
                     target_id = _make_id(stem, enc_fn_class, attr_text)
