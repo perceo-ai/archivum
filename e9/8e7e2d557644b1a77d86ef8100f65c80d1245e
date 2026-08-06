@@ -1,0 +1,21 @@
+tests/archgraph/test_lexical.py
+  s_5d44b4f1650ea4::t_a425fcf15d1484 1-66
+apps/backend/archivum/archgraph/lexical.py
+  s_5d44b4f1650ea4::t_9107caa4581bc8 1-141
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "e98e7e2d557644b1a77d86ef8100f65c80d1245e",
+  "prompts": {},
+  "sessions": {
+    "s_5d44b4f1650ea4": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d16cb709-6098-46fe-95a8-ae8697de3e39",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Pranav Kannepalli <pranav.kannepalli@gmail.com>"
+    }
+  }
+}
