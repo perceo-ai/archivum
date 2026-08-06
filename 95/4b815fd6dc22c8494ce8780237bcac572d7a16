@@ -1,0 +1,22 @@
+apps/backend/archivum/archgraph/ingest.py
+  s_5d44b4f1650ea4::t_f00347422f907f 3,19,72-145,153-154,160-166,172-173,197-202,207,215,223
+tests/archgraph/test_ingest.py
+  s_5d44b4f1650ea4::t_7fa1a1195dac77 3-5,11-12
+  s_5d44b4f1650ea4::t_dee06aea3a06b8 118-314
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "954b815fd6dc22c8494ce8780237bcac572d7a16",
+  "prompts": {},
+  "sessions": {
+    "s_5d44b4f1650ea4": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d16cb709-6098-46fe-95a8-ae8697de3e39",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Pranav Kannepalli <pranav.kannepalli@gmail.com>"
+    }
+  }
+}
