@@ -15,6 +15,24 @@ def test_trigrams_calc():
     assert _trigrams("calc") == {"cal", "alc"}
 
 
+async def test_build_index_idempotent_on_duplicate_node_ids(tmp_path):
+    # Real repos emit colliding node ids (e.g. every __init__.py file node).
+    # The index is a projection keyed by node_id, so a duplicate id must not
+    # crash the build — last text wins, one row per id.
+    db = await aiosqlite.connect(tmp_path / "idx.db")
+    try:
+        await build_lexical_index(
+            db,
+            [("dup", "first version"), ("dup", "second version"), ("other", "x")],
+        )
+        cur = await db.execute("SELECT COUNT(*) FROM code_node_text")
+        assert (await cur.fetchone())[0] == 2  # dup collapsed to one row
+        cur = await db.execute("SELECT text FROM code_node_text WHERE node_id='dup'")
+        assert (await cur.fetchone())[0] == "second version"  # last wins
+    finally:
+        await db.close()
+
+
 def test_trigrams_short():
     result = _trigrams("ab")
     assert len(result) == 1

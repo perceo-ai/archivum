@@ -50,7 +50,13 @@ async def build_lexical_index(
         """
     )
 
-    for node_id, text in code_nodes:
+    # Collapse duplicate node_ids (last text wins). The index is a rebuildable
+    # projection keyed by node_id, so the same id is the same node — real repos
+    # legitimately emit colliding ids (e.g. every __init__.py's file node). This
+    # keeps the build idempotent instead of hitting the PK/duplicate-posting.
+    deduped: dict[str, str] = {node_id: text for node_id, text in code_nodes}
+
+    for node_id, text in deduped.items():
         await conn.execute(
             "INSERT INTO code_node_text (node_id, text) VALUES (?, ?)",
             (node_id, text),
