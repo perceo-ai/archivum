@@ -273,7 +273,7 @@ export default function FileTree() {
       onDrop={onDrop}
       data-dragover={dragOver ? 'true' : 'false'}
     >
-      <div className="shrink-0 border-b border-border/80 px-4 py-4">
+      <div className="subtle-divider shrink-0 border-b px-4 py-4">
         <div className="mb-3 flex items-center justify-between">
           <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
             Vault
@@ -301,10 +301,10 @@ export default function FileTree() {
         </div>
         <Input
           type="text"
-          placeholder="Filter pages and folders..."
+          placeholder="Filter vault..."
           value={filter}
           onChange={(e) => setFilter(e.target.value)}
-          className="h-10 rounded-2xl border-border/80 bg-background/80 text-sm"
+          className="h-10 text-sm"
         />
       </div>
 
@@ -336,7 +336,7 @@ export default function FileTree() {
         </div>
       </ScrollArea>
 
-      <div className="shrink-0 border-t border-border/80 px-4 py-4">
+      <div className="subtle-divider shrink-0 border-t px-4 py-4">
         <Button
           type="button"
           variant="secondary"
@@ -593,7 +593,7 @@ function ContextMenu({
 
   return (
     <div
-      className="fixed z-50 min-w-44 rounded-md border border-border bg-popover p-1 text-popover-foreground shadow-lg"
+      className="soft-border fixed z-50 min-w-44 rounded-md border bg-popover p-1 text-popover-foreground shadow-lg"
       style={{ left: context.x, top: context.y }}
       onClick={(e) => e.stopPropagation()}
     >

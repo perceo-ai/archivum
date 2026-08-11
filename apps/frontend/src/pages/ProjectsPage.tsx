@@ -87,7 +87,7 @@ export default function ProjectsPage() {
           <button
             type="button"
             key={project.key}
-            className="block w-full rounded-[8px] border border-white/10 bg-white/[0.045] p-5 text-left text-white transition-colors hover:border-primary/50 disabled:cursor-default disabled:hover:border-white/10"
+            className="soft-border block w-full rounded-[8px] border bg-white/[0.045] p-5 text-left text-white transition-colors hover:border-primary/50 disabled:cursor-default disabled:hover:border-white/[0.06]"
             onClick={() => project.page_slug && navigate(`/wiki/${project.page_slug}`)}
             disabled={!project.page_slug}
           >

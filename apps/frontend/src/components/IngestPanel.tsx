@@ -252,7 +252,7 @@ export default function IngestPanel() {
         <div>
           <h2 className="text-lg font-semibold text-foreground mb-1">Ingest Content</h2>
           <p className="text-sm text-muted-foreground">
-            Import files or URLs into your knowledge base.
+            Import files and URLs, then turn them into linked markdown pages.
           </p>
         </div>
       </div>
@@ -267,7 +267,7 @@ export default function IngestPanel() {
           onClick={() => fileInputRef.current?.click()}
           className={cn(
             'relative min-h-[220px] cursor-pointer border-2 border-dashed p-10 text-center transition-colors',
-            dragOver ? 'border-primary/60 bg-primary/10' : 'border-white/10',
+            dragOver ? 'border-primary/60 bg-primary/10' : 'soft-border',
           )}
         >
           <UploadIcon className="mx-auto mb-3 h-10 w-10 text-zinc-500" />
@@ -329,7 +329,7 @@ export default function IngestPanel() {
               )}
             </div>
             <div
-              className="overflow-hidden rounded-[8px] border border-white/10 divide-y divide-white/10"
+              className="soft-border overflow-hidden rounded-[8px] border divide-y divide-white/[0.06]"
             >
               {fileStatuses.map((fs, i) => (
                 <FileStatusRow

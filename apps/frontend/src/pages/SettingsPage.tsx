@@ -287,7 +287,7 @@ export default function SettingsPage() {
               </div>
 
               {!audioSupport.available && (
-                <div className="rounded-md border border-border bg-muted/30 p-3 space-y-3">
+                <div className="soft-border space-y-3 rounded-[8px] border bg-white/[0.035] p-3">
                   <div>
                     <p className="text-sm font-medium text-text-primary">Install audio support</p>
                     <p className="mt-1 text-xs text-text-secondary">
@@ -334,10 +334,10 @@ export default function SettingsPage() {
                     key={r}
                     onClick={() => setRole(r)}
                     className={[
-                      'px-3 py-1.5 rounded-md text-xs font-medium border transition-colors',
+                      'soft-border rounded-[5px] border px-3 py-1.5 text-xs font-medium transition-colors',
                       role === r
                         ? 'bg-primary text-primary-foreground border-primary'
-                        : 'bg-background border-border text-text-secondary hover:bg-accent',
+                        : 'bg-white/[0.035] text-text-secondary hover:bg-white/[0.08]',
                     ].join(' ')}
                   >
                     {r.charAt(0).toUpperCase() + r.slice(1)}
@@ -358,10 +358,10 @@ export default function SettingsPage() {
                     key={opt.label}
                     onClick={() => setExpiryDays(opt.value)}
                     className={[
-                      'px-3 py-1.5 rounded-md text-xs font-medium border transition-colors',
+                      'soft-border rounded-[5px] border px-3 py-1.5 text-xs font-medium transition-colors',
                       expiryDays === opt.value
                         ? 'bg-primary text-primary-foreground border-primary'
-                        : 'bg-background border-border text-text-secondary hover:bg-accent',
+                        : 'bg-white/[0.035] text-text-secondary hover:bg-white/[0.08]',
                     ].join(' ')}
                   >
                     {opt.label}
@@ -384,7 +384,7 @@ export default function SettingsPage() {
               <input
                 readOnly
                 value={generatedUrl}
-                className="flex-1 h-8 rounded-md border border-border bg-background px-3 text-xs text-text-secondary font-mono focus:outline-none"
+                className="soft-border h-8 flex-1 rounded-[5px] border bg-white/[0.05] px-3 font-mono text-xs text-text-secondary focus:outline-none"
               />
               <Button onClick={handleCopy} variant="outline" size="sm">
                 {copied ? 'Copied!' : 'Copy'}
@@ -410,7 +410,7 @@ export default function SettingsPage() {
                 return (
                   <div
                     key={invite.id}
-                    className="flex items-center justify-between gap-3 py-2 border-b border-border last:border-0"
+                    className="subtle-divider flex items-center justify-between gap-3 border-b py-2 last:border-0"
                   >
                     <code className="text-xs text-text-secondary font-mono">
                       {invite.token.slice(0, 16)}…
@@ -443,7 +443,7 @@ export default function SettingsPage() {
 
 function DependencyBadge({ label, ready }: { label: string; ready: boolean }) {
   return (
-    <span className="inline-flex items-center gap-1 rounded-md border border-border px-2 py-1 text-xs text-text-secondary">
+    <span className="soft-border inline-flex items-center gap-1 rounded-[5px] border px-2 py-1 text-xs text-text-secondary">
       {ready ? <Check className="h-3 w-3 text-green-500" /> : <X className="h-3 w-3 text-destructive" />}
       {label}
     </span>
@@ -465,7 +465,7 @@ function ProviderField({
       <select
         value={value}
         onChange={(event) => onChange(event.target.value)}
-        className="h-9 w-full rounded-md border border-border bg-background px-3 text-sm text-text-primary focus:outline-none focus:ring-2 focus:ring-ring"
+        className="soft-border h-9 w-full rounded-[5px] border bg-white/[0.05] px-3 text-sm text-text-primary focus:outline-none focus:ring-2 focus:ring-ring"
       >
         <option value="anthropic">Anthropic</option>
         <option value="openrouter">OpenRouter</option>
@@ -518,7 +518,7 @@ function CommandRow({
     <div className="flex items-center gap-2">
       <div className="min-w-0 flex-1">
         <p className="text-xs font-medium text-text-secondary">{label}</p>
-        <code className="mt-1 block truncate rounded border border-border bg-background px-2 py-1.5 text-xs text-text-secondary">
+        <code className="soft-border mt-1 block truncate rounded-[5px] border bg-white/[0.05] px-2 py-1.5 text-xs text-text-secondary">
           {value}
         </code>
       </div>

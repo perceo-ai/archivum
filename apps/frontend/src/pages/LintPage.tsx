@@ -87,11 +87,11 @@ export default function LintPage() {
 
       {!loading && (
         <div className="flex gap-4 mb-6">
-          <div className="flex flex-col rounded-[8px] border border-white/10 bg-white/[0.045] px-4 py-3">
+          <div className="soft-border flex flex-col rounded-[8px] border bg-white/[0.045] px-4 py-3">
             <span className="text-2xl font-semibold text-text-primary">{brokenLinks.length}</span>
             <span className="text-xs text-text-secondary">Broken wikilinks</span>
           </div>
-          <div className="flex flex-col rounded-[8px] border border-white/10 bg-white/[0.045] px-4 py-3">
+          <div className="soft-border flex flex-col rounded-[8px] border bg-white/[0.045] px-4 py-3">
             <span className="text-2xl font-semibold text-text-primary">{orphans.length}</span>
             <span className="text-xs text-text-secondary">Orphan pages</span>
           </div>
@@ -109,7 +109,7 @@ export default function LintPage() {
               const isBusy = fixing === key;
               const msg = messages[key];
               return (
-                <div key={key} className="flex items-start justify-between gap-3 py-2 border-b border-border last:border-0">
+                <div key={key} className="subtle-divider flex items-start justify-between gap-3 border-b py-2 last:border-0">
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
                       <code className="text-xs text-text-primary font-mono">{issue.page}</code>
@@ -146,7 +146,7 @@ export default function LintPage() {
               const key = issueKey(issue);
               const msg = messages[key];
               return (
-                <div key={key} className="flex items-start justify-between gap-3 py-2 border-b border-border last:border-0">
+                <div key={key} className="subtle-divider flex items-start justify-between gap-3 border-b py-2 last:border-0">
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
                       <code className="text-xs text-text-primary font-mono">{issue.page}</code>

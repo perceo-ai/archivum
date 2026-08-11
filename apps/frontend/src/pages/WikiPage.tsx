@@ -206,7 +206,7 @@ export default function WikiPage() {
         {error && <div className="mt-3 text-xs text-destructive">{error}</div>}
       </div>
 
-      <div className="flex min-h-0 flex-1 overflow-hidden border border-white/10 bg-[#171616]/70">
+      <div className="workspace-pane flex min-h-0 flex-1 overflow-hidden">
         {loading && !page && (
           <div className="space-y-2 p-6">
             <div className="skeleton h-4 w-full" />

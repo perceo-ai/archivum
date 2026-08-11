@@ -48,7 +48,7 @@ export default function BacklinksPanel() {
         )}
 
         {!loading && !error && backlinks.length === 0 && (
-          <div className="rounded-md border border-dashed border-border/80 bg-muted/30 px-3 py-5 text-center text-xs text-muted-foreground">
+          <div className="soft-border rounded-[8px] border border-dashed bg-white/[0.03] px-3 py-5 text-center text-xs text-muted-foreground">
             {currentSlug ? 'No backlinks yet' : 'Open a page to see backlinks'}
           </div>
         )}
@@ -71,7 +71,7 @@ export default function BacklinksPanel() {
       </div>
 
       {currentSlug && (
-        <div className="mt-2 border-t border-border/80 pt-2">
+        <div className="subtle-divider mt-2 border-t pt-2">
           <p className="text-xs text-muted-foreground">
             {backlinks.length} {backlinks.length === 1 ? 'reference' : 'references'}
           </p>

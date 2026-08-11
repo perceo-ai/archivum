@@ -54,7 +54,7 @@ export default function Layout({ children }: LayoutProps) {
       <aside className="rail-panel hidden w-[72px] shrink-0 flex-col items-center px-3 py-4 text-white md:flex">
         <button
           type="button"
-          className="mb-6 flex h-11 w-11 items-center justify-center rounded-[8px] border border-white/10 bg-white/[0.05] font-serif text-xl font-bold italic tracking-tight text-white transition-colors hover:bg-white/[0.08]"
+          className="soft-border mb-6 flex h-11 w-11 items-center justify-center rounded-[8px] border bg-white/[0.05] font-serif text-xl font-bold italic tracking-tight text-white transition-colors hover:bg-white/[0.08]"
           onClick={() => navigate(currentSlug ? `/wiki/${currentSlug}` : '/library')}
           title="Archivum"
         >
@@ -101,7 +101,7 @@ export default function Layout({ children }: LayoutProps) {
       </aside>
 
       <div className="relative flex min-w-0 flex-1 flex-col overflow-hidden">
-        <header className="flex h-14 shrink-0 items-center gap-3 border-b border-white/10 bg-[#161616]/85 px-3 backdrop-blur md:px-5">
+        <header className="subtle-divider flex h-14 shrink-0 items-center gap-3 border-b bg-[#161616]/85 px-3 backdrop-blur md:px-5">
           <Button
             onClick={() => dispatch({ type: 'TOGGLE_LEFT' })}
             variant="secondary"
@@ -123,11 +123,11 @@ export default function Layout({ children }: LayoutProps) {
           <button
             type="button"
             onClick={() => navigate('/library')}
-            className="ml-2 hidden min-w-[260px] items-center gap-3 rounded-[5px] border border-white/10 bg-white/[0.05] px-4 py-2 text-left text-sm text-zinc-400 transition-colors hover:bg-white/[0.08] hover:text-white md:flex"
+            className="soft-border ml-2 hidden min-w-[260px] items-center gap-3 rounded-[5px] border bg-white/[0.05] px-4 py-2 text-left text-sm text-zinc-400 transition-colors hover:bg-white/[0.08] hover:text-white md:flex"
           >
             <Search className="h-4 w-4" />
             <span>Search pages, notes, and context</span>
-            <span className="ml-auto rounded-[5px] border border-white/10 bg-white/[0.05] px-2 py-1 text-[11px] font-semibold text-zinc-300">
+            <span className="soft-border ml-auto rounded-[5px] border bg-white/[0.05] px-2 py-1 text-[11px] font-semibold text-zinc-300">
               /
             </span>
           </button>
@@ -159,7 +159,7 @@ export default function Layout({ children }: LayoutProps) {
               leftOpen ? 'translate-x-0' : '-translate-x-[120%] md:hidden',
             )}
           >
-            <div className="flex items-center justify-between border-b border-white/10 px-4 py-3">
+            <div className="subtle-divider flex items-center justify-between border-b px-4 py-3">
               <div>
                 <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-zinc-500">
                   Library
@@ -193,7 +193,7 @@ export default function Layout({ children }: LayoutProps) {
           </main>
 
           {rightOpen && (
-            <aside className="hidden w-[320px] shrink-0 border-l border-white/10 bg-[#171616]/70 xl:flex">
+            <aside className="subtle-divider hidden w-[320px] shrink-0 border-l bg-[#171616]/70 xl:flex">
               <RightSidebar />
             </aside>
           )}

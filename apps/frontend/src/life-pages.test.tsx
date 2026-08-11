@@ -47,6 +47,19 @@ describe('Life OS pages', () => {
     expect(html).toContain('Tasks');
   });
 
+  it('uses page-focused workflow copy', () => {
+    const html = renderToString(
+      <StaticRouter location="/workflows/tasks">
+        <WorkflowsPage />
+      </StaticRouter>,
+    );
+
+    expect(html).toContain('Tasks');
+    expect(html).toContain('Capture open loops and keep the next action visible.');
+    expect(html).not.toContain('surface');
+    expect(html).not.toContain('shell clutter');
+  });
+
   it('renders tools shell entry points', () => {
     const html = renderToString(
       <StaticRouter location="/tools/graph">
@@ -57,6 +70,19 @@ describe('Life OS pages', () => {
     expect(html).toContain('Graph');
     expect(html).toContain('Ingest');
     expect(html).toContain('Settings');
+  });
+
+  it('uses page-focused tools copy', () => {
+    const html = renderToString(
+      <StaticRouter location="/tools/graph">
+        <ToolsPage />
+      </StaticRouter>,
+    );
+
+    expect(html).toContain('Knowledge Graph');
+    expect(html).toContain('Explore entities, pages, and backlinks as a connected map.');
+    expect(html).not.toContain('Utility surfaces');
+    expect(html).not.toContain('cleaner tools workspace');
   });
 
   it('renders LLM provider settings', () => {

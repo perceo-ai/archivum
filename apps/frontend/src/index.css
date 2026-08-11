@@ -30,8 +30,8 @@
     --destructive: 0 89% 72%;
     --destructive-foreground: 0 0% 9%;
 
-    --border: 0 0% 100% / 0.1;
-    --input: 0 0% 100% / 0.12;
+    --border: 0 0% 100%;
+    --input: 0 0% 100%;
     --ring: 257 90% 66%;
 
     --radius: 0.5rem;
@@ -156,7 +156,7 @@
 
   .surface-panel {
     background: rgba(35, 35, 35, 0.5);
-    border: 1px solid rgba(255, 255, 255, 0.08);
+    border: 1px solid rgba(255, 255, 255, 0.06);
     box-shadow: none;
     backdrop-filter: blur(12px);
     -webkit-backdrop-filter: blur(12px);
@@ -164,7 +164,16 @@
 
   .rail-panel {
     background: #161616;
-    border-right: 1px solid rgba(255, 255, 255, 0.08);
+    border-right: 1px solid rgba(255, 255, 255, 0.06);
+  }
+
+  .workspace-pane {
+    background: rgba(23, 22, 22, 0.72);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.035);
+  }
+
+  .subtle-divider {
+    border-color: rgba(255, 255, 255, 0.06);
   }
 
   .page-frame {
@@ -172,11 +181,12 @@
   }
 
   .page-header {
-    @apply mb-4 border-b border-white/10 px-0 pb-4 pt-1;
+    @apply mb-4 px-0 pb-1 pt-1;
   }
 
   .section-tabs {
-    @apply inline-flex rounded-[5px] border border-white/10 bg-white/[0.05] p-1;
+    @apply inline-flex rounded-[5px] border bg-white/[0.035] p-1;
+    border-color: rgba(255, 255, 255, 0.06);
   }
 
   .section-tab {
@@ -185,6 +195,10 @@
 
   .section-tab-active {
     @apply bg-primary text-white;
+  }
+
+  .soft-border {
+    border-color: rgba(255, 255, 255, 0.06);
   }
 
   .font-serif {

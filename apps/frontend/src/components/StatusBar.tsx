@@ -33,7 +33,7 @@ export default function StatusBar() {
 
   return (
     <footer
-      className="flex h-10 shrink-0 items-center border-t border-border/80 bg-background/70 px-4 text-xs backdrop-blur md:px-6"
+      className="subtle-divider flex h-10 shrink-0 items-center border-t bg-background/70 px-4 text-xs backdrop-blur md:px-6"
     >
       <span className="font-mono text-muted-foreground">{currentSlug ? currentSlug : 'library/root'}</span>
       <span className="mx-2 text-muted-foreground">·</span>

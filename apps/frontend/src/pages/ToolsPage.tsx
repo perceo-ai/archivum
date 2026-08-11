@@ -7,11 +7,41 @@ import LintPage from './LintPage';
 import SettingsPage from './SettingsPage';
 
 const ITEMS = [
-  { slug: 'graph', label: 'Graph', render: (navigate: (slug: string) => void) => <GraphView onNavigate={navigate} /> },
-  { slug: 'ingest', label: 'Ingest', render: () => <IngestPanel /> },
-  { slug: 'query', label: 'Query', render: () => <QueryPanel /> },
-  { slug: 'lint', label: 'Lint', render: () => <LintPage /> },
-  { slug: 'settings', label: 'Settings', render: () => <SettingsPage /> },
+  {
+    slug: 'graph',
+    label: 'Graph',
+    title: 'Knowledge Graph',
+    description: 'Explore entities, pages, and backlinks as a connected map.',
+    render: (navigate: (slug: string) => void) => <GraphView onNavigate={navigate} />,
+  },
+  {
+    slug: 'ingest',
+    label: 'Ingest',
+    title: 'Import',
+    description: 'Add files and URLs to the vault while Archivum extracts pages and links.',
+    render: () => <IngestPanel />,
+  },
+  {
+    slug: 'query',
+    label: 'Query',
+    title: 'Ask Archivum',
+    description: 'Answer questions from your notes with citations back to source pages.',
+    render: () => <QueryPanel />,
+  },
+  {
+    slug: 'lint',
+    label: 'Lint',
+    title: 'Vault Health',
+    description: 'Find broken wikilinks, orphan pages, and repairable structure issues.',
+    render: () => <LintPage />,
+  },
+  {
+    slug: 'settings',
+    label: 'Settings',
+    title: 'Settings',
+    description: 'Configure models, transcription support, and sharing access.',
+    render: () => <SettingsPage />,
+  },
 ];
 
 export default function ToolsPage() {
@@ -27,9 +57,9 @@ export default function ToolsPage() {
         </p>
         <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
           <div className="min-w-0 flex-1">
-            <h2 className="text-3xl font-semibold tracking-tight text-foreground">Utility surfaces, without shell clutter.</h2>
+            <h2 className="text-3xl font-semibold tracking-tight text-foreground">{current.title}</h2>
             <p className="mt-2 text-sm leading-6 text-muted-foreground">
-              Graph, ingest, query, lint, and settings stay available, but now they sit behind one cleaner tools workspace.
+              {current.description}
             </p>
           </div>
           <div className="section-tabs">
@@ -47,7 +77,7 @@ export default function ToolsPage() {
         </div>
       </div>
 
-      <div className="flex min-h-0 flex-1 overflow-hidden border border-white/10 bg-[#171616]/70">
+      <div className="workspace-pane flex min-h-0 flex-1 overflow-hidden">
         {current.render((slug) => navigate(`/wiki/${slug}`))}
       </div>
     </div>

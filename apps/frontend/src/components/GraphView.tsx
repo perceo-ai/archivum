@@ -203,7 +203,7 @@ export default function GraphView({ onNavigate }: GraphViewProps) {
     <div className="flex h-full w-full flex-col bg-transparent">
       {/* Toolbar */}
       <div
-        className="flex shrink-0 items-center gap-2 border-b border-white/10 bg-white/[0.025] px-4 py-2 backdrop-blur"
+        className="subtle-divider flex shrink-0 items-center gap-2 border-b bg-white/[0.02] px-4 py-2 backdrop-blur"
       >
         <Input
           type="text"

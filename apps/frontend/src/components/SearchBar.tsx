@@ -32,7 +32,7 @@ export default function SearchBar() {
   return (
     <div className="flex h-full w-full flex-col bg-transparent">
       <div
-        className="shrink-0 border-b border-white/10 bg-white/[0.025] p-4 backdrop-blur"
+        className="subtle-divider shrink-0 border-b bg-white/[0.02] p-4 backdrop-blur"
       >
         <h2 className="text-sm font-semibold text-muted-foreground mb-3 uppercase tracking-wider">
           Search
@@ -41,7 +41,7 @@ export default function SearchBar() {
           <Input
             value={q}
             onChange={(e) => setQ(e.target.value)}
-            placeholder="Search your knowledge base..."
+            placeholder="Search pages, slugs, and note text..."
           />
           <Button
             type="submit"

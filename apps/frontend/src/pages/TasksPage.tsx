@@ -68,7 +68,7 @@ export default function TasksPage() {
 
       {error && <p className="text-sm text-destructive mb-4">{error}</p>}
 
-      <div className="divide-y divide-white/10 rounded-[8px] border border-white/10 bg-white/[0.035]">
+      <div className="soft-border divide-y divide-white/[0.06] rounded-[8px] border bg-white/[0.035]">
         {tasks.map((task) => (
           <div key={task.id} className="flex items-start justify-between gap-3 p-3">
             <div className="min-w-0">

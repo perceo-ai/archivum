@@ -13,9 +13,9 @@ export default function LibraryPage() {
         </p>
         <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
           <div className="min-w-0 flex-1">
-            <h2 className="text-3xl font-semibold tracking-tight text-foreground">Find the next page fast.</h2>
+            <h2 className="text-3xl font-semibold tracking-tight text-foreground">Library</h2>
             <p className="mt-2 text-sm leading-6 text-muted-foreground">
-              Use the vault drawer for folders and creation. Use search here to jump across notes, pages, and linked context.
+              Browse the vault, search across notes, and open the context you need.
             </p>
           </div>
           <Button variant="secondary" onClick={() => navigate('/workflows/daily')}>
@@ -24,7 +24,7 @@ export default function LibraryPage() {
         </div>
       </div>
 
-      <div className="flex min-h-0 flex-1 overflow-hidden border border-white/10 bg-[#171616]/70">
+      <div className="workspace-pane flex min-h-0 flex-1 overflow-hidden">
         <SearchBar />
       </div>
     </div>

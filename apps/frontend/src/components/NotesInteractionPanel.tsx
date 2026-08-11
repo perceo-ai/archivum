@@ -100,14 +100,8 @@ export default function NotesInteractionPanel() {
   }
 
   return (
-    <div className="flex flex-col h-full">
-      <div className="px-3 py-2 border-b border-border shrink-0">
-        <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-          Notes actions
-        </h3>
-      </div>
-
-      <div className="px-3 py-2 border-b border-border shrink-0">
+    <div className="flex h-full flex-col">
+      <div className="subtle-divider shrink-0 border-b px-3 py-2">
         <form onSubmit={runSearch} className="flex gap-2">
           <Input
             value={query}
@@ -188,7 +182,7 @@ export default function NotesInteractionPanel() {
 
         {!loading && !error && !query.trim() && (
           <div className="text-xs text-muted-foreground py-6 text-center">
-            Search your wiki to quickly open, edit, or copy links to notes.
+            Search notes to open, edit, or copy a page link.
           </div>
         )}
       </div>
