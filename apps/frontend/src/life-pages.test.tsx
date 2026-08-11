@@ -6,6 +6,7 @@ import Layout from './components/Layout';
 import DailyPage from './pages/DailyPage';
 import WorkflowsPage from './pages/WorkflowsPage';
 import ToolsPage from './pages/ToolsPage';
+import SettingsPage from './pages/SettingsPage';
 
 describe('Life OS pages', () => {
   it('renders the daily note workflow', () => {
@@ -56,5 +57,16 @@ describe('Life OS pages', () => {
     expect(html).toContain('Graph');
     expect(html).toContain('Ingest');
     expect(html).toContain('Settings');
+  });
+
+  it('renders LLM provider settings', () => {
+    const html = renderToString(
+      <StaticRouter location="/tools/settings">
+        <SettingsPage />
+      </StaticRouter>,
+    );
+
+    expect(html).toContain('LLM Provider');
+    expect(html).toContain('Loading LLM settings');
   });
 });

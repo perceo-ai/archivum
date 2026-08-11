@@ -8,15 +8,8 @@ import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
 import { Badge } from '../components/ui/Badge';
 import { Dialog } from '../components/ui/Dialog';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from '../components/ui/DropdownMenu';
 import { useToast } from '../components/ui/Toast';
-import { Download, MoreHorizontal, Share2, Trash2 } from 'lucide-react';
+import PageActions from '../components/PageActions';
 
 export default function WikiPage() {
   const params = useParams();
@@ -199,14 +192,12 @@ export default function WikiPage() {
               ))}
             </div>
           </div>
-          <div className="flex shrink-0 items-center gap-2">
-            <Button variant="secondary" size="sm" onClick={handleSaveNow} disabled={!page}>
-              Save
-            </Button>
-            <PageMenu
+          <div className="flex shrink-0 items-center">
+            <PageActions
               slug={slugStr}
               disabled={!page}
               shareLoading={shareLoading}
+              onSave={handleSaveNow}
               onShare={handleShare}
               onDelete={() => setDeleteOpen(true)}
             />
@@ -277,52 +268,5 @@ export default function WikiPage() {
         )}
       </Dialog>
     </div>
-  );
-}
-
-function PageMenu({
-  slug,
-  disabled,
-  shareLoading,
-  onShare,
-  onDelete,
-}: {
-  slug: string;
-  disabled: boolean;
-  shareLoading: boolean;
-  onShare: () => void;
-  onDelete: () => void;
-}) {
-  function handleExport(format: 'html' | 'pdf') {
-    window.open(`/api/export?slug=${encodeURIComponent(slug)}&format=${format}`, '_blank');
-  }
-
-  return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <Button variant="ghost" size="icon" disabled={disabled} aria-label="Page actions">
-          <MoreHorizontal className="h-4 w-4" />
-        </Button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="end">
-        <DropdownMenuItem onSelect={onShare} disabled={shareLoading}>
-          <Share2 className="h-4 w-4" />
-          {shareLoading ? 'Sharing...' : 'Share'}
-        </DropdownMenuItem>
-        <DropdownMenuItem onSelect={() => handleExport('html')}>
-          <Download className="h-4 w-4" />
-          Export HTML
-        </DropdownMenuItem>
-        <DropdownMenuItem onSelect={() => handleExport('pdf')}>
-          <Download className="h-4 w-4" />
-          Export PDF
-        </DropdownMenuItem>
-        <DropdownMenuSeparator />
-        <DropdownMenuItem onSelect={onDelete} className="text-destructive">
-          <Trash2 className="h-4 w-4" />
-          Delete
-        </DropdownMenuItem>
-      </DropdownMenuContent>
-    </DropdownMenu>
   );
 }

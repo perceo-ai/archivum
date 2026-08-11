@@ -45,6 +45,63 @@ class TestAudioSupport(unittest.TestCase):
         self.assertIsInstance(data["available"], bool)
 
 
+class TestLlmSettings(unittest.TestCase):
+    def setUp(self):
+        self.settings = get_settings()
+        self.token = create_access_token("owner", "owner", "default", self.settings)
+        with (
+            patch("archivum.main.sqlite.init_db", new=AsyncMock()),
+            patch("archivum.main.qdrant.init_collection", new=AsyncMock()),
+            patch("archivum.main.graph.init_graph", new=AsyncMock()),
+            patch("archivum.main.sqlite.ensure_owner_exists", new=AsyncMock()),
+        ):
+            self.app = create_app()
+        self.client = _make_client(self.app, self.token, bearer=True)
+
+    def test_get_llm_settings_masks_ollama_api_key(self):
+        settings = self.settings.model_copy(
+            update={
+                "llm_extraction_provider": "ollama",
+                "llm_synthesis_provider": "ollama",
+                "ollama_base_url": "https://ollama.example.com/v1",
+                "ollama_api_key": "ollama-secret",
+            }
+        )
+
+        with patch("archivum.api.system.get_settings", return_value=settings):
+            response = self.client.get("/api/settings/llm")
+
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(data["ollama_base_url"], "https://ollama.example.com/v1")
+        self.assertTrue(data["ollama_api_key_configured"])
+        self.assertEqual(data["ollama_api_key_masked"], "olla...cret")
+        self.assertNotIn("ollama-secret", str(data))
+
+    def test_put_llm_settings_applies_runtime_environment_without_returning_secret(self):
+        body = {
+            "llm_extraction_provider": "ollama",
+            "llm_synthesis_provider": "ollama",
+            "llm_model": "model-a",
+            "llm_synthesis_model": "model-b",
+            "ollama_base_url": "https://ollama.example.com/v1",
+            "ollama_api_key": "new-secret",
+        }
+
+        with (
+            patch("archivum.api.system._write_env_updates") as write_env_updates,
+            patch("archivum.api.system.get_settings.cache_clear") as cache_clear,
+        ):
+            response = self.client.put("/api/settings/llm", json=body)
+
+        self.assertEqual(response.status_code, 200)
+        write_env_updates.assert_called_once()
+        cache_clear.assert_called_once()
+        data = response.json()
+        self.assertTrue(data["ollama_api_key_configured"])
+        self.assertNotIn("new-secret", str(data))
+
+
 class TestRebuildIndexes(unittest.TestCase):
     def setUp(self):
         self.settings = get_settings()

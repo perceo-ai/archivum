@@ -129,9 +129,14 @@ node packages/archivum-cli/src/index.js wiki rebuild-indexes
 ## Operations
 
 ```bash
-./update.sh                 # pull/update and restart
-./uninstall.sh              # remove containers/network, keep data
-./uninstall.sh --volumes    # also delete wiki/raw/db/Kuzu/Qdrant/Ollama volumes
+./update.sh                         # back up precious data, pull/update, and restart
+./update.sh --no-backup             # update without creating a pre-update backup
+node packages/archivum-cli/src/index.js recovery backup
+node packages/archivum-cli/src/index.js recovery validate backups/<backup-dir>
+node packages/archivum-cli/src/index.js recovery restore backups/<backup-dir> --dry-run
+node packages/archivum-cli/src/index.js recovery restore backups/<backup-dir> --yes
+./uninstall.sh                      # remove containers/network, keep data
+./uninstall.sh --volumes            # also delete wiki/raw/db/Kuzu/Qdrant/Ollama volumes
 
 docker compose logs -f backend
 docker compose logs -f mcp

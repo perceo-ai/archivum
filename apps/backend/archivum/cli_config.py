@@ -21,6 +21,7 @@ DEFAULTS: dict[str, str] = {
     "OPENROUTER_BASE_URL": "https://openrouter.ai/api/v1",
     "OPENAI_COMPAT_PROVIDER": "openai",
     "OLLAMA_BASE_URL": "http://localhost:11434",
+    "OLLAMA_API_KEY": "",
 }
 
 
@@ -34,7 +35,6 @@ def _looks_like_placeholder(value: str) -> bool:
         "change-me" in v_l
         or v_l == "changeme"
         or v_l == "changeme-replace-in-production"
-        or v.startswith("sk-")
         or "openssl rand" in v_l
     )
 
@@ -209,6 +209,7 @@ def main(argv: list[str] | None = None) -> None:
         print("Embeddings provider is not openai_compat; leaving EMBED_API_KEY unchanged.")
 
     ollama_base_url = _prompt_text("Ollama base URL", get("OLLAMA_BASE_URL") or DEFAULTS["OLLAMA_BASE_URL"])
+    ollama_api_key = get("OLLAMA_API_KEY") if "OLLAMA_API_KEY" in kv else ""
 
     # Extraction provider (entities + relationships)
     extraction_provider = _prompt_choice(
@@ -263,6 +264,11 @@ def main(argv: list[str] | None = None) -> None:
     else:
         print("OpenAI-compatible LLM not selected; leaving OPENAI_COMPAT_API_KEY unchanged.")
 
+    if extraction_provider == "ollama" or synthesis_provider == "ollama" or embed_provider == "ollama":
+        ollama_api_key = _prompt_secret("Ollama API key (optional)", ollama_api_key)
+    else:
+        print("Ollama not selected for this configuration; leaving OLLAMA_API_KEY unchanged.")
+
     anthropic_api_key = kv.get("ANTHROPIC_API_KEY", DEFAULTS.get("ANTHROPIC_API_KEY", ""))
     if extraction_provider == "anthropic" or synthesis_provider == "anthropic":
         anthropic_api_key = _prompt_secret("Anthropic API key", anthropic_api_key)
@@ -289,6 +295,7 @@ def main(argv: list[str] | None = None) -> None:
         ("OPENAI_COMPAT_PROVIDER", openai_compat_provider),
         ("OPENAI_COMPAT_BASE_URL", openai_compat_base_url),
         ("OLLAMA_BASE_URL", ollama_base_url),
+        ("OLLAMA_API_KEY", ollama_api_key),
     ]
 
     if extraction_provider == "openrouter" or synthesis_provider == "openrouter":
@@ -305,7 +312,7 @@ def main(argv: list[str] | None = None) -> None:
 
     for key, value in updates:
         # Avoid writing empty values for secrets if user opted to keep them.
-        if value == "" and key in {"OPENROUTER_API_KEY", "ANTHROPIC_API_KEY", "OPENAI_COMPAT_API_KEY", "EMBED_API_KEY"}:
+        if value == "" and key in {"OPENROUTER_API_KEY", "ANTHROPIC_API_KEY", "OPENAI_COMPAT_API_KEY", "EMBED_API_KEY", "OLLAMA_API_KEY"}:
             continue
         env_lines = _set_env_var(env_lines, key, value)
 

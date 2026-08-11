@@ -20,6 +20,8 @@ import {
   ensureDailyNote,
   listLifeProjects,
   createLifeTask,
+  getLlmSettings,
+  updateLlmSettings,
 } from './api';
 import type { Page, SearchResult, GraphNode, GraphEdge, LifeProject, LifeTask } from './types';
 
@@ -200,6 +202,68 @@ describe('updatePage', () => {
     }));
     const callArgs = fetchMock.mock.calls[0][1];
     expect(JSON.parse(callArgs.body)).toEqual({ title: 'Updated' });
+  });
+});
+
+describe('llm settings api', () => {
+  it('fetches masked LLM settings', async () => {
+    const settings = {
+      llm_extraction_provider: 'ollama',
+      llm_synthesis_provider: 'ollama',
+      llm_model: 'model-a',
+      llm_synthesis_model: 'model-b',
+      ollama_base_url: 'https://ollama.example.com/v1',
+      ollama_api_key_configured: true,
+      ollama_api_key_masked: 'sk-...test',
+    };
+    fetchMock.mockResolvedValueOnce(new Response(
+      JSON.stringify(settings),
+      { status: 200, headers: { 'Content-Type': 'application/json' } },
+    ));
+
+    await expect(getLlmSettings()).resolves.toEqual(settings);
+    expect(fetchMock).toHaveBeenCalledWith('/api/settings/llm', expect.objectContaining({
+      credentials: 'include',
+    }));
+  });
+
+  it('updates LLM settings with CSRF token', async () => {
+    vi.stubGlobal('document', { cookie: 'csrf_token=test-csrf-token' });
+    fetchMock.mockResolvedValueOnce(new Response(
+      JSON.stringify({
+        llm_extraction_provider: 'ollama',
+        llm_synthesis_provider: 'ollama',
+        llm_model: 'model-a',
+        llm_synthesis_model: 'model-b',
+        ollama_base_url: 'https://ollama.example.com/v1',
+        ollama_api_key_configured: true,
+        ollama_api_key_masked: 'sk-...test',
+      }),
+      { status: 200, headers: { 'Content-Type': 'application/json' } },
+    ));
+
+    await updateLlmSettings({
+      llm_extraction_provider: 'ollama',
+      llm_synthesis_provider: 'ollama',
+      llm_model: 'model-a',
+      llm_synthesis_model: 'model-b',
+      ollama_base_url: 'https://ollama.example.com/v1',
+      ollama_api_key: 'secret',
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith('/api/settings/llm', expect.objectContaining({
+      method: 'PUT',
+      credentials: 'include',
+      headers: expect.objectContaining({ 'X-CSRF-Token': 'test-csrf-token' }),
+    }));
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toEqual({
+      llm_extraction_provider: 'ollama',
+      llm_synthesis_provider: 'ollama',
+      llm_model: 'model-a',
+      llm_synthesis_model: 'model-b',
+      ollama_base_url: 'https://ollama.example.com/v1',
+      ollama_api_key: 'secret',
+    });
   });
 });
 

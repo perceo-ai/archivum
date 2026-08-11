@@ -7,6 +7,7 @@ import { stackCommand } from "./stack.js";
 import { mcpCommand } from "./mcp.js";
 import { wikiCommand } from "./api.js";
 import { configCommand } from "./config.js";
+import { recoveryCommand } from "./recovery.js";
 
 async function main(argv) {
   const [command, ...args] = argv;
@@ -22,6 +23,7 @@ async function main(argv) {
   if (command === "mcp") return mcpCommand(args);
   if (command === "wiki") return wikiCommand(args);
   if (command === "config") return configCommand(args);
+  if (command === "recovery") return recoveryCommand(args);
 
   throw new Error(`Unknown command: ${command}`);
 }

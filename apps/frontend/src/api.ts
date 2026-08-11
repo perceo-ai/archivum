@@ -491,6 +491,38 @@ export async function getAudioSupport(): Promise<AudioSupportStatus> {
   return res.json();
 }
 
+export type LlmSettings = {
+  llm_extraction_provider: string;
+  llm_synthesis_provider: string;
+  llm_model: string;
+  llm_synthesis_model: string;
+  ollama_base_url: string;
+  ollama_api_key_configured: boolean;
+  ollama_api_key_masked: string;
+};
+
+export type UpdateLlmSettingsInput = {
+  llm_extraction_provider: string;
+  llm_synthesis_provider: string;
+  llm_model: string;
+  llm_synthesis_model: string;
+  ollama_base_url: string;
+  ollama_api_key?: string | null;
+};
+
+export async function getLlmSettings(): Promise<LlmSettings> {
+  const res = await apiFetch('/api/settings/llm');
+  return res.json();
+}
+
+export async function updateLlmSettings(input: UpdateLlmSettingsInput): Promise<LlmSettings> {
+  const res = await apiFetch('/api/settings/llm', {
+    method: 'PUT',
+    body: JSON.stringify(input),
+  });
+  return res.json();
+}
+
 export async function lintWiki(): Promise<{ issues: LintIssue[]; counts: { issues: number } }> {
   const res = await apiFetch('/api/lint');
   return res.json();

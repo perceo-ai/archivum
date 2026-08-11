@@ -25,6 +25,7 @@ export const DEFAULTS = {
   EMBED_API_KEY: "",
   EMBED_AZURE_API_VERSION: "2024-02-15-preview",
   OLLAMA_BASE_URL: "http://host.docker.internal:11434",
+  OLLAMA_API_KEY: "",
   LLM_EXTRACTION_PROVIDER: "anthropic",
   LLM_SYNTHESIS_PROVIDER: "anthropic",
   LLM_MODEL: "claude-haiku-4-5-20251001",

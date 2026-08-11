@@ -8,6 +8,7 @@ from fastapi.testclient import TestClient
 from archivum.auth import create_access_token
 from archivum.config import get_settings
 from archivum.main import create_app
+from archivum.api import pages
 
 
 class BacklinksRouteTests(unittest.TestCase):
@@ -116,6 +117,35 @@ class BacklinksRouteTests(unittest.TestCase):
 
         self.assertEqual(response.status_code, 200)
         mock_get_page.assert_called_once_with("hardware/compute-blade", "default")
+
+
+class BacklinkIndexingTests(unittest.IsolatedAsyncioTestCase):
+    async def test_sync_page_graph_adds_references_for_existing_wikilinks(self):
+        target = {
+            "id": 4,
+            "slug": "target-page",
+            "title": "Target Page",
+            "content": "",
+            "tags": [],
+            "created_at": "2026-01-01T00:00:00",
+            "updated_at": "2026-01-01T00:00:00",
+            "authored_by": "owner",
+        }
+
+        with (
+            patch("archivum.api.pages.graph.upsert_page", new=AsyncMock()) as upsert_page,
+            patch("archivum.api.pages.graph.add_reference", new=AsyncMock()) as add_reference,
+            patch("archivum.api.pages.sqlite.get_page", new=AsyncMock(return_value=target)),
+        ):
+            await pages._sync_page_graph(
+                "source-page",
+                "Source Page",
+                "See [[target-page]] and [[target-page|Target]].",
+                "default",
+            )
+
+        upsert_page.assert_awaited_once_with("source-page", "Source Page", "default")
+        add_reference.assert_awaited_once_with("source-page", "target-page", "default")
 
 
 if __name__ == "__main__":
