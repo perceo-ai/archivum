@@ -621,3 +621,35 @@ standalone tests, the in-memory fake `tests/archgraph/conftest.py::FakeValidatio
 - **Placeholder scan:** no `TODO`/`...`/`TBD` left as implementation; every code block is concrete. The only stubbed surface is PER-317's `ValidationLayer.validate_batch` write path, explicitly isolated to `mapper.py` + `FakeValidationLayer` (which mocks `validate_batch`) with a documented reconciliation step (Upstream Dependencies + T5).
 - **Type consistency:** `ExtractionMethod` (enum) used everywhere for edge method; `CodeNode`/`CodeEdge`/`Extraction` produced by T1 and consumed by T3–T7; `CandidateEntity/Artifact/Relationship`/`Provenance` produced by T5 and consumed by T8–T10, T13; `ScopedSubgraph` produced by T12, consumed by T16. `LanguageConfig` produced by T2, consumed by T3–T4. Signatures match across producer/consumer tasks.
 - **Fix applied inline:** clarified that Task 4 extends `_extract_generic` (not a divergent path) so the TS extractor reuses the Python task's walker; clarified cross-repo AMBIGUOUS guard against god-node linkage (T9); made `changed_files` non-git fallback explicit (T14).
+
+---
+
+## Post-Implementation Notes (as built)
+
+**Status:** all 16 tasks implemented + a 17th (Graphify-style `graph.json` + self-contained
+`graph.html` export, `archgraph/export.py`, wired to `archivum-archgraph ingest --export DIR`).
+Dogfooded on archgraph's own source: 19 files → 89 nodes / ~614 edges (486 EXTRACTED / 86 INFERRED
+/ 42 AMBIGUOUS), zero LLM. Suite: 61 archgraph tests green.
+
+**Design lineage (why this shape):** deterministic tree-sitter AST core + the
+`EXTRACTED/INFERRED/AMBIGUOUS` provenance taxonomy are the ideas worth stealing from **Graphify**
+(zero-token, zero-hallucination code structure; provenance-labelled edges), plus its SHA-256
+content cache (`cache.py`) and single-file portable graph export. The semantic ladder + Skill-mining
++ tiered hybrid retrieval from **TencentDB Agent Memory** are deferred to the semantic plane
+(PER-317 claims/entities, PER-319 retrieval), not this code plane.
+
+**Deferred follow-ups (tracked; not blocking this epic):**
+1. **Path-qualified node ids.** Ids are file-stem-scoped (`_make_id(stem, …)`), so same-named files
+   (every `__init__.py`) collapse to one id. The lexical index dedups by id (last-wins), which is
+   *lossy before* PER-317 entity resolution can see the distinct nodes. Fix = qualify ids with the
+   repo-relative path; ripples through `resolve.py` bare-name matching + tests.
+2. **Bare-name over-linking.** Cross-file resolution keys on a callee's bare name; common method
+   names (`get`/`run`/`parse`) fan out to unrelated defs — currently emitted honestly as AMBIGUOUS.
+   A `<3`-char guard already trims the worst; a common-method stoplist or object-part matching would
+   raise precision further.
+3. **Evidence bridging is evidence-gated.** `bridge_evidence` matches on object text; code candidates
+   carry none, so a code-only ingest emits zero bridge edges *by design*. It activates once L1 also
+   holds PR/conversation/deploy objects (with text) from PER-316 capture / PER-317.
+4. **PER-317 seam swap.** `mapper.py` candidate types, `hook._CollectingSink` (now §4-enforcing), and
+   `ingest._L1View` are the isolation adapter. When PER-317 lands, swap them for the real
+   `ValidationLayer.validate_batch` / candidate write API / L1 read API — signatures were kept close.
