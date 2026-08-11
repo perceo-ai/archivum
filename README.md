@@ -1,26 +1,27 @@
 # Archivum
 
-**A self-hosted, server-hosted Obsidian-style second brain.**
+A self-hosted, Obsidian-style second brain: a private markdown wiki in your browser, backed by files on disk, with a built-in MCP server that hands the same vault to your AI agents.
 
-Archivum runs a private markdown wiki in your browser, stores notes as local files, and exposes the same knowledge base to AI agents through MCP. It is built for people who want Obsidian-style vault navigation, backlinks, wikilinks, file and URL ingest, semantic search, graph exploration, sharing, export, and agent access without handing their whole knowledge base to a hosted app.
+## About
 
-## What You Get
+Archivum keeps your knowledge base as plain markdown files you own, then layers a browser wiki, semantic search, cited Q&A, and file/URL ingest on top. It kills the trade-off between a local vault you control and a hosted app you have to hand your notes to — everything runs on your own machine, and the same content is exposed to Claude Desktop, Claude Code, Cursor, and other MCP clients without a third party in the loop.
 
-- Markdown pages stored on disk as the canonical source of truth
-- Browser wiki with folders, backlinks, `[[wikilinks]]`, autosave, search, graph, and ingest workflows
-- File and URL ingest that turns sources into searchable wiki pages with source metadata
-- Keyword/semantic search and question answering with citations from your wiki
-- Share links, optional read-only public wiki pages, and HTML/PDF page export
-- Built-in MCP server for Claude Desktop, Claude Code, Cursor, VS Code, and other MCP clients
-- Docker Compose deployment with local SQLite, Qdrant, Kuzu, Ollama, and Caddy
+## Part of the Perceo stack
 
-## Quick Start
+Archivum is part of [Perceo](https://perceo.ai) — a local-first developer suite. Related tools:
+
+- [Archductor](https://github.com/perceo-ai/conductor-arch)
+- [Archfleet](https://github.com/perceo-ai/archfleet)
+
+Docs for the whole stack live at [docs.perceo.ai](https://docs.perceo.ai).
+
+## Install
 
 Requirements:
 
 - Docker Engine 24+ with Docker Compose v2
 - Node.js 20+
-- An Anthropic API key, OpenRouter key, OpenAI-compatible endpoint, or local Ollama setup
+- An Anthropic, OpenRouter, or OpenAI-compatible key — or a local Ollama setup
 
 ```bash
 git clone https://github.com/pranavkannepalli/archivum.git
@@ -36,85 +37,36 @@ cd archivum
 .\install.ps1
 ```
 
-The installer writes `.env`, generates missing secrets, and starts the Docker Compose stack. By default it uses published images through `docker-compose.images.yml`.
-
-For a local source build:
+The installer writes `.env`, generates missing secrets, and starts the stack using published images via `docker-compose.images.yml`. To build from local source instead:
 
 ```bash
 ./install.sh --build
 ```
 
-Manual setup:
+Manual setup, without the installer:
 
 ```bash
 cp .env.example .env
-# Fill in OWNER_PASSWORD, JWT_SECRET, MCP_API_KEY, and your selected LLM provider key.
+# Set OWNER_PASSWORD, JWT_SECRET, MCP_API_KEY, and your LLM provider key.
 docker compose -f docker-compose.yml -f docker-compose.images.yml up -d --no-build
 ```
 
-After boot:
+Required `.env` values: `OWNER_PASSWORD`, `JWT_SECRET` (`openssl rand -hex 32`), and `MCP_API_KEY` (`openssl rand -hex 24`). See [.env.example](.env.example) for the full reference.
+
+## Quickstart
+
+Once the stack is up:
 
 | URL | Purpose |
 |---|---|
 | `http://localhost` | Web app through Caddy |
-| `http://localhost:8473` | Direct frontend container port |
+| `http://localhost:8473` | Frontend container, direct |
 | `http://localhost/api/*` | REST API through Caddy |
 | `http://localhost:8001/sse` | MCP HTTP/SSE endpoint |
 
-Log in with `OWNER_USERNAME` from `.env` (`admin` by default) and the `OWNER_PASSWORD` you configured.
+Log in with `OWNER_USERNAME` (`admin` by default) and your `OWNER_PASSWORD`. From there you can create pages, ingest files and URLs, search, run cited queries, and explore the graph.
 
-## Configuration
-
-Important `.env` values:
-
-| Variable | Required | Notes |
-|---|---|---|
-| `OWNER_USERNAME` | No | Login username. Defaults to `admin`. |
-| `OWNER_PASSWORD` | Yes | First-boot owner password. It is hashed on startup. |
-| `JWT_SECRET` | Yes | Generate with `openssl rand -hex 32`. |
-| `MCP_API_KEY` | Yes | Bearer token for MCP clients. Generate with `openssl rand -hex 24`. |
-| `LLM_EXTRACTION_PROVIDER` | No | `anthropic`, `openrouter`, `openai_compat`, or `ollama`. |
-| `LLM_SYNTHESIS_PROVIDER` | No | Same options as extraction. |
-| `ANTHROPIC_API_KEY` | Provider-specific | Required when using Anthropic. |
-| `OPENROUTER_API_KEY` | Provider-specific | Required when using OpenRouter. |
-| `OPENAI_COMPAT_API_KEY` | Provider-specific | Required when using OpenAI-compatible providers. |
-| `EMBED_PROVIDER` | No | `local`, `openai_compat`, `openrouter`, or `ollama`. Defaults to local fastembed. |
-| `ARCHIVUM_HOST` | No | Public hostname for Caddy TLS. Leave unset for local use. |
-| `PUBLIC_WIKI_ENABLED` | No | Set `true` to expose read-only `/public` wiki pages. Share links work separately. |
-
-See [.env.example](.env.example) for the full reference.
-
-## Ingest
-
-Archivum can ingest URLs and supported files through the web UI, REST API, or MCP.
-
-Backend parser support includes:
-
-| Category | Formats |
-|---|---|
-| Text | Markdown, TXT, RST |
-| Documents | PDF, HTML, EPUB |
-| Office | DOCX, PPTX, XLSX/XLS |
-| Data | CSV, JSON, JSONL |
-| Code/config | Python, JavaScript, TypeScript, Go, Rust, shell, SQL, YAML, TOML, INI, and related source files |
-| Communication | EML, MBOX |
-| Subtitles | SRT, VTT |
-| Images | PNG, JPG/JPEG, WebP, GIF through Anthropic vision |
-| Audio/video | MP3, M4A, WAV, OGG, FLAC, MP4, MOV, AVI, MKV, WebM with optional Whisper and ffmpeg support |
-
-Default published images omit Whisper, Torch, and ffmpeg to keep installs smaller. For local media transcription:
-
-```bash
-cd apps/backend
-uv sync --extra audio
-# Install ffmpeg with your OS package manager for video files.
-```
-
-## MCP Client Setup
-
-Archivum exposes both stdio and HTTP/SSE MCP transports.
-
-Claude Desktop stdio example:
+Wire up an MCP client. Claude Desktop over stdio:
 
 ```json
 {
@@ -128,7 +80,7 @@ Claude Desktop stdio example:
 }
 ```
 
-HTTP/SSE example for editors and web clients:
+Editors and web clients over HTTP/SSE:
 
 ```json
 {
@@ -141,51 +93,38 @@ HTTP/SSE example for editors and web clients:
 }
 ```
 
-Core MCP tools:
+MCP tools exposed to agents: `ingest_source`, `search_wiki`, `list_pages`, `get_page`, `write_page`, `query`, `graph_neighbors`, `lint_wiki`, and `dispatch_command` (a text wrapper over the above).
 
-| Tool | Purpose |
-|---|---|
-| `ingest_source` | Ingest a file path or URL into the wiki |
-| `search_wiki` | Semantic search over wiki pages |
-| `list_pages` / `get_page` | Read wiki pages |
-| `write_page` | Create or update a wiki page and re-index it |
-| `query` | Ask a question and receive an answer with citations |
-| `graph_neighbors` | Read one-hop Kuzu graph neighbors |
-| `lint_wiki` | Report broken wikilinks, orphan pages, and contradictory claims |
-| `dispatch_command` | Text command wrapper for common MCP actions |
+## How it works
 
-Additional Life OS tools exist for daily notes, projects, and tasks. They are early product surfaces and are not the main public positioning for Archivum.
+1. **Files are the source of truth.** Markdown pages live in the `wiki_data` volume; original uploads land in `raw_data`. Everything else is a derived index.
+2. **Ingest normalizes sources.** File paths and URLs are parsed into wiki pages with source metadata, then chunked and indexed. Supported inputs include markdown, PDF, HTML, EPUB, DOCX/PPTX/XLSX, CSV/JSON, source code, EML/MBOX, and subtitles.
+3. **Three stores index the vault.** SQLite (`db_data`) holds auth, metadata, the ingest log, shares, and keyword search; Qdrant (`qdrant_data`) holds semantic vectors; Kuzu (`kuzu_data`) holds the graph.
+4. **Search and Q&A run over your content.** Semantic search returns ranked excerpts; `query` retrieves context and synthesizes an answer with citations back to the source pages.
+5. **Caddy fronts the app.** It terminates TLS and routes the browser UI, REST API, and MCP endpoint. Set `ARCHIVUM_HOST` and point DNS at the host for automatic HTTPS.
+6. **Agents reach the same vault over MCP** via stdio or HTTP/SSE — reading, writing, searching, and querying the identical data the browser sees.
 
-## Sharing, Publishing, and Export
-
-Archivum supports:
-
-- Tokenized read-only page share links at `/share/{token}`
-- Tokenized query result share links with frozen answer and citations
-- Optional public read-only wiki at `/public` when `PUBLIC_WIKI_ENABLED=true`
-- Authenticated page export as HTML or PDF through `/api/export`
-
-For public HTTPS, set `ARCHIVUM_HOST` and point DNS at the host running Caddy. Caddy handles TLS automatically when ports 80 and 443 are reachable.
-
-## Data and Privacy
-
-Archivum keeps your knowledge base local by default:
-
-| Store | Purpose |
-|---|---|
-| Markdown files in `wiki_data` | Canonical page content |
-| Raw files in `raw_data` | Original uploaded sources |
-| SQLite in `db_data` | Auth, metadata, ingest log, shares, and keyword search |
-| Qdrant in `qdrant_data` | Semantic vectors |
-| Kuzu in `kuzu_data` | Graph nodes and edges |
-
-Qdrant and Kuzu are derived indexes. If they get out of sync, rebuild them:
+If Qdrant or Kuzu drift out of sync with the files, rebuild them:
 
 ```bash
 node packages/archivum-cli/src/index.js wiki rebuild-indexes
 ```
 
-LLM calls go to the providers you configure. To avoid hosted model calls, configure Ollama for LLMs and embeddings.
+## Features
+
+- ✅ Markdown pages stored on disk as canonical content
+- ✅ File and URL ingest with a broad parser matrix and source metadata
+- ✅ Semantic search over the vault (Qdrant)
+- ✅ Question answering with citations back to source pages
+- ✅ Built-in MCP server (stdio + HTTP/SSE) for Claude Desktop, Claude Code, Cursor, and VS Code
+- ✅ Docker Compose deployment with SQLite, Qdrant, Kuzu, Ollama, and Caddy
+- ✅ Pluggable LLM and embedding providers: Anthropic, OpenRouter, OpenAI-compatible, or local Ollama/fastembed
+- 🚧 Browser vault navigation — folder/page APIs and file-tree UI exist; click-through needs release smoke
+- 🚧 Wikilinks and backlinks — CodeMirror extension and backlinks API/UI exist; browser smoke pending
+- 🚧 Graph exploration — Kuzu graph API and frontend view exist; browser smoke pending
+- 🚧 Sharing, public wiki, and HTML/PDF export — code exists (`/share/{token}`, `/public`, `/api/export`); manual release smoke pending
+- 🚧 Local media transcription (Whisper/ffmpeg) — supported via `uv sync --extra audio`, omitted from published images to keep installs small
+- 🚧 Life OS workflows (daily notes, projects, tasks) — MCP tools and routes exist; early surface, not the main positioning
 
 ## Operations
 
@@ -193,64 +132,11 @@ LLM calls go to the providers you configure. To avoid hosted model calls, config
 ./update.sh                 # pull/update and restart
 ./uninstall.sh              # remove containers/network, keep data
 ./uninstall.sh --volumes    # also delete wiki/raw/db/Kuzu/Qdrant/Ollama volumes
-./uninstall.sh --images     # also remove local Compose images
-./uninstall.sh --files      # also remove the local install directory
-```
 
-Common Docker commands:
-
-```bash
 docker compose logs -f backend
 docker compose logs -f mcp
 docker compose restart backend
 docker compose down
-```
-
-## Development
-
-Run frontend tests/build:
-
-```bash
-npm test --workspace apps/frontend
-npm run build --workspace apps/frontend
-```
-
-Run CLI tests:
-
-```bash
-npm test --workspace packages/archivum-cli
-```
-
-Run backend tests:
-
-```bash
-cd apps/backend
-uv run --group dev pytest ../../tests -q
-```
-
-Run services locally without building application images:
-
-```bash
-docker compose up -d qdrant
-
-cd apps/backend
-uv sync
-WIKI_DIR=.data/wiki RAW_DIR=.data/raw DB_PATH=.data/archivum.db KUZU_PATH=.data/kuzu QDRANT_URL=http://localhost:6333 uv run uvicorn archivum.main:app --reload --port 8000
-```
-
-In another shell:
-
-```bash
-cd apps/backend
-WIKI_DIR=.data/wiki RAW_DIR=.data/raw DB_PATH=.data/archivum.db KUZU_PATH=.data/kuzu QDRANT_URL=http://localhost:6333 MCP_PORT=8001 uv run python -m archivum.mcp.server --sse
-```
-
-Frontend:
-
-```bash
-cd apps/frontend
-npm install
-npm run dev
 ```
 
 ## Documentation
@@ -261,7 +147,6 @@ npm run dev
 - [MCP server tools](docs/architecture/mcp.md)
 - [Retrieval and context sizing](docs/architecture/retrieval.md)
 - [Graph model](docs/architecture/graph-model.md)
-- [Project progress](docs/project/progress.md)
 - [Agent guide](docs/agent-guide.md)
 
 ## License
