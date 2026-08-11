@@ -38,15 +38,13 @@ export default {
       },
       fontFamily: {
         sans: [
+          '"Instrument Sans"',
           '-apple-system',
           'BlinkMacSystemFont',
           '"Segoe UI"',
-          'Roboto',
-          'Oxygen',
-          'Ubuntu',
-          'Cantarell',
           'sans-serif',
         ],
+        serif: ['"Playfair Display"', 'Georgia', 'serif'],
         mono: [
           '"JetBrains Mono"',
           '"Fira Code"',

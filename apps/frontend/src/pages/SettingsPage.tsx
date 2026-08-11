@@ -166,8 +166,8 @@ export default function SettingsPage() {
   }
 
   return (
-    <div className="flex-1 overflow-y-auto p-6 max-w-3xl mx-auto w-full">
-      <h1 className="text-xl font-semibold text-text-primary mb-6">Settings</h1>
+    <div className="w-full flex-1 overflow-y-auto p-4">
+      <h1 className="mb-5 text-xl font-semibold text-white">Settings</h1>
 
       <Card className="mb-6">
         <CardHeader>

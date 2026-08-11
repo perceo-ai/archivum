@@ -50,15 +50,15 @@ export default function Layout({ children }: LayoutProps) {
   }
 
   return (
-    <div className="app-shell flex h-screen overflow-hidden">
-      <aside className="rail-panel hidden w-[84px] shrink-0 flex-col items-center px-3 py-4 text-white md:flex">
+    <div className="perceo-shell grid-lines flex h-screen overflow-hidden">
+      <aside className="rail-panel hidden w-[72px] shrink-0 flex-col items-center px-3 py-4 text-white md:flex">
         <button
           type="button"
-          className="mb-6 flex h-12 w-12 items-center justify-center rounded-2xl bg-white/10 text-sm font-extrabold tracking-[0.12em] text-white"
+          className="mb-6 flex h-11 w-11 items-center justify-center rounded-[8px] border border-white/10 bg-white/[0.05] font-serif text-xl font-bold italic tracking-tight text-white transition-colors hover:bg-white/[0.08]"
           onClick={() => navigate(currentSlug ? `/wiki/${currentSlug}` : '/library')}
           title="Archivum"
         >
-          AR
+          A
         </button>
 
         <nav className="flex flex-col gap-2">
@@ -69,8 +69,10 @@ export default function Layout({ children }: LayoutProps) {
               onClick={() => handleNav(item)}
               title={item.label}
               className={cn(
-                'flex h-12 w-12 items-center justify-center rounded-2xl transition-colors',
-                isActive(item) ? 'bg-primary text-primary-foreground shadow-lg' : 'bg-white/5 text-white/76 hover:bg-white/12',
+                'flex h-11 w-11 items-center justify-center rounded-[8px] transition-colors',
+                isActive(item)
+                  ? 'bg-gradient-to-b from-[#8b5cf6] to-[#7848e6] text-white'
+                  : 'bg-white/[0.04] text-zinc-400 hover:bg-white/[0.08] hover:text-white',
               )}
             >
               <item.icon className="h-5 w-5" />
@@ -83,7 +85,7 @@ export default function Layout({ children }: LayoutProps) {
             type="button"
             title={leftOpen ? 'Close vault' : 'Open vault'}
             onClick={() => dispatch({ type: 'TOGGLE_LEFT' })}
-            className="flex h-12 w-12 items-center justify-center rounded-2xl bg-white/5 text-white/76 transition-colors hover:bg-white/12"
+            className="flex h-11 w-11 items-center justify-center rounded-[8px] bg-white/[0.04] text-zinc-400 transition-colors hover:bg-white/[0.08] hover:text-white"
           >
             <BookOpen className="h-5 w-5" />
           </button>
@@ -91,7 +93,7 @@ export default function Layout({ children }: LayoutProps) {
             type="button"
             title={rightOpen ? 'Hide inspector' : 'Show inspector'}
             onClick={() => dispatch({ type: 'TOGGLE_RIGHT' })}
-            className="flex h-12 w-12 items-center justify-center rounded-2xl bg-white/5 text-white/76 transition-colors hover:bg-white/12"
+            className="flex h-11 w-11 items-center justify-center rounded-[8px] bg-white/[0.04] text-zinc-400 transition-colors hover:bg-white/[0.08] hover:text-white"
           >
             <PanelRight className="h-5 w-5" />
           </button>
@@ -99,7 +101,7 @@ export default function Layout({ children }: LayoutProps) {
       </aside>
 
       <div className="relative flex min-w-0 flex-1 flex-col overflow-hidden">
-        <header className="flex h-16 shrink-0 items-center gap-3 border-b border-border/80 bg-background/75 px-4 backdrop-blur md:px-6">
+        <header className="flex h-14 shrink-0 items-center gap-3 border-b border-white/10 bg-[#161616]/85 px-3 backdrop-blur md:px-5">
           <Button
             onClick={() => dispatch({ type: 'TOGGLE_LEFT' })}
             variant="secondary"
@@ -110,10 +112,10 @@ export default function Layout({ children }: LayoutProps) {
           </Button>
 
           <div className="min-w-0">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-zinc-500">
               Archivum
             </p>
-            <h1 className="truncate text-base font-semibold text-foreground">
+            <h1 className="truncate text-base font-semibold text-white">
               {currentSection === 'library' ? 'Library' : currentSection === 'workflows' ? 'Workflows' : 'Tools'}
             </h1>
           </div>
@@ -121,11 +123,11 @@ export default function Layout({ children }: LayoutProps) {
           <button
             type="button"
             onClick={() => navigate('/library')}
-            className="surface-panel ml-2 hidden min-w-[240px] items-center gap-3 rounded-2xl px-4 py-2 text-left text-sm text-muted-foreground md:flex"
+            className="ml-2 hidden min-w-[260px] items-center gap-3 rounded-[5px] border border-white/10 bg-white/[0.05] px-4 py-2 text-left text-sm text-zinc-400 transition-colors hover:bg-white/[0.08] hover:text-white md:flex"
           >
             <Search className="h-4 w-4" />
             <span>Search pages, notes, and context</span>
-            <span className="ml-auto rounded-lg bg-secondary px-2 py-1 text-[11px] font-semibold text-secondary-foreground">
+            <span className="ml-auto rounded-[5px] border border-white/10 bg-white/[0.05] px-2 py-1 text-[11px] font-semibold text-zinc-300">
               /
             </span>
           </button>
@@ -153,22 +155,23 @@ export default function Layout({ children }: LayoutProps) {
         <div className="relative flex min-h-0 flex-1 overflow-hidden">
           <aside
             className={cn(
-              'surface-panel absolute inset-y-4 left-4 z-20 flex w-[320px] flex-col overflow-hidden rounded-[28px] transition-transform duration-200',
-              leftOpen ? 'translate-x-0' : '-translate-x-[120%]',
+              'vault-sidebar surface-panel absolute inset-y-3 left-3 z-20 flex w-[320px] flex-col overflow-hidden rounded-[8px] transition-transform duration-200 md:static md:inset-auto md:z-auto md:w-[300px] md:rounded-none md:border-y-0 md:border-l-0 md:bg-[#171616]/70 md:transition-none lg:w-[340px]',
+              leftOpen ? 'translate-x-0' : '-translate-x-[120%] md:hidden',
             )}
           >
-            <div className="flex items-center justify-between border-b border-border/80 px-4 py-3">
+            <div className="flex items-center justify-between border-b border-white/10 px-4 py-3">
               <div>
-                <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-zinc-500">
                   Library
                 </p>
-                <p className="text-sm font-semibold text-foreground">Vault drawer</p>
+                <p className="text-sm font-semibold text-white">Vault</p>
               </div>
               <Button
                 variant="ghost"
                 size="icon"
                 onClick={() => dispatch({ type: 'TOGGLE_LEFT' })}
                 title="Close vault"
+                className="md:hidden"
               >
                 <X className="h-4 w-4" />
               </Button>
@@ -180,19 +183,17 @@ export default function Layout({ children }: LayoutProps) {
             <button
               type="button"
               aria-label="Close vault drawer"
-              className="absolute inset-0 z-10 bg-black/10"
+              className="absolute inset-0 z-10 bg-black/40 md:hidden"
               onClick={() => dispatch({ type: 'TOGGLE_LEFT' })}
             />
           )}
 
-          <main className="page-frame min-w-0 overflow-hidden">
-            <div className="surface-panel flex min-h-0 flex-1 overflow-hidden rounded-[32px]">
-              {children}
-            </div>
+          <main className="min-w-0 flex-1 overflow-hidden">
+            {children}
           </main>
 
           {rightOpen && (
-            <aside className="hidden w-[320px] shrink-0 border-l border-border/80 bg-background/55 xl:flex">
+            <aside className="hidden w-[320px] shrink-0 border-l border-white/10 bg-[#171616]/70 xl:flex">
               <RightSidebar />
             </aside>
           )}

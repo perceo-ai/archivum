@@ -47,12 +47,12 @@ const initialState: AppState = {
   currentSlug: null,
   saveStatus: 'idle',
   activeView: 'library',
-  leftOpen: false,
+  leftOpen: true,
   rightOpen: true,
   isAuthenticated: false,
 };
 
-function reducer(state: AppState, action: Action): AppState {
+function reducer(state: AppState = initialState, action: Action): AppState {
   switch (action.type) {
     case 'SET_PAGES':
       return { ...state, pages: action.pages, pagesLoaded: true };

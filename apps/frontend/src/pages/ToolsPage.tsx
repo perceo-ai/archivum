@@ -26,7 +26,7 @@ export default function ToolsPage() {
           Tools
         </p>
         <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
-          <div className="max-w-2xl">
+          <div className="min-w-0 flex-1">
             <h2 className="text-3xl font-semibold tracking-tight text-foreground">Utility surfaces, without shell clutter.</h2>
             <p className="mt-2 text-sm leading-6 text-muted-foreground">
               Graph, ingest, query, lint, and settings stay available, but now they sit behind one cleaner tools workspace.
@@ -47,7 +47,7 @@ export default function ToolsPage() {
         </div>
       </div>
 
-      <div className="flex min-h-0 flex-1 overflow-hidden rounded-[28px] bg-transparent">
+      <div className="flex min-h-0 flex-1 overflow-hidden border border-white/10 bg-[#171616]/70">
         {current.render((slug) => navigate(`/wiki/${slug}`))}
       </div>
     </div>

@@ -73,9 +73,9 @@ export default function LintPage() {
   const orphans = issues.filter((i) => i.type === 'orphan_page');
 
   return (
-    <div className="flex-1 overflow-y-auto p-6 max-w-3xl mx-auto w-full">
+    <div className="w-full flex-1 overflow-y-auto p-4">
       <div className="flex items-center justify-between mb-6">
-        <h1 className="text-xl font-semibold text-text-primary">Lint</h1>
+        <h1 className="text-xl font-semibold text-white">Lint</h1>
         <Button onClick={fetchLint} variant="outline" size="sm" disabled={loading}>
           {loading ? 'Checking...' : 'Refresh'}
         </Button>
@@ -87,11 +87,11 @@ export default function LintPage() {
 
       {!loading && (
         <div className="flex gap-4 mb-6">
-          <div className="rounded-lg border border-border bg-card px-4 py-3 flex flex-col">
+          <div className="flex flex-col rounded-[8px] border border-white/10 bg-white/[0.045] px-4 py-3">
             <span className="text-2xl font-semibold text-text-primary">{brokenLinks.length}</span>
             <span className="text-xs text-text-secondary">Broken wikilinks</span>
           </div>
-          <div className="rounded-lg border border-border bg-card px-4 py-3 flex flex-col">
+          <div className="flex flex-col rounded-[8px] border border-white/10 bg-white/[0.045] px-4 py-3">
             <span className="text-2xl font-semibold text-text-primary">{orphans.length}</span>
             <span className="text-xs text-text-secondary">Orphan pages</span>
           </div>

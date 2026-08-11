@@ -24,9 +24,9 @@ export default function DailyPage() {
   }
 
   return (
-    <div className="flex-1 overflow-y-auto p-6 max-w-3xl mx-auto w-full">
+    <div className="w-full flex-1 overflow-y-auto p-4">
       <div className="flex items-center justify-between mb-6">
-        <h1 className="text-xl font-semibold text-text-primary">Daily</h1>
+        <h1 className="text-xl font-semibold text-white">Daily</h1>
       </div>
       <div className="flex items-center gap-2">
         <Input

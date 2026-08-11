@@ -134,10 +134,10 @@ export default function QueryPanel() {
   }
 
   return (
-    <div className="flex flex-col h-full bg-bg">
+    <div className="flex h-full w-full flex-col bg-transparent">
       {/* Input area */}
       <div
-        className="shrink-0 border-b border-border p-4 bg-panel/40 backdrop-blur supports-[backdrop-filter]:bg-panel/30"
+        className="shrink-0 border-b border-white/10 bg-white/[0.025] p-4 backdrop-blur"
       >
         <h2 className="text-sm font-semibold text-muted-foreground mb-3 uppercase tracking-wider">
           Ask your knowledge base
@@ -185,7 +185,7 @@ export default function QueryPanel() {
         )}
 
         {answer && (
-          <div className="max-w-3xl">
+          <div className="w-full">
             {/* Streaming indicator */}
             {loading && (
               <div className="flex items-center gap-2 mb-3">
@@ -209,7 +209,7 @@ export default function QueryPanel() {
 
             {/* Actions */}
             {!loading && (
-              <div className="mt-6 pt-4 border-t border-border flex items-center gap-3">
+              <div className="mt-6 flex items-center gap-3 border-t border-white/10 pt-4">
                 {savedSlug ? (
                   <button
                     onClick={() => navigate(`/wiki/${savedSlug}`)}
@@ -241,7 +241,7 @@ export default function QueryPanel() {
             {/* Citations */}
             {citations.length > 0 && (
               <div
-                className="mt-6 pt-4 border-t border-border"
+                className="mt-6 border-t border-white/10 pt-4"
               >
                 <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">
                   Sources

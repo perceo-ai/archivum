@@ -182,7 +182,7 @@ export default function WikiPage() {
                   scheduleMetaSave({ tags: e.target.value.split(',').map((t) => t.trim()).filter(Boolean) });
                 }}
                 placeholder="tags, comma separated"
-                className="h-9 max-w-md rounded-2xl border-border/80 bg-background/70 text-sm"
+                className="h-9 max-w-md text-sm"
                 aria-label="Tags"
               />
               {parsedTags.slice(0, 4).map((t) => (
@@ -206,7 +206,7 @@ export default function WikiPage() {
         {error && <div className="mt-3 text-xs text-destructive">{error}</div>}
       </div>
 
-      <div className="surface-panel flex min-h-0 flex-1 overflow-hidden rounded-[28px]">
+      <div className="flex min-h-0 flex-1 overflow-hidden border border-white/10 bg-[#171616]/70">
         {loading && !page && (
           <div className="space-y-2 p-6">
             <div className="skeleton h-4 w-full" />

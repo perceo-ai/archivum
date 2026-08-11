@@ -30,9 +30,9 @@ export default function SearchBar() {
   }
 
   return (
-    <div className="flex flex-col h-full bg-bg">
+    <div className="flex h-full w-full flex-col bg-transparent">
       <div
-        className="shrink-0 border-b border-border p-4 bg-panel/40 backdrop-blur supports-[backdrop-filter]:bg-panel/30"
+        className="shrink-0 border-b border-white/10 bg-white/[0.025] p-4 backdrop-blur"
       >
         <h2 className="text-sm font-semibold text-muted-foreground mb-3 uppercase tracking-wider">
           Search
@@ -79,7 +79,7 @@ export default function SearchBar() {
               onClick={() => navigate(`/wiki/${r.slug}`)}
               className="w-full text-left transition-colors"
             >
-              <Card className="p-3 hover:border-accent/30">
+              <Card className="p-3 hover:border-primary/40">
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
                     <div className="text-sm text-foreground font-medium truncate">{r.title}</div>
@@ -98,4 +98,3 @@ export default function SearchBar() {
     </div>
   );
 }
-

@@ -200,10 +200,10 @@ export default function GraphView({ onNavigate }: GraphViewProps) {
   }
 
   return (
-    <div className="flex flex-col h-full bg-bg">
+    <div className="flex h-full w-full flex-col bg-transparent">
       {/* Toolbar */}
       <div
-        className="flex items-center gap-2 px-4 py-2 border-b border-border shrink-0 bg-panel/40 backdrop-blur supports-[backdrop-filter]:bg-panel/30"
+        className="flex shrink-0 items-center gap-2 border-b border-white/10 bg-white/[0.025] px-4 py-2 backdrop-blur"
       >
         <Input
           type="text"

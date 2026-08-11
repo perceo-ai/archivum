@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Playfair+Display:ital,wght@0,400..600;1,400..600&display=swap');
 
 @tailwind base;
 @tailwind components;
@@ -6,35 +6,35 @@
 
 @layer base {
   :root {
-    --background: 42 36% 95%;
-    --foreground: 210 24% 18%;
+    --background: 0 0% 9%;
+    --foreground: 0 0% 100%;
 
-    --card: 0 0% 100%;
-    --card-foreground: 210 24% 18%;
+    --card: 0 0% 14%;
+    --card-foreground: 0 0% 100%;
 
-    --popover: 0 0% 100%;
-    --popover-foreground: 210 24% 18%;
+    --popover: 0 0% 12%;
+    --popover-foreground: 0 0% 100%;
 
-    --primary: 31 58% 57%;
-    --primary-foreground: 212 30% 14%;
+    --primary: 257 90% 66%;
+    --primary-foreground: 0 0% 100%;
 
-    --secondary: 210 28% 91%;
-    --secondary-foreground: 212 25% 22%;
+    --secondary: 0 0% 100%;
+    --secondary-foreground: 0 0% 100%;
 
-    --muted: 40 24% 89%;
-    --muted-foreground: 212 12% 42%;
+    --muted: 0 0% 18%;
+    --muted-foreground: 240 5% 55%;
 
-    --accent: 34 72% 88%;
-    --accent-foreground: 212 30% 16%;
+    --accent: 257 90% 66%;
+    --accent-foreground: 0 0% 100%;
 
-    --destructive: 0 62% 47%;
-    --destructive-foreground: 210 40% 98%;
+    --destructive: 0 89% 72%;
+    --destructive-foreground: 0 0% 9%;
 
-    --border: 30 18% 81%;
-    --input: 35 18% 86%;
-    --ring: 31 58% 57%;
+    --border: 0 0% 100% / 0.1;
+    --input: 0 0% 100% / 0.12;
+    --ring: 257 90% 66%;
 
-    --radius: 1rem;
+    --radius: 0.5rem;
   }
 
   html, body, #root {
@@ -44,11 +44,9 @@
   }
 
   body {
-    background:
-      radial-gradient(circle at top left, rgba(222, 184, 135, 0.24), transparent 28%),
-      linear-gradient(180deg, hsl(var(--background)), hsl(40 32% 93%));
+    background: hsl(var(--background));
     color: hsl(var(--foreground));
-    font-family: 'Manrope', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    font-family: 'Instrument Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
   }
@@ -101,32 +99,32 @@
 
   /* Wikilink decorations */
   .cm-wikilink-existing {
-    color: hsl(var(--ring));
+    color: hsl(var(--primary));
     text-decoration: underline;
     cursor: pointer;
   }
 
   .cm-wikilink-existing:hover {
-    color: hsl(var(--ring) / 0.85);
+    color: hsl(var(--primary) / 0.85);
   }
 
   .cm-wikilink-missing {
-    color: rgb(var(--muted-foreground));
+    color: hsl(var(--muted-foreground));
     text-decoration: underline dotted;
     cursor: pointer;
   }
 
   .cm-wikilink-missing:hover {
-    color: rgb(var(--foreground) / 0.8);
+    color: hsl(var(--foreground) / 0.8);
   }
 
   /* Skeleton loading */
   .skeleton {
     background: linear-gradient(
       90deg,
-      hsl(var(--card)) 25%,
-      hsl(var(--muted)) 50%,
-      hsl(var(--card)) 75%
+      rgba(255,255,255,0.06) 25%,
+      rgba(255,255,255,0.12) 50%,
+      rgba(255,255,255,0.06) 75%
     );
     background-size: 200% 100%;
     animation: skeleton-loading 1.4s ease infinite;
@@ -145,39 +143,51 @@
 }
 
 @layer utilities {
-  .app-shell {
-    background:
-      radial-gradient(circle at top left, rgba(225, 174, 116, 0.18), transparent 22%),
-      linear-gradient(180deg, rgba(255,255,255,0.24), rgba(255,255,255,0.1));
+  .perceo-shell {
+    background: #161616;
+    color: #fff;
+  }
+
+  .grid-lines {
+    background-image: linear-gradient(90deg, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
+    background-size: 20% 100%;
+    background-position: 0 0;
   }
 
   .surface-panel {
-    background: linear-gradient(180deg, rgba(255,255,255,0.88), rgba(250,246,239,0.9));
-    border: 1px solid hsl(var(--border));
-    box-shadow: 0 18px 42px rgba(38, 47, 56, 0.08);
+    background: rgba(35, 35, 35, 0.5);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    box-shadow: none;
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
   }
 
   .rail-panel {
-    background: linear-gradient(180deg, #203444 0%, #172733 100%);
+    background: #161616;
+    border-right: 1px solid rgba(255, 255, 255, 0.08);
   }
 
   .page-frame {
-    @apply mx-auto flex w-full max-w-6xl flex-1 flex-col overflow-hidden px-4 pb-4 pt-4 md:px-6;
+    @apply flex w-full flex-1 flex-col overflow-hidden px-3 pb-3 pt-3 md:px-5 md:pb-5 md:pt-5;
   }
 
   .page-header {
-    @apply mb-4 rounded-3xl border border-border/90 bg-card/80 px-6 py-5 shadow-sm backdrop-blur;
+    @apply mb-4 border-b border-white/10 px-0 pb-4 pt-1;
   }
 
   .section-tabs {
-    @apply inline-flex rounded-2xl border border-border/80 bg-card/85 p-1 shadow-sm;
+    @apply inline-flex rounded-[5px] border border-white/10 bg-white/[0.05] p-1;
   }
 
   .section-tab {
-    @apply rounded-xl px-3 py-2 text-xs font-semibold tracking-[0.02em] text-muted-foreground transition-colors;
+    @apply rounded-[5px] px-3 py-2 text-xs font-semibold tracking-[0.02em] text-zinc-400 transition-colors hover:text-white;
   }
 
   .section-tab-active {
-    @apply bg-accent text-accent-foreground shadow-sm;
+    @apply bg-primary text-white;
+  }
+
+  .font-serif {
+    font-family: 'Playfair Display', Georgia, serif;
   }
 }
