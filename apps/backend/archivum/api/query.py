@@ -12,14 +12,17 @@ from sse_starlette.sse import EventSourceResponse
 
 from archivum.auth import CurrentUser, get_current_user
 from archivum.config import Settings, get_settings
-from archivum.db import qdrant_client as qdrant
 from archivum.db import sqlite
 from archivum.llm.openrouter_client import openrouter_stream_tokens
 from archivum.llm.openai_compat_client import openai_compat_stream_tokens
+from archivum.retrieval.hybrid import hybrid_retrieve
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api", tags=["query"])
+
+_MAX_CONTEXTS = 6
+_MAX_EXCERPT_CHARS = 1_200
 
 
 class QueryRequest(BaseModel):
@@ -28,10 +31,10 @@ class QueryRequest(BaseModel):
 
 def _build_prompt(question: str, contexts: list[dict[str, Any]]) -> str:
     ctx_lines: list[str] = []
-    for i, c in enumerate(contexts, start=1):
+    for i, c in enumerate(contexts[:_MAX_CONTEXTS], start=1):
         slug = c.get("slug", "")
         title = c.get("title", "")
-        excerpt = (c.get("excerpt") or "").strip()
+        excerpt = (c.get("excerpt") or "").strip()[:_MAX_EXCERPT_CHARS]
         if not excerpt:
             continue
         ctx_lines.append(f"[{i}] {title} ({slug})\n{excerpt}\n")
@@ -40,7 +43,8 @@ def _build_prompt(question: str, contexts: list[dict[str, Any]]) -> str:
 
     return (
         "You are Archivum, a knowledge base assistant. Answer using ONLY the provided context. "
-        "If the context is insufficient, say what is missing.\n\n"
+        "Cite every factual claim with its bracketed context number. "
+        "If the context is insufficient, explicitly say so.\n\n"
         f"Question:\n{question}\n\n"
         f"Context snippets:\n{ctx_block}\n\n"
         "Write a concise, helpful answer in markdown."
@@ -86,26 +90,31 @@ async def query(
         },
     )
 
-    # Fetch context
-    raw_hits = await qdrant.search_raw(question, wiki_id=current_user.wiki_id, limit=6, settings=settings)
-    # Deduplicate by slug, keep best excerpts
-    contexts_by_slug: dict[str, dict[str, Any]] = {}
-    for h in raw_hits:
-        slug = h.get("slug")
-        if not slug:
-            continue
-        if slug not in contexts_by_slug:
-            contexts_by_slug[slug] = h
-        else:
-            # Prefer higher score
-            if float(h.get("score", 0)) > float(contexts_by_slug[slug].get("score", 0)):
-                contexts_by_slug[slug] = h
-
-    contexts = list(contexts_by_slug.values())
-    slugs = [c.get("slug") for c in contexts if c.get("slug")]
+    hits = await hybrid_retrieve(
+        question, current_user.wiki_id, limit=_MAX_CONTEXTS, settings=settings
+    )
+    contexts = [
+        {
+            "slug": _context_identifier(hit.id, current_user.wiki_id),
+            "title": hit.label,
+            "excerpt": hit.citation.quote or "",
+            "score": hit.score,
+        }
+        for hit in hits
+    ]
+    slugs = [
+        slug
+        for hit in hits
+        if (slug := _slug_from_page_id(hit.id, current_user.wiki_id)) is not None
+    ]
     logger.info(
         "API query context ready",
-        extra={"wiki_id": current_user.wiki_id, "raw_hits": len(raw_hits), "contexts": len(contexts), "slugs": len(slugs)},
+        extra={
+            "wiki_id": current_user.wiki_id,
+            "hybrid_hits": len(hits),
+            "contexts": len(contexts),
+            "slugs": len(slugs),
+        },
     )
 
     # Build citations (full page summaries) — batch to avoid N+1 sqlite calls.
@@ -181,3 +190,11 @@ async def query(
 
     return EventSourceResponse(event_generator())
 
+
+def _slug_from_page_id(page_id: str, wiki_id: str) -> str | None:
+    prefix = f"page:{wiki_id}:"
+    return page_id.removeprefix(prefix) if page_id.startswith(prefix) else None
+
+
+def _context_identifier(hit_id: str, wiki_id: str) -> str:
+    return _slug_from_page_id(hit_id, wiki_id) or hit_id
