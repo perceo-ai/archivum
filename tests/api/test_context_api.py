@@ -82,6 +82,16 @@ async def test_retrieve_returns_compact_cited_hybrid_hits(monkeypatch):
         ),
         extraction_method="USER_AUTHORED",
         confidence=0.65,
+        provenance="canonical",
+        citations=(
+            Citation(
+                source_id="page:default:alpha",
+                chunk_id="canonical:alpha",
+                span_start=0,
+                span_end=5,
+                quote="Canonical Alpha evidence",
+            ),
+        ),
     )
     monkeypatch.setattr(context_api, "hybrid_retrieve", AsyncMock(return_value=[hit]))
 
@@ -97,6 +107,40 @@ async def test_retrieve_returns_compact_cited_hybrid_hits(monkeypatch):
     assert result.hits[0].extraction_method == "USER_AUTHORED"
     assert result.hits[0].confidence == 0.65
     assert result.hits[0].provenance == "canonical"
+    assert result.hits[0].citations[0].chunk_id == "canonical:alpha"
+
+
+@pytest.mark.asyncio
+async def test_retrieve_preserves_partial_canonical_provenance(monkeypatch):
+    hit = HybridHit(
+        id="entity:alpha",
+        label="Alpha",
+        score=0.8,
+        source="graph",
+        citation=Citation(
+            source_id="entity:alpha",
+            chunk_id="derived:alpha",
+            span_start=None,
+            span_end=None,
+            quote=None,
+        ),
+        extraction_method="INFERRED",
+        provenance="canonical",
+    )
+    monkeypatch.setattr(context_api, "hybrid_retrieve", AsyncMock(return_value=[hit]))
+
+    result = await context_api.retrieve(
+        context_api.RetrieveRequest(query="Alpha"),
+        CurrentUser(username="owner", role="owner", wiki_id="default"),
+        Settings(),
+    )
+
+    assert result.hits[0].provenance == "canonical"
+    assert result.hits[0].extraction_method == "INFERRED"
+    assert result.hits[0].confidence is None
+    assert result.hits[0].citations == []
+    assert result.citations == []
+    assert result.insufficient_evidence is True
 
 
 @pytest.mark.asyncio

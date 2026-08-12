@@ -171,6 +171,7 @@ async def test_retrieve_memory_returns_compact_cited_provenance(monkeypatch):
             "score": 0.9,
             "source": "graph",
             "citation": hit.citation.model_dump(),
+            "citations": [],
             "extraction_method": "DERIVED",
             "confidence": None,
             "provenance": "derived",
@@ -196,6 +197,7 @@ async def test_retrieve_memory_preserves_canonical_provenance(monkeypatch):
         ),
         extraction_method="USER_AUTHORED",
         confidence=0.75,
+        provenance="canonical",
     )
     monkeypatch.setattr(server, "hybrid_retrieve", AsyncMock(return_value=[hit]))
 
@@ -204,6 +206,35 @@ async def test_retrieve_memory_preserves_canonical_provenance(monkeypatch):
     assert result["hits"][0]["extraction_method"] == "USER_AUTHORED"
     assert result["hits"][0]["confidence"] == 0.75
     assert result["hits"][0]["provenance"] == "canonical"
+
+
+@pytest.mark.asyncio
+async def test_retrieve_memory_preserves_partial_canonical_confidence(monkeypatch):
+    hit = HybridHit(
+        id="entity:alpha",
+        label="Alpha",
+        score=0.9,
+        source="graph",
+        citation=Citation(
+            source_id="entity:alpha",
+            chunk_id="derived:alpha",
+            span_start=None,
+            span_end=None,
+            quote=None,
+        ),
+        confidence=0.75,
+        provenance="canonical",
+    )
+    monkeypatch.setattr(server, "hybrid_retrieve", AsyncMock(return_value=[hit]))
+
+    result = await server.retrieve_memory("Alpha")
+
+    assert result["hits"][0]["provenance"] == "canonical"
+    assert result["hits"][0]["extraction_method"] is None
+    assert result["hits"][0]["confidence"] == 0.75
+    assert result["hits"][0]["citations"] == []
+    assert result["citations"] == []
+    assert result["insufficient_evidence"] is True
 
 
 @pytest.mark.asyncio

@@ -51,7 +51,8 @@ class RetrievalHitResponse(BaseModel):
     score: float
     source: str
     citation: Citation
-    extraction_method: ExtractionMethod | Literal["DERIVED"]
+    citations: list[Citation]
+    extraction_method: ExtractionMethod | Literal["DERIVED"] | None
     confidence: float | None
     provenance: Literal["canonical", "derived"]
 
@@ -92,7 +93,9 @@ async def retrieve(
     hits = await hybrid_retrieve(
         query, current_user.wiki_id, limit=body.limit, settings=settings
     )
-    citations = _unique_citations(hit.citation for hit in hits)
+    citations = _unique_citations(
+        citation for hit in hits for citation in _evidence_citations(hit)
+    )
     return RetrieveResponse(
         query=query,
         hits=[
@@ -102,6 +105,7 @@ async def retrieve(
                 score=hit.score,
                 source=hit.source,
                 citation=hit.citation,
+                citations=list(hit.citations),
                 **_provenance_payload(hit),
             )
             for hit in hits
@@ -115,7 +119,7 @@ async def retrieve(
 
 
 def _provenance_payload(hit) -> dict[str, ExtractionMethod | str | float | None]:
-    if hit.extraction_method is not None and hit.confidence is not None:
+    if hit.provenance == "canonical":
         return {
             "extraction_method": hit.extraction_method,
             "confidence": hit.confidence,
@@ -126,6 +130,12 @@ def _provenance_payload(hit) -> dict[str, ExtractionMethod | str | float | None]
         "confidence": None,
         "provenance": "derived",
     }
+
+
+def _evidence_citations(hit) -> tuple[Citation, ...]:
+    if hit.provenance == "canonical":
+        return hit.citations
+    return (hit.citation,)
 
 
 def _unique_citations(citations: Iterable[Citation]) -> list[Citation]:

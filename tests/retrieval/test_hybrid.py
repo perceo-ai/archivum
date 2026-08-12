@@ -27,6 +27,69 @@ def test_fuse_ranked_hits_prefers_items_found_by_multiple_channels():
     assert hits[0].score > hits[1].score
 
 
+def test_enrich_hit_keeps_canonical_metadata_when_node_has_no_citations():
+    hit = hybrid.HybridHit(
+        id="entity:alpha",
+        label="entity:alpha",
+        score=0.1,
+        source="graph",
+        citation=_citation("derived alpha"),
+    )
+    node = ContextNode(
+        id="entity:alpha",
+        label="Alpha",
+        node_type="entity",
+        extraction_method="AMBIGUOUS",
+        confidence=0.4,
+        citations=[],
+    )
+
+    enriched = hybrid._enrich_hit(hit, None, node)
+
+    assert enriched.provenance == "canonical"
+    assert enriched.extraction_method == "AMBIGUOUS"
+    assert enriched.confidence == 0.4
+    assert enriched.citations == ()
+    assert enriched.citation == hit.citation
+
+
+@pytest.mark.asyncio
+async def test_graph_nodes_keeps_citationless_canonical_nodes(monkeypatch):
+    node = ContextNode(
+        id="entity:alpha",
+        label="Alpha",
+        node_type="entity",
+        extraction_method="AMBIGUOUS",
+        confidence=0.4,
+        citations=[],
+    )
+
+    class Connection:
+        async def __aenter__(self):
+            return object()
+
+        async def __aexit__(self, *args):
+            return False
+
+    async def fake_context_package(repo, request):
+        return ContextPackage(
+            query=request.query,
+            seeds=[node.id],
+            nodes=[node],
+            edges=[],
+            citations=[],
+            insufficient_evidence=True,
+            reason="No cited knowledge objects matched the requested context.",
+        )
+
+    monkeypatch.setattr(hybrid.sqlite, "get_db", lambda: Connection())
+    monkeypatch.setattr(hybrid, "build_context_package", fake_context_package)
+
+    nodes = await hybrid._graph_nodes("Alpha", "default", [node.id], limit=10)
+
+    assert nodes == [node]
+
+
 @pytest.mark.asyncio
 async def test_hybrid_retrieve_reserves_graph_neighbor_capacity_and_enriches_hits(
     monkeypatch,

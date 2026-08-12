@@ -242,7 +242,9 @@ async def retrieve_memory(
     hits = await hybrid_retrieve(
         query, wiki_id, limit=min(max(limit, 1), 50), settings=settings
     )
-    citations = _unique_retrieval_citations(hit.citation for hit in hits)
+    citations = _unique_retrieval_citations(
+        citation for hit in hits for citation in _retrieval_evidence_citations(hit)
+    )
     return {
         "query": query,
         "wiki_id": wiki_id,
@@ -253,6 +255,7 @@ async def retrieve_memory(
                 "score": hit.score,
                 "source": hit.source,
                 "citation": hit.citation.model_dump(),
+                "citations": [citation.model_dump() for citation in hit.citations],
                 **_retrieval_provenance_payload(hit),
             }
             for hit in hits
@@ -281,7 +284,7 @@ def _unique_retrieval_citations(citations: Iterable[Any]) -> list[Any]:
 
 
 def _retrieval_provenance_payload(hit: Any) -> dict[str, Any]:
-    if hit.extraction_method is not None and hit.confidence is not None:
+    if hit.provenance == "canonical":
         return {
             "extraction_method": hit.extraction_method,
             "confidence": hit.confidence,
@@ -292,6 +295,12 @@ def _retrieval_provenance_payload(hit: Any) -> dict[str, Any]:
         "confidence": None,
         "provenance": "derived",
     }
+
+
+def _retrieval_evidence_citations(hit: Any) -> tuple[Any, ...]:
+    if hit.provenance == "canonical":
+        return hit.citations
+    return (hit.citation,)
 
 
 @mcp.tool()

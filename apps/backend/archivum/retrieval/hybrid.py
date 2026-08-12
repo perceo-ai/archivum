@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import dataclass
+from typing import Literal
 
 from archivum.config import Settings
 from archivum.db import qdrant_client as qdrant
@@ -30,6 +31,8 @@ class HybridHit:
     raw_score: float = 0.0
     extraction_method: ExtractionMethod | None = None
     confidence: float | None = None
+    provenance: Literal["canonical", "derived"] = "derived"
+    citations: tuple[Citation, ...] = ()
 
 
 def fuse_ranked_hits(
@@ -148,7 +151,9 @@ async def _graph_nodes(
                     max_nodes=limit,
                 ),
             )
-        return package.nodes if not package.insufficient_evidence else []
+        # Canonical nodes can still carry useful provenance even when their
+        # citations are absent; callers separately enforce evidence sufficiency.
+        return package.nodes
     except Exception:
         # Canonical knowledge is an independently rebuildable retrieval signal.
         return []
@@ -190,17 +195,21 @@ def _enrich_hit(
             raw_score=float(page.get("score", 0.0)),
             extraction_method=node.extraction_method if node is not None else None,
             confidence=node.confidence if node is not None else None,
+            provenance="canonical" if node is not None else "derived",
+            citations=tuple(node.citations) if node is not None else (),
         )
-    if node is not None and node.citations:
+    if node is not None:
         return HybridHit(
             id=hit.id,
             label=node.label,
             score=hit.score,
             source=hit.source,
-            citation=node.citations[0],
+            citation=node.citations[0] if node.citations else hit.citation,
             raw_score=hit.raw_score,
             extraction_method=node.extraction_method,
             confidence=node.confidence,
+            provenance="canonical",
+            citations=tuple(node.citations),
         )
     return hit
 
