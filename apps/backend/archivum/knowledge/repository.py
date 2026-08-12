@@ -1,0 +1,200 @@
+"""SQLite persistence for provenance-aware knowledge objects and relationships."""
+
+from __future__ import annotations
+
+import json
+
+import aiosqlite
+
+from archivum.knowledge.models import Citation, KnowledgeObject, KnowledgeRelationship
+from archivum.store.schema import EVIDENCE_SCHEMA
+
+
+async def init_knowledge_schema(conn: aiosqlite.Connection) -> None:
+    """Create the knowledge tables on an open SQLite connection."""
+    conn.row_factory = aiosqlite.Row
+    await conn.executescript(EVIDENCE_SCHEMA)
+    await conn.commit()
+
+
+class KnowledgeRepository:
+    """CRUD repository for canonical, provenance-aware knowledge records."""
+
+    def __init__(self, conn: aiosqlite.Connection) -> None:
+        self._conn = conn
+
+    async def upsert_object(self, obj: KnowledgeObject) -> None:
+        await self._conn.execute("BEGIN")
+        try:
+            await self._conn.execute(
+                """
+                INSERT INTO knowledge_objects
+                    (id, kind, label, scope, confidence, extraction_method, properties)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(id) DO UPDATE SET
+                    kind=excluded.kind,
+                    label=excluded.label,
+                    scope=excluded.scope,
+                    confidence=excluded.confidence,
+                    extraction_method=excluded.extraction_method,
+                    properties=excluded.properties
+                """,
+                (
+                    obj.id,
+                    obj.kind,
+                    obj.label,
+                    obj.scope,
+                    obj.confidence,
+                    obj.extraction_method,
+                    json.dumps(obj.properties),
+                ),
+            )
+            await self._replace_citations("object", obj.id, obj.citations)
+            await self._conn.commit()
+        except Exception:
+            await self._conn.rollback()
+            raise
+
+    async def upsert_relationship(self, rel: KnowledgeRelationship) -> None:
+        await self._conn.execute("BEGIN")
+        try:
+            await self._conn.execute(
+                """
+                INSERT INTO knowledge_relationships
+                    (id, src_id, dst_id, rel_type, scope, confidence, extraction_method, properties)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(id) DO UPDATE SET
+                    src_id=excluded.src_id,
+                    dst_id=excluded.dst_id,
+                    rel_type=excluded.rel_type,
+                    scope=excluded.scope,
+                    confidence=excluded.confidence,
+                    extraction_method=excluded.extraction_method,
+                    properties=excluded.properties
+                """,
+                (
+                    rel.id,
+                    rel.src_id,
+                    rel.dst_id,
+                    rel.rel_type,
+                    rel.scope,
+                    rel.confidence,
+                    rel.extraction_method,
+                    json.dumps(rel.properties),
+                ),
+            )
+            await self._replace_citations("relationship", rel.id, rel.citations)
+            await self._conn.commit()
+        except Exception:
+            await self._conn.rollback()
+            raise
+
+    async def get_object(self, object_id: str) -> KnowledgeObject | None:
+        async with self._conn.execute(
+            "SELECT * FROM knowledge_objects WHERE id=?", (object_id,)
+        ) as cursor:
+            row = await cursor.fetchone()
+        return await self._row_to_object(row) if row else None
+
+    async def list_objects(
+        self, kind: str | None = None, scope: str | None = None, limit: int = 100
+    ) -> list[KnowledgeObject]:
+        clauses: list[str] = []
+        params: list[str | int] = []
+        if kind is not None:
+            clauses.append("kind=?")
+            params.append(kind)
+        if scope is not None:
+            clauses.append("scope=?")
+            params.append(scope)
+        where = f" WHERE {' AND '.join(clauses)}" if clauses else ""
+        params.append(limit)
+        async with self._conn.execute(
+            f"SELECT * FROM knowledge_objects{where} ORDER BY id LIMIT ?", params
+        ) as cursor:
+            rows = await cursor.fetchall()
+        return [await self._row_to_object(row) for row in rows]
+
+    async def list_relationships(
+        self, node_id: str | None = None, scope: str | None = None
+    ) -> list[KnowledgeRelationship]:
+        clauses: list[str] = []
+        params: list[str] = []
+        if node_id is not None:
+            clauses.append("(src_id=? OR dst_id=?)")
+            params.extend((node_id, node_id))
+        if scope is not None:
+            clauses.append("scope=?")
+            params.append(scope)
+        where = f" WHERE {' AND '.join(clauses)}" if clauses else ""
+        async with self._conn.execute(
+            f"SELECT * FROM knowledge_relationships{where} ORDER BY id", params
+        ) as cursor:
+            rows = await cursor.fetchall()
+        return [await self._row_to_relationship(row) for row in rows]
+
+    async def _replace_citations(
+        self, knowledge_type: str, knowledge_id: str, citations: list[Citation]
+    ) -> None:
+        await self._conn.execute(
+            "DELETE FROM knowledge_citations WHERE knowledge_type=? AND knowledge_id=?",
+            (knowledge_type, knowledge_id),
+        )
+        await self._conn.executemany(
+            """
+            INSERT INTO knowledge_citations
+                (knowledge_id, knowledge_type, position, source_id, chunk_id, span_start, span_end, quote)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            [
+                (
+                    knowledge_id,
+                    knowledge_type,
+                    position,
+                    citation.source_id,
+                    citation.chunk_id,
+                    citation.span_start,
+                    citation.span_end,
+                    citation.quote,
+                )
+                for position, citation in enumerate(citations)
+            ],
+        )
+
+    async def _citations(self, knowledge_type: str, knowledge_id: str) -> list[Citation]:
+        async with self._conn.execute(
+            """
+            SELECT source_id, chunk_id, span_start, span_end, quote
+            FROM knowledge_citations
+            WHERE knowledge_type=? AND knowledge_id=?
+            ORDER BY position
+            """,
+            (knowledge_type, knowledge_id),
+        ) as cursor:
+            rows = await cursor.fetchall()
+        return [Citation(**dict(row)) for row in rows]
+
+    async def _row_to_object(self, row: aiosqlite.Row) -> KnowledgeObject:
+        return KnowledgeObject(
+            id=row["id"],
+            kind=row["kind"],
+            label=row["label"],
+            scope=row["scope"],
+            confidence=row["confidence"],
+            extraction_method=row["extraction_method"],
+            citations=await self._citations("object", row["id"]),
+            properties=json.loads(row["properties"]),
+        )
+
+    async def _row_to_relationship(self, row: aiosqlite.Row) -> KnowledgeRelationship:
+        return KnowledgeRelationship(
+            id=row["id"],
+            src_id=row["src_id"],
+            dst_id=row["dst_id"],
+            rel_type=row["rel_type"],
+            scope=row["scope"],
+            confidence=row["confidence"],
+            extraction_method=row["extraction_method"],
+            citations=await self._citations("relationship", row["id"]),
+            properties=json.loads(row["properties"]),
+        )

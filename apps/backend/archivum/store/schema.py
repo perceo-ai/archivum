@@ -45,4 +45,48 @@ CREATE TABLE IF NOT EXISTS chunks (
 
 CREATE INDEX IF NOT EXISTS idx_chunks_document ON chunks(document_id);
 CREATE INDEX IF NOT EXISTS idx_chunks_text_hash ON chunks(text_hash);
+
+CREATE TABLE IF NOT EXISTS knowledge_objects (
+    id                TEXT PRIMARY KEY,
+    kind              TEXT NOT NULL,
+    label             TEXT NOT NULL,
+    scope             TEXT NOT NULL,
+    confidence        REAL NOT NULL,
+    extraction_method TEXT NOT NULL,
+    properties        TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_knowledge_objects_kind_scope
+    ON knowledge_objects(kind, scope);
+
+CREATE TABLE IF NOT EXISTS knowledge_relationships (
+    id                TEXT PRIMARY KEY,
+    src_id            TEXT NOT NULL,
+    dst_id            TEXT NOT NULL,
+    rel_type          TEXT NOT NULL,
+    scope             TEXT NOT NULL,
+    confidence        REAL NOT NULL,
+    extraction_method TEXT NOT NULL,
+    properties        TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_knowledge_relationships_src_scope
+    ON knowledge_relationships(src_id, scope);
+CREATE INDEX IF NOT EXISTS idx_knowledge_relationships_dst_scope
+    ON knowledge_relationships(dst_id, scope);
+
+CREATE TABLE IF NOT EXISTS knowledge_citations (
+    knowledge_id   TEXT NOT NULL,
+    knowledge_type TEXT NOT NULL CHECK (knowledge_type IN ('object', 'relationship')),
+    position       INTEGER NOT NULL,
+    source_id      TEXT NOT NULL,
+    chunk_id       TEXT NOT NULL,
+    span_start     INTEGER,
+    span_end       INTEGER,
+    quote          TEXT,
+    PRIMARY KEY (knowledge_type, knowledge_id, position)
+);
+
+CREATE INDEX IF NOT EXISTS idx_knowledge_citations_knowledge
+    ON knowledge_citations(knowledge_type, knowledge_id, position);
 """
