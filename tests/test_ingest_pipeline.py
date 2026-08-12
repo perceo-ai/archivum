@@ -5,9 +5,14 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
+import aiosqlite
+import pytest
+
 from archivum.ingest.agent import ExtractionResult, WikiAgent, WikiPage
 from archivum.ingest.parsers import ParsedDoc
-from archivum.ingest.pipeline import ingest
+from archivum.ingest.pipeline import ingest, _sync_extracted_result_to_knowledge
+from archivum.knowledge.personal_root import SELF_ID
+from archivum.knowledge.repository import KnowledgeRepository, init_knowledge_schema
 
 
 class IngestPipelineTests(unittest.TestCase):
@@ -107,3 +112,68 @@ class IngestPipelineTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+@pytest.mark.asyncio
+async def test_ingest_canonical_records_preserve_extracted_source_provenance():
+    doc = ParsedDoc(
+        text="Jane Doe built Archivum.",
+        source="resume.pdf",
+        metadata={"title": "Resume"},
+    )
+    result = ExtractionResult(
+        pages=[
+            WikiPage(
+                slug="jane-doe",
+                title="Jane Doe",
+                content="# Jane Doe\n\nJane Doe built [[Archivum]].",
+                tags=["person"],
+            )
+        ],
+        entities=[
+            {"name": "Jane Doe", "type": "person"},
+            {"name": "Archivum", "type": "project"},
+        ],
+        relationships=[{"from": "Jane Doe", "to": "Archivum", "type": "built"}],
+    )
+
+    async with aiosqlite.connect(":memory:") as conn:
+        await init_knowledge_schema(conn)
+        repo = KnowledgeRepository(conn)
+        await _sync_extracted_result_to_knowledge(
+            repo,
+            result=result,
+            slug_map={"jane-doe": "jane-doe"},
+            doc=doc,
+            wiki_id="default",
+            source_type="file",
+            display_source="resume.pdf",
+        )
+
+        source = await repo.get_object("source:default:resumepdf")
+        page = await repo.get_object("page:default:jane-doe")
+        entity = await repo.get_object("entity:default:jane-doe")
+        relationships = await repo.list_relationships(scope="wiki:default")
+
+    assert source is not None
+    assert source.kind == "source"
+    assert source.extraction_method == "EXTRACTED"
+    assert source.citations[0].source_id == source.id
+    assert page is not None
+    assert page.extraction_method == "EXTRACTED"
+    assert page.properties["markdown"].startswith("# Jane Doe")
+    assert entity is not None
+    assert entity.properties["entity_type"] == "person"
+    assert any(
+        rel.src_id == SELF_ID
+        and rel.dst_id == source.id
+        and rel.rel_type == "saved_source"
+        for rel in relationships
+    )
+    assert any(
+        rel.src_id == "entity:default:jane-doe"
+        and rel.dst_id == "entity:default:archivum"
+        and rel.rel_type == "built"
+        and rel.extraction_method == "EXTRACTED"
+        for rel in relationships
+    )

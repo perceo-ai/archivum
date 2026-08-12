@@ -56,9 +56,9 @@ export default function ProjectsPage() {
   }
 
   return (
-    <div className="flex-1 overflow-y-auto p-6 max-w-4xl mx-auto w-full">
+    <div className="w-full flex-1 overflow-y-auto p-4">
       <div className="flex items-center justify-between mb-6">
-        <h1 className="text-xl font-semibold text-text-primary">Projects</h1>
+        <h1 className="text-xl font-semibold text-white">Projects</h1>
         <Button onClick={refresh} variant="outline" size="sm" disabled={loading}>
           {loading ? 'Loading...' : 'Refresh'}
         </Button>
@@ -87,12 +87,12 @@ export default function ProjectsPage() {
           <button
             type="button"
             key={project.key}
-            className="block w-full text-left rounded-lg border bg-card text-card-foreground shadow-sm p-6 hover:border-primary/50 transition-colors disabled:hover:border-border disabled:cursor-default"
+            className="soft-border block w-full rounded-[8px] border bg-white/[0.045] p-5 text-left text-white transition-colors hover:border-primary/50 disabled:cursor-default disabled:hover:border-white/[0.06]"
             onClick={() => project.page_slug && navigate(`/wiki/${project.page_slug}`)}
             disabled={!project.page_slug}
           >
             <span className="flex items-start justify-between gap-3">
-              <span className="text-base font-semibold leading-none tracking-tight text-text-primary">
+              <span className="text-base font-semibold leading-none tracking-tight text-white">
                 {project.name}
               </span>
               <Badge variant="secondary">{project.status}</Badge>

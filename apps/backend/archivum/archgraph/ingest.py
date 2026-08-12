@@ -6,13 +6,16 @@ from pathlib import Path
 
 import aiosqlite
 
-from archivum.archgraph.cache import content_hash, load_cached, save_cached
+from archivum.archgraph.cache import load_cached, save_cached
 from archivum.archgraph.extract import extract_file
+from archivum.archgraph.extractors.base import _file_namespace
 from archivum.archgraph.mapper import (
     CandidateArtifact,
     CandidateEntity,
     CandidateRelationship,
     Provenance,
+    candidate_to_knowledge_object,
+    candidate_to_knowledge_relationship,
     map_extraction,
 )
 from archivum.archgraph.models import Extraction
@@ -22,6 +25,7 @@ from archivum.archgraph.resolve import resolve_cross_file
 from archivum.archgraph.cross_repo import resolve_cross_repo
 from archivum.archgraph.bridge import bridge_evidence
 from archivum.archgraph.lexical import build_lexical_index
+from archivum.knowledge.repository import KnowledgeRepository
 
 
 @dataclass
@@ -103,14 +107,18 @@ def changed_files(root: Path, since_sha: str | None) -> tuple[list[Path], list[P
     for line in result.stdout.splitlines():
         if not line.strip():
             continue
-        parts = line.split("\t", 1)
+        parts = line.split("\t")
         if len(parts) < 2:
             continue
-        status, rel_path = parts[0].strip(), parts[1].strip()
-        # Rename lines look like "R100\told_name\tnew_name" — take the new name
+        status = parts[0].strip()
+        rel_path = parts[1].strip()
+        # Rename lines look like "R100\told_name\tnew_name" — index the new
+        # name and clean stale records for the old namespace.
         if status.startswith("R"):
-            sub = rel_path.split("\t", 1)
-            rel_path = sub[1] if len(sub) == 2 else rel_path
+            old_path = root / rel_path
+            if old_path.suffix in CODE_SUFFIXES:
+                deleted.append(old_path)
+            rel_path = parts[2].strip() if len(parts) >= 3 else rel_path
             status = "R"
 
         abs_path = root / rel_path
@@ -156,7 +164,7 @@ async def ingest_repo(
     *,
     scope: str,
     cache_dir: Path,
-    validation,
+    knowledge: KnowledgeRepository,
     lexical_conn: aiosqlite.Connection,
     update: bool = False,
     since_sha: str | None = None,
@@ -179,10 +187,11 @@ async def ingest_repo(
     for file in files:
         # Use str(file) as chunk_id so prune_dangling can match by file path
         chunk_id = str(file)
-        ext = load_cached(file, cache_dir)
+        cache_namespace = _file_namespace(file, root=root, scope=scope)
+        ext = load_cached(file, cache_dir, namespace=cache_namespace)
         if ext is None:
-            ext = extract_file(file)
-            save_cached(file, ext, cache_dir)
+            ext = extract_file(file, root=root, scope=scope)
+            save_cached(file, ext, cache_dir, namespace=cache_namespace)
         else:
             cache_hits += 1
         all_extractions.append(ext)
@@ -207,47 +216,56 @@ async def ingest_repo(
         mapped = map_extraction(ext, scope=scope, chunk_id=chunk_id)
         all_candidates.extend(mapped)
 
-    # Step 5 (incremental only): prune candidates from deleted files
+    # Step 5 (incremental only): prune candidates from deleted files and remove
+    # stale canonical records from every touched file before current upserts.
     if update and deleted:
         deleted_strs = {str(p) for p in deleted}
         all_candidates, _ = prune_dangling(all_candidates, deleted_strs)
 
-    # Step 6: validate first batch
-    accepted_before = len(validation.accepted)
-    rejected_before = len(validation.rejected)
-    validation.validate_batch(all_candidates)
+    if update:
+        touched_strs = {str(p) for p in files}
+        touched_strs.update(str(p) for p in deleted)
+        await knowledge.delete_records_with_only_citations_in(
+            scope=scope, chunk_ids=touched_strs
+        )
 
-    # Step 7: build L1 view from currently accepted candidates and run cross-repo + bridge
-    l1_view = _L1View(validation.accepted)
+    # Step 6: persist canonical knowledge records and their provenance.
+    for candidate in all_candidates:
+        if isinstance(candidate, (CandidateEntity, CandidateArtifact)):
+            await knowledge.upsert_object(candidate_to_knowledge_object(candidate))
+        elif isinstance(candidate, CandidateRelationship):
+            await knowledge.upsert_relationship(candidate_to_knowledge_relationship(candidate))
+    accepted = all_candidates
+
+    # Step 7: build a read view from this run and resolve derived relationships.
+    l1_view = _L1View(accepted)
     cross_repo_rels = await resolve_cross_repo(l1_view)
     bridge_rels = await bridge_evidence(l1_view)
     extra_rels: list[object] = [*cross_repo_rels, *bridge_rels]
     if extra_rels:
-        validation.validate_batch(extra_rels)
+        for relationship in extra_rels:
+            await knowledge.upsert_relationship(candidate_to_knowledge_relationship(relationship))
+        accepted.extend(extra_rels)
 
-    # Step 8: build lexical index from accepted entity/artifact candidates
+    # Step 8: rebuild lexical index from canonical code objects in this scope.
+    # Incremental runs only extract touched files, but lexical is a full
+    # projection and its builder clears existing rows before repopulating.
+    canonical_objects = await knowledge.list_objects(scope=scope, limit=100_000)
     code_nodes = [
-        (c.id, c.name)
-        for c in validation.accepted
-        if isinstance(c, (CandidateEntity, CandidateArtifact))
+        (object_.id, object_.label)
+        for object_ in canonical_objects
+        if object_.properties.get("source_scope") == scope
     ]
     await build_lexical_index(lexical_conn, code_nodes)
 
-    # Step 9: compute report counts as deltas from this run
-    accepted_after = len(validation.accepted)
-    rejected_after = len(validation.rejected)
-
-    accepted_delta = accepted_after - accepted_before
-    rejected_delta = rejected_after - rejected_before
-
     nodes_accepted = sum(
         1
-        for c in validation.accepted[accepted_before:]
+        for c in accepted
         if isinstance(c, (CandidateEntity, CandidateArtifact))
     )
     edges_accepted = sum(
         1
-        for c in validation.accepted[accepted_before:]
+        for c in accepted
         if isinstance(c, CandidateRelationship)
     )
 
@@ -255,6 +273,6 @@ async def ingest_repo(
         files=len(files),
         nodes=nodes_accepted,
         edges=edges_accepted,
-        rejected=rejected_delta,
+        rejected=0,
         cache_hits=cache_hits,
     )

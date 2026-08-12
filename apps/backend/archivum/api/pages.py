@@ -15,6 +15,14 @@ from archivum.auth import CurrentUser, get_current_user, require_writer
 from archivum.config import Settings, get_settings
 from archivum.db import sqlite, qdrant_client as qdrant, graph
 from archivum.ingest.agent import slugify
+from archivum.knowledge.repository import KnowledgeRepository
+from archivum.knowledge.suggestions import init_suggestion_schema
+from archivum.linting import WIKILINK_RE
+from archivum.pages_to_knowledge import (
+    remove_page_from_knowledge,
+    rename_page_in_knowledge,
+    sync_page_to_knowledge,
+)
 from archivum.security.markdown import sanitize_markdown
 
 router = APIRouter(prefix="/api/pages", tags=["pages"])
@@ -174,6 +182,61 @@ async def _rewrite_wikilinks(
             wiki_id=wiki_id,
         )
         await qdrant.upsert_page(detail["slug"], detail["title"], rewritten, wiki_id, settings)
+        await _sync_page_graph(detail["slug"], detail["title"], rewritten, wiki_id)
+        await _sync_page_knowledge(detail["slug"], detail["title"], rewritten, wiki_id)
+
+
+async def _sync_page_graph(
+    slug: str,
+    title: str,
+    content: str,
+    wiki_id: str,
+) -> None:
+    await graph.upsert_page(slug, title, wiki_id)
+    await graph.clear_references_from_page(slug, wiki_id)
+
+    linked_targets = {
+        slugify(target.strip())
+        for target in WIKILINK_RE.findall(content or "")
+        if target.strip()
+    }
+    for target_slug in sorted(linked_targets):
+        if not target_slug or target_slug == slug:
+            continue
+        existing = await sqlite.get_page(target_slug, wiki_id)
+        if existing:
+            await graph.add_reference(slug, target_slug, wiki_id)
+
+
+async def _sync_page_knowledge(slug: str, title: str, content: str, wiki_id: str) -> None:
+    async with sqlite.get_db() as conn:
+        await init_suggestion_schema(conn)
+        await sync_page_to_knowledge(
+            KnowledgeRepository(conn),
+            slug=slug,
+            title=title,
+            markdown=content,
+            wiki_id=wiki_id,
+        )
+
+
+async def _rename_page_knowledge(
+    old_slug: str, new_slug: str, title: str, content: str, wiki_id: str
+) -> None:
+    async with sqlite.get_db() as conn:
+        await rename_page_in_knowledge(
+            KnowledgeRepository(conn),
+            old_slug=old_slug,
+            new_slug=new_slug,
+            title=title,
+            markdown=content,
+            wiki_id=wiki_id,
+        )
+
+
+async def _remove_page_knowledge(slug: str, wiki_id: str) -> None:
+    async with sqlite.get_db() as conn:
+        await remove_page_from_knowledge(KnowledgeRepository(conn), slug=slug, wiki_id=wiki_id)
 
 
 async def move_page_to_slug(
@@ -221,6 +284,9 @@ async def move_page_to_slug(
         new_path.write_text(existing["content"], encoding="utf-8")
 
     await sqlite.update_page_slug(old_slug, new_slug, wiki_id)
+    await _rename_page_knowledge(
+        old_slug, new_slug, existing["title"], existing["content"], wiki_id
+    )
     await sqlite.update_share_targets({old_slug: new_slug}, wiki_id)
     await qdrant.delete_page(old_slug, wiki_id, settings)
     await qdrant.upsert_page(new_slug, existing["title"], existing["content"], wiki_id, settings)
@@ -263,7 +329,8 @@ async def duplicate_page_to_slug(
 
     await sqlite.upsert_page(new_slug, duplicate_title, content, tags, "user", wiki_id)
     await qdrant.upsert_page(new_slug, duplicate_title, content, wiki_id, settings)
-    await graph.upsert_page(new_slug, duplicate_title, wiki_id)
+    await _sync_page_graph(new_slug, duplicate_title, content, wiki_id)
+    await _sync_page_knowledge(new_slug, duplicate_title, content, wiki_id)
     row = await sqlite.get_page(new_slug, wiki_id)
     return row  # type: ignore[return-value]
 
@@ -379,7 +446,8 @@ async def create_page(
     await qdrant.upsert_page(slug, body.title, clean_content, current_user.wiki_id, settings)
 
     # Kuzu
-    await graph.upsert_page(slug, body.title, current_user.wiki_id)
+    await _sync_page_graph(slug, body.title, clean_content, current_user.wiki_id)
+    await _sync_page_knowledge(slug, body.title, clean_content, current_user.wiki_id)
 
     row = await sqlite.get_page(slug, current_user.wiki_id)
     return _row_to_detail(row)  # type: ignore[arg-type]
@@ -427,7 +495,8 @@ async def update_page(
     await qdrant.upsert_page(slug, new_title, new_content, current_user.wiki_id, settings)
 
     # Kuzu — update page node
-    await graph.upsert_page(slug, new_title, current_user.wiki_id)
+    await _sync_page_graph(slug, new_title, new_content, current_user.wiki_id)
+    await _sync_page_knowledge(slug, new_title, new_content, current_user.wiki_id)
 
     row = await sqlite.get_page(slug, current_user.wiki_id)
     return _row_to_detail(row)  # type: ignore[arg-type]
@@ -454,6 +523,7 @@ async def delete_page(
 
     # SQLite
     await sqlite.delete_page(slug, current_user.wiki_id)
+    await _remove_page_knowledge(slug, current_user.wiki_id)
 
     # Qdrant
     await qdrant.delete_page(slug, current_user.wiki_id, settings)

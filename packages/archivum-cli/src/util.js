@@ -9,6 +9,7 @@ export function printHelp() {
 Commands:
   install [--images|--build] [--yes] [--set KEY=VALUE]
   update [--images|--build]
+  recovery <backup|validate|restore> [backup-dir] [--dir PATH] [--yes]
   uninstall [--volumes] [--images] [--files] [--yes] [--dry-run]
   stack <up|down|restart|logs|ps|build|shell>
   config <get|set|doctor>
@@ -29,7 +30,7 @@ export function parseOptions(args) {
       const [name, inlineValue] = arg.slice(2).split(/=(.*)/s, 2);
       if (inlineValue !== undefined) {
         values.set(name, inlineValue);
-      } else if (i + 1 < args.length && !args[i + 1].startsWith("-") && ["set", "title", "content", "slug", "tag", "client", "service", "host"].includes(name)) {
+      } else if (i + 1 < args.length && !args[i + 1].startsWith("-") && ["set", "title", "content", "slug", "tag", "client", "service", "host", "dir"].includes(name)) {
         const existing = values.get(name);
         const next = args[i + 1];
         values.set(name, existing === undefined ? next : Array.isArray(existing) ? [...existing, next] : [existing, next]);

@@ -12,6 +12,7 @@ _TOP_SEEDS = 3
 
 @dataclass
 class ScopedSubgraph:
+    seeds: list[str] = field(default_factory=list)
     nodes: list[dict] = field(default_factory=list)
     edges: list[dict] = field(default_factory=list)
 
@@ -129,4 +130,4 @@ async def retrieve_code(
                 }
             )
 
-    return ScopedSubgraph(nodes=nodes, edges=edges)
+    return ScopedSubgraph(seeds=seeds_ordered, nodes=nodes, edges=edges)

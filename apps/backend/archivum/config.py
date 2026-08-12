@@ -62,6 +62,8 @@ class Settings(BaseSettings):
     # Ollama base URL (when embed_provider=ollama or llm_*_provider=ollama)
     # Ollama's OpenAI-compat endpoints are typically at `${OLLAMA_BASE_URL}/v1`.
     ollama_base_url: str = "http://localhost:11434"
+    # Optional bearer token for hosted Ollama/OpenAI-compatible proxies.
+    ollama_api_key: str = ""
 
     # ── LLM ────────────────────────────────────────────────────────────────
     # LLM provider + model selection is split by pipeline stage so you can,
@@ -111,6 +113,7 @@ class Settings(BaseSettings):
     rate_limit_api_window_seconds: int = 60
 
     # ── MCP ────────────────────────────────────────────────────────────────
+    mcp_host: str = "127.0.0.1"
     mcp_port: int = 8001
     mcp_api_key: str = ""
 

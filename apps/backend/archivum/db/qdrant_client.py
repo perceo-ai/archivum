@@ -39,6 +39,13 @@ def get_embedder(settings: Settings | None = None) -> TextEmbedding:
     return _embedder
 
 
+def _ollama_openai_base_url(base_url: str) -> str:
+    normalized = (base_url or "").rstrip("/")
+    if normalized.endswith("/v1"):
+        return normalized
+    return f"{normalized}/v1"
+
+
 def _resolve_embed_endpoint(s: Settings) -> tuple[str, str, dict[str, str]]:
     """
     Return (base_url, api_key, extra_headers) for OpenAI-compatible embeddings.
@@ -52,7 +59,7 @@ def _resolve_embed_endpoint(s: Settings) -> tuple[str, str, dict[str, str]]:
     if provider == "openrouter":
         return (s.openrouter_base_url.rstrip("/"), s.openrouter_api_key, {})
     if provider == "ollama":
-        return (f"{s.ollama_base_url.rstrip('/')}/v1", "", {})
+        return (_ollama_openai_base_url(s.ollama_base_url), s.ollama_api_key, {})
     # default: openai_compat
     base_url = (s.embed_base_url or "").rstrip("/")
     if not base_url:
@@ -363,6 +370,7 @@ async def upsert_page(
     content: str,
     wiki_id: str = "default",
     settings: Settings | None = None,
+    projection: bool = False,
 ) -> int:
     """Chunk *content*, embed all chunks, upsert to Qdrant. Returns chunk count."""
     s = settings or get_settings()
@@ -395,6 +403,7 @@ async def upsert_page(
                 "chunk_index": i,
                 "wiki_id": wiki_id,
                 "text": chunk,
+                "knowledge_projection": projection,
             },
         )
         for i, (chunk, vec) in enumerate(zip(chunks, vectors))
@@ -403,6 +412,38 @@ async def upsert_page(
     await client.upsert(collection_name=s.qdrant_collection, points=points)
     logger.info("Qdrant upsert_page done", extra={"slug": slug, "wiki_id": wiki_id, "points": len(points)})
     return len(points)
+
+
+async def index_page(
+    slug: str,
+    title: str,
+    markdown: str,
+    wiki_id: str = "default",
+) -> int:
+    """Index one natural-language knowledge object using the page chunk schema."""
+    return await upsert_page(slug, title, markdown, wiki_id, projection=True)
+
+
+async def clear_projection_index(
+    wiki_id: str = "default", settings: Settings | None = None
+) -> None:
+    """Delete canonical-knowledge projection vectors for one wiki."""
+    s = settings or get_settings()
+    client = await get_client(s)
+    from qdrant_client.models import FilterSelector
+
+    await client.delete(
+        collection_name=s.qdrant_collection,
+        points_selector=FilterSelector(
+            filter=Filter(
+                must=[
+                    FieldCondition(key="wiki_id", match=MatchValue(value=wiki_id)),
+                    FieldCondition(key="knowledge_projection", match=MatchValue(value=True)),
+                ]
+            )
+        ),
+    )
+    logger.debug("Deleted canonical projection vectors", extra={"wiki_id": wiki_id})
 
 
 async def search(

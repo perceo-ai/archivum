@@ -1,8 +1,27 @@
 # Graph Model
 
-Archivum stores graph data in embedded Kuzu. The graph powers graph APIs, graph UI, and MCP neighbor lookups.
+Markdown pages are the human editing surface. Canonical knowledge rows preserve the owner profile, page-authored content, projects, thoughts, extracted entities, relationships, citations, confidence, and extraction method. Qdrant, Kuzu, FTS, and code lexical indexes are rebuildable projections. Retrieval defaults to `person:self` when the caller does not provide another seed.
 
-## Node Types
+Archivum stores the graph projection in embedded Kuzu. The graph powers graph APIs, graph UI, and MCP neighbor lookups, while canonical rows remain the source for rebuilding and cited context.
+
+## Owner-Centered Nodes
+
+The canonical graph starts at `person:self`, the owner profile. Page-authored content links the owner to projects and thoughts, and extracted entities and relationships extend the graph to people, code, sources, and decisions.
+
+## Canonical Knowledge Graph
+
+Canonical objects are stored as knowledge rows before they are projected into graph tables:
+
+| Record | Key | Properties |
+|---|---|---|
+| `KnowledgeNode` | `id` | `kind`, `label`, `scope`, `confidence`, `extraction_method`, `citations`, `properties` |
+| `KnowledgeRelationship` | `id` | `src_id`, `dst_id`, `rel_type`, `scope`, `confidence`, `extraction_method`, `citations`, `properties` |
+
+`KnowledgeNode.kind` covers the owner profile, page-authored content, projects, thoughts, sources, extracted entities, people, code, and decisions as applicable. Relationships retain their citations and provenance metadata when projected into Kuzu.
+
+## Legacy Compatibility Projection
+
+The following `Page` and `Entity` tables and edges are the legacy compatibility projection used by existing graph APIs and wikilink behavior. They are derived from canonical knowledge and should not be read as the complete canonical object model.
 
 | Node | Key | Properties |
 |---|---|---|
@@ -19,10 +38,10 @@ Archivum stores graph data in embedded Kuzu. The graph powers graph APIs, graph 
 
 ## Rebuild
 
-Use rebuild when content changes outside the normal write path or when ingest order left missing `REFERENCES` edges:
+Use the legacy index refresh command when content changes outside the normal write path or when ingest order left missing `REFERENCES` edges:
 
 ```bash
 node packages/archivum-cli/src/index.js wiki rebuild-indexes
 ```
 
-Rebuild reinitializes derived Qdrant and Kuzu data from canonical wiki content and SQLite metadata.
+This command upserts page vectors, page nodes, and wikilink `REFERENCES` edges in the legacy page-based Qdrant/Kuzu projections from SQLite page content and metadata. It does not remove stale page vectors or nodes, update entity/mention/relationship projections, or rebuild canonical knowledge projections, FTS, or the code lexical index.

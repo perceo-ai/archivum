@@ -1,78 +1,86 @@
 """archgraph.hook — CLI entrypoint and git post-commit hook installer.
 
-Stand-in design
----------------
-PER-317's real ValidationLayer is not yet built.  ``_CollectingSink`` below is
-a temporary stand-in that enforces the spec §4 invariant (every candidate must
-carry ≥1 provenance link and a valid extraction_method) exactly as the real
-ValidationLayer will — valid candidates go to ``self.accepted``, invalid ones to
-``self.rejected``.  When PER-317 lands, swap ``_CollectingSink`` for the real
-``ValidationLayer`` in ``_run_ingest``.
-
-``_run_ingest`` also opens an ephemeral aiosqlite connection to
-``<cache_dir>/index.db``; this is a placeholder DB used only by the lexical
-index builder.  PER-317 will route this through the real persistence layer.
+The CLI stores the extracted code graph in the canonical knowledge repository.
+Canonical records use the application's configured SQLite database. The SQLite
+lexical index in ``<cache_dir>/index.db`` remains a rebuildable projection used
+for deterministic code retrieval.
 """
 from __future__ import annotations
 
 import argparse
 import asyncio
 import os
+import subprocess
 import sys
 from pathlib import Path
 
 import aiosqlite
 
+from archivum.archgraph.extractors.base import _make_id
 from archivum.archgraph.ingest import IngestReport, ingest_repo
-
-
-# ---------------------------------------------------------------------------
-# Stand-in validation sink (replace with real ValidationLayer when PER-317 lands)
-# ---------------------------------------------------------------------------
-
-_VALID_METHODS = frozenset({"EXTRACTED", "INFERRED", "AMBIGUOUS"})
-
-
-class _CollectingSink:
-    """Provenance-enforcing stand-in for PER-317's ValidationLayer.
-
-    Mirrors the §4 invariant the real layer enforces: a candidate is accepted
-    only if it has ≥1 provenance entry and an extraction_method in the enum.
-    Anything else is recorded in ``self.rejected`` (never raised — a bad
-    candidate must not abort the whole ingest).
-    """
-
-    def __init__(self) -> None:
-        self.accepted: list[object] = []
-        self.rejected: list[object] = []
-
-    def validate_batch(self, candidates: list) -> None:
-        for c in candidates:
-            provenance = getattr(c, "provenance", None)
-            method = getattr(c, "extraction_method", None)
-            if provenance and method in _VALID_METHODS:
-                self.accepted.append(c)
-            else:
-                self.rejected.append(c)
+from archivum.archgraph.mapper import knowledge_to_candidate_object, knowledge_to_candidate_relationship
+from archivum.archgraph.repo import snapshot_repo
+from archivum.db import sqlite
+from archivum.knowledge.repository import KnowledgeRepository, init_knowledge_schema
 
 
 # ---------------------------------------------------------------------------
 # Async pipeline runner
 # ---------------------------------------------------------------------------
 
-async def _run_ingest(repo: Path, scope: str, cache_dir: Path, update: bool) -> IngestReport:
-    """Construct local sink + aiosqlite connection, run ingest_repo, return report."""
-    cache_dir.mkdir(parents=True, exist_ok=True)
-    sink = _CollectingSink()
-    async with aiosqlite.connect(cache_dir / "index.db") as conn:
-        report = await ingest_repo(
-            repo,
-            scope=scope,
-            cache_dir=cache_dir,
-            validation=sink,
-            lexical_conn=conn,
-            update=update,
+def _last_indexed_sha_path(cache_dir: Path, scope: str) -> Path:
+    return cache_dir / f"last-indexed-sha.{_make_id(scope)}"
+
+
+def _read_last_indexed_sha(cache_dir: Path, scope: str) -> str | None:
+    path = _last_indexed_sha_path(cache_dir, scope)
+    if not path.exists():
+        return None
+    value = path.read_text().strip()
+    return value or None
+
+
+def _write_last_indexed_sha(cache_dir: Path, scope: str, sha: str) -> None:
+    if sha == "working-tree":
+        return
+    path = _last_indexed_sha_path(cache_dir, scope)
+    path.write_text(f"{sha}\n")
+
+
+def _previous_head_sha(repo: Path) -> str | None:
+    try:
+        result = subprocess.run(
+            ["git", "-C", str(repo), "rev-parse", "HEAD^"],
+            capture_output=True,
+            text=True,
         )
+    except (FileNotFoundError, subprocess.SubprocessError):
+        return None
+    if result.returncode != 0:
+        return None
+    return result.stdout.strip() or None
+
+
+async def _run_ingest(repo: Path, scope: str, cache_dir: Path, update: bool) -> IngestReport:
+    """Open canonical knowledge storage and run the ingest pipeline."""
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    current_sha = snapshot_repo(repo).commit_sha
+    since_sha = None
+    if update:
+        since_sha = _read_last_indexed_sha(cache_dir, scope) or _previous_head_sha(repo)
+    async with sqlite.get_db() as knowledge_conn:
+        await init_knowledge_schema(knowledge_conn)
+        async with aiosqlite.connect(cache_dir / "index.db") as lexical_conn:
+            report = await ingest_repo(
+                repo,
+                scope=scope,
+                cache_dir=cache_dir,
+                knowledge=KnowledgeRepository(knowledge_conn),
+                lexical_conn=lexical_conn,
+                update=update,
+                since_sha=since_sha,
+            )
+    _write_last_indexed_sha(cache_dir, scope, current_sha)
     return report
 
 
@@ -83,17 +91,33 @@ async def _run_ingest_and_export(
     from archivum.archgraph.export import export_graph
 
     cache_dir.mkdir(parents=True, exist_ok=True)
-    sink = _CollectingSink()
-    async with aiosqlite.connect(cache_dir / "index.db") as conn:
-        report = await ingest_repo(
-            repo,
-            scope=scope,
-            cache_dir=cache_dir,
-            validation=sink,
-            lexical_conn=conn,
-            update=update,
-        )
-    json_path, _ = export_graph(sink.accepted, export_dir)
+    current_sha = snapshot_repo(repo).commit_sha
+    since_sha = None
+    if update:
+        since_sha = _read_last_indexed_sha(cache_dir, scope) or _previous_head_sha(repo)
+    async with sqlite.get_db() as knowledge_conn:
+        await init_knowledge_schema(knowledge_conn)
+        knowledge = KnowledgeRepository(knowledge_conn)
+        async with aiosqlite.connect(cache_dir / "index.db") as lexical_conn:
+            report = await ingest_repo(
+                repo,
+                scope=scope,
+                cache_dir=cache_dir,
+                knowledge=knowledge,
+                lexical_conn=lexical_conn,
+                update=update,
+                since_sha=since_sha,
+            )
+        objects = await knowledge.list_objects(scope=scope)
+        relationships = await knowledge.list_relationships(scope=scope)
+    json_path, _ = export_graph(
+        [
+            *(knowledge_to_candidate_object(object_) for object_ in objects),
+            *(knowledge_to_candidate_relationship(relationship) for relationship in relationships),
+        ],
+        export_dir,
+    )
+    _write_last_indexed_sha(cache_dir, scope, current_sha)
     return report, json_path
 
 

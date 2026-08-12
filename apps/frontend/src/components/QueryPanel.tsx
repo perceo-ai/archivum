@@ -134,13 +134,13 @@ export default function QueryPanel() {
   }
 
   return (
-    <div className="flex flex-col h-full bg-bg">
+    <div className="flex h-full w-full flex-col bg-transparent">
       {/* Input area */}
       <div
-        className="shrink-0 border-b border-border p-4 bg-panel/40 backdrop-blur supports-[backdrop-filter]:bg-panel/30"
+        className="subtle-divider shrink-0 border-b bg-white/[0.02] p-4 backdrop-blur"
       >
         <h2 className="text-sm font-semibold text-muted-foreground mb-3 uppercase tracking-wider">
-          Ask your knowledge base
+          Ask Archivum
         </h2>
         <form onSubmit={handleSubmit} className="flex gap-2">
           <Textarea
@@ -185,7 +185,7 @@ export default function QueryPanel() {
         )}
 
         {answer && (
-          <div className="max-w-3xl">
+          <div className="w-full">
             {/* Streaming indicator */}
             {loading && (
               <div className="flex items-center gap-2 mb-3">
@@ -209,7 +209,7 @@ export default function QueryPanel() {
 
             {/* Actions */}
             {!loading && (
-              <div className="mt-6 pt-4 border-t border-border flex items-center gap-3">
+              <div className="subtle-divider mt-6 flex items-center gap-3 border-t pt-4">
                 {savedSlug ? (
                   <button
                     onClick={() => navigate(`/wiki/${savedSlug}`)}
@@ -241,7 +241,7 @@ export default function QueryPanel() {
             {/* Citations */}
             {citations.length > 0 && (
               <div
-                className="mt-6 pt-4 border-t border-border"
+                className="subtle-divider mt-6 border-t pt-4"
               >
                 <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">
                   Sources
@@ -266,7 +266,7 @@ export default function QueryPanel() {
           <div className="flex items-center justify-center h-full">
             <Card className="max-w-sm p-4">
               <p className="text-muted-foreground text-sm">
-                Ask anything about your knowledge base. Archivum will search your notes and generate a contextual answer.
+                Ask a question and Archivum will answer from your notes with linked sources.
               </p>
             </Card>
           </div>

@@ -247,14 +247,17 @@ export default function IngestPanel() {
   }, 0);
 
   return (
-    <div className="flex flex-col h-full overflow-y-auto bg-bg">
-      <div className="max-w-2xl mx-auto w-full p-6 flex flex-col gap-6">
+    <div className="flex h-full w-full flex-col overflow-y-auto bg-transparent p-4">
+      <div className="mb-5">
         <div>
           <h2 className="text-lg font-semibold text-foreground mb-1">Ingest Content</h2>
           <p className="text-sm text-muted-foreground">
-            Import files or URLs into your knowledge base.
+            Import files and URLs, then turn them into linked markdown pages.
           </p>
         </div>
+      </div>
+
+      <div className="grid w-full gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(360px,0.75fr)]">
 
         {/* Drop zone */}
         <Card
@@ -263,12 +266,12 @@ export default function IngestPanel() {
           onDrop={onDrop}
           onClick={() => fileInputRef.current?.click()}
           className={cn(
-            'relative border-2 border-dashed cursor-pointer transition-colors p-10 text-center',
-            dragOver ? 'border-accent/60 bg-accent/5' : 'border-border/60',
+            'relative min-h-[220px] cursor-pointer border-2 border-dashed p-10 text-center transition-colors',
+            dragOver ? 'border-primary/60 bg-primary/10' : 'soft-border',
           )}
         >
-          <UploadIcon className="mx-auto mb-3 text-text-muted w-10 h-10" />
-          <p className="text-text-secondary text-sm font-medium">
+          <UploadIcon className="mx-auto mb-3 h-10 w-10 text-zinc-500" />
+          <p className="text-sm font-medium text-zinc-200">
             {dragOver ? 'Drop to ingest' : 'Drag & drop files here'}
           </p>
           <p className="text-muted-foreground text-xs mt-1">or click to browse</p>
@@ -309,9 +312,9 @@ export default function IngestPanel() {
 
         {/* Progress section */}
         {fileStatuses.length > 0 && (
-          <div>
+          <div className="lg:col-span-2">
             <div className="flex items-center justify-between mb-2">
-              <p className="text-xs font-semibold text-text-muted uppercase tracking-wider">
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
                 Progress
                 {doneCount > 0 && ` — ${doneCount}/${fileStatuses.length} complete`}
                 {totalPages > 0 && ` · ${totalPages} pages`}
@@ -319,15 +322,14 @@ export default function IngestPanel() {
               {doneCount > 0 && (
                 <button
                   onClick={clearCompleted}
-                  className="text-xs text-text-muted hover:text-text-secondary transition-colors"
+                  className="text-xs text-muted-foreground transition-colors hover:text-white"
                 >
                   Clear completed
                 </button>
               )}
             </div>
             <div
-              className="rounded-lg border divide-y overflow-hidden"
-              style={{ borderColor: '#3a3a4a' }}
+              className="soft-border overflow-hidden rounded-[8px] border divide-y divide-white/[0.06]"
             >
               {fileStatuses.map((fs, i) => (
                 <FileStatusRow
@@ -354,11 +356,11 @@ function FileStatusRow({
   const { name, events, done, error } = status;
 
   return (
-    <div className="px-4 py-3" style={{ backgroundColor: '#252535' }}>
+    <div className="bg-white/[0.035] px-4 py-3">
       <div className="flex items-start gap-2">
         <StatusDot done={done} error={!!error} processing={!done && events.length > 0} />
         <div className="flex-1 min-w-0">
-          <p className="text-sm text-text-primary font-medium truncate">{name}</p>
+          <p className="truncate text-sm font-medium text-white">{name}</p>
           {/* Event feed */}
           <div className="mt-1 space-y-0.5">
             {events.map((ev, i) => (
@@ -366,7 +368,7 @@ function FileStatusRow({
             ))}
           </div>
           {!done && events.length === 0 && (
-            <p className="text-xs text-text-muted mt-1">Pending...</p>
+            <p className="mt-1 text-xs text-muted-foreground">Pending...</p>
           )}
         </div>
         {done && !error && (

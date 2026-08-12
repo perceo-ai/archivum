@@ -11,6 +11,7 @@ from typing import Any, AsyncGenerator
 import aiosqlite
 
 from archivum.config import Settings, get_settings
+from archivum.knowledge.suggestions import init_suggestion_schema
 from archivum.store.schema import EVIDENCE_SCHEMA
 
 # ── Schema ────────────────────────────────────────────────────────────────────
@@ -254,6 +255,7 @@ async def init_db(settings: Settings) -> None:
     async with get_db() as db:
         await db.executescript(_SCHEMA)
         await db.executescript(EVIDENCE_SCHEMA)
+        await init_suggestion_schema(db)
         await db.commit()
 
 
@@ -536,8 +538,27 @@ async def update_share_targets(mapping: dict[str, str], wiki_id: str = "default"
 
 # ── Folders ───────────────────────────────────────────────────────────────────
 
+DEFAULT_ORGANIZATION_FOLDERS = [
+    "inbox",
+    "notes",
+    "sources",
+    "daily",
+    "projects",
+    "areas",
+    "people",
+    "archive",
+]
+
+
 async def list_folders(wiki_id: str = "default") -> list[dict[str, Any]]:
+    now = datetime.now(UTC).isoformat()
     async with get_db() as db:
+        for path in DEFAULT_ORGANIZATION_FOLDERS:
+            await db.execute(
+                "INSERT OR IGNORE INTO folders (wiki_id, path, name, created_at, updated_at) VALUES (?,?,?,?,?)",
+                (wiki_id, path, path.split("/")[-1], now, now),
+            )
+        await db.commit()
         async with db.execute(
             "SELECT path, name, created_at, updated_at FROM folders WHERE wiki_id=? ORDER BY path ASC",
             (wiki_id,),

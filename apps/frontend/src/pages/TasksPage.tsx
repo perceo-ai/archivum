@@ -50,9 +50,9 @@ export default function TasksPage() {
   }
 
   return (
-    <div className="flex-1 overflow-y-auto p-6 max-w-4xl mx-auto w-full">
+    <div className="w-full flex-1 overflow-y-auto p-4">
       <div className="flex items-center justify-between mb-6">
-        <h1 className="text-xl font-semibold text-text-primary">Tasks</h1>
+        <h1 className="text-xl font-semibold text-white">Tasks</h1>
         <Button onClick={refresh} variant="outline" size="sm" disabled={loading}>
           {loading ? 'Loading...' : 'Refresh'}
         </Button>
@@ -68,11 +68,11 @@ export default function TasksPage() {
 
       {error && <p className="text-sm text-destructive mb-4">{error}</p>}
 
-      <div className="divide-y divide-border border border-border rounded-lg bg-card">
+      <div className="soft-border divide-y divide-white/[0.06] rounded-[8px] border bg-white/[0.035]">
         {tasks.map((task) => (
           <div key={task.id} className="flex items-start justify-between gap-3 p-3">
             <div className="min-w-0">
-              <p className="text-sm text-text-primary">{task.title}</p>
+              <p className="text-sm text-white">{task.title}</p>
               <div className="flex items-center gap-2 mt-1">
                 {task.project_key && <code className="text-xs text-text-secondary">{task.project_key}</code>}
                 {task.due_date && <span className="text-xs text-text-secondary">{task.due_date}</span>}

@@ -12,6 +12,7 @@ def _settings(**overrides):
         "openai_compat_api_key": "test-key",
         "openai_compat_azure_api_version": "2024-02-15-preview",
         "ollama_base_url": "http://localhost:11434",
+        "ollama_api_key": "",
     }
     data.update(overrides)
     return SimpleNamespace(**data)
@@ -26,6 +27,21 @@ def test_resolve_llm_endpoint_uses_ollama_without_auth_header():
 
     assert base_url == "http://localhost:11434/v1"
     assert api_key == ""
+    assert headers == {"Accept": "application/json"}
+    assert params is None
+
+
+def test_resolve_llm_endpoint_keeps_ollama_v1_base_url_and_api_key():
+    base_url, api_key, headers, params = client._resolve_llm_endpoint(
+        _settings(
+            ollama_base_url="https://ollama.example.com/v1",
+            ollama_api_key="ollama-key",
+        ),
+        "ollama",
+    )
+
+    assert base_url == "https://ollama.example.com/v1"
+    assert api_key == "ollama-key"
     assert headers == {"Accept": "application/json"}
     assert params is None
 

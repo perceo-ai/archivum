@@ -20,6 +20,12 @@ import {
   ensureDailyNote,
   listLifeProjects,
   createLifeTask,
+  getLlmSettings,
+  updateLlmSettings,
+  listSuggestions,
+  listPageSuggestions,
+  acceptSuggestion,
+  rejectSuggestion,
 } from './api';
 import type { Page, SearchResult, GraphNode, GraphEdge, LifeProject, LifeTask } from './types';
 
@@ -203,6 +209,68 @@ describe('updatePage', () => {
   });
 });
 
+describe('llm settings api', () => {
+  it('fetches masked LLM settings', async () => {
+    const settings = {
+      llm_extraction_provider: 'ollama',
+      llm_synthesis_provider: 'ollama',
+      llm_model: 'model-a',
+      llm_synthesis_model: 'model-b',
+      ollama_base_url: 'https://ollama.example.com/v1',
+      ollama_api_key_configured: true,
+      ollama_api_key_masked: 'sk-...test',
+    };
+    fetchMock.mockResolvedValueOnce(new Response(
+      JSON.stringify(settings),
+      { status: 200, headers: { 'Content-Type': 'application/json' } },
+    ));
+
+    await expect(getLlmSettings()).resolves.toEqual(settings);
+    expect(fetchMock).toHaveBeenCalledWith('/api/settings/llm', expect.objectContaining({
+      credentials: 'include',
+    }));
+  });
+
+  it('updates LLM settings with CSRF token', async () => {
+    vi.stubGlobal('document', { cookie: 'csrf_token=test-csrf-token' });
+    fetchMock.mockResolvedValueOnce(new Response(
+      JSON.stringify({
+        llm_extraction_provider: 'ollama',
+        llm_synthesis_provider: 'ollama',
+        llm_model: 'model-a',
+        llm_synthesis_model: 'model-b',
+        ollama_base_url: 'https://ollama.example.com/v1',
+        ollama_api_key_configured: true,
+        ollama_api_key_masked: 'sk-...test',
+      }),
+      { status: 200, headers: { 'Content-Type': 'application/json' } },
+    ));
+
+    await updateLlmSettings({
+      llm_extraction_provider: 'ollama',
+      llm_synthesis_provider: 'ollama',
+      llm_model: 'model-a',
+      llm_synthesis_model: 'model-b',
+      ollama_base_url: 'https://ollama.example.com/v1',
+      ollama_api_key: 'secret',
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith('/api/settings/llm', expect.objectContaining({
+      method: 'PUT',
+      credentials: 'include',
+      headers: expect.objectContaining({ 'X-CSRF-Token': 'test-csrf-token' }),
+    }));
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toEqual({
+      llm_extraction_provider: 'ollama',
+      llm_synthesis_provider: 'ollama',
+      llm_model: 'model-a',
+      llm_synthesis_model: 'model-b',
+      ollama_base_url: 'https://ollama.example.com/v1',
+      ollama_api_key: 'secret',
+    });
+  });
+});
+
 describe('deletePage', () => {
   it('sends DELETE to /api/pages/:slug', async () => {
     fetchMock.mockResolvedValueOnce(new Response(null, { status: 204 }));
@@ -336,6 +404,75 @@ describe('getBacklinks', () => {
     await expect(getBacklinks('target-page')).resolves.toEqual(pages);
 
     expect(fetchMock).toHaveBeenCalledWith('/api/pages/target-page/backlinks', expect.objectContaining({
+      credentials: 'include',
+    }));
+  });
+});
+
+describe('suggestions api', () => {
+  const suggestion = {
+    id: 'suggestion:one',
+    target_id: 'page:default:target-page',
+    suggestion_type: 'append_section',
+    proposed_markdown: '## Suggested',
+    proposed_objects: [],
+    citations: [],
+    status: 'pending' as const,
+  };
+
+  it('lists wiki suggestions', async () => {
+    fetchMock.mockResolvedValueOnce(new Response(
+      JSON.stringify([suggestion]),
+      { status: 200, headers: { 'Content-Type': 'application/json' } },
+    ));
+
+    await expect(listSuggestions()).resolves.toEqual([suggestion]);
+
+    expect(fetchMock).toHaveBeenCalledWith('/api/suggestions', expect.objectContaining({
+      credentials: 'include',
+    }));
+  });
+
+  it('lists page suggestions with encoded page slug', async () => {
+    fetchMock.mockResolvedValueOnce(new Response(
+      JSON.stringify([suggestion]),
+      { status: 200, headers: { 'Content-Type': 'application/json' } },
+    ));
+
+    await expect(listPageSuggestions('folder/target page')).resolves.toEqual([suggestion]);
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/suggestions?page_slug=folder%2Ftarget%20page',
+      expect.objectContaining({ credentials: 'include' }),
+    );
+  });
+
+  it('accepts suggestions with CSRF protection', async () => {
+    vi.stubGlobal('document', { cookie: 'csrf_token=test-csrf-token' });
+    fetchMock.mockResolvedValueOnce(new Response(
+      JSON.stringify({ ...suggestion, status: 'accepted' }),
+      { status: 200, headers: { 'Content-Type': 'application/json' } },
+    ));
+
+    await expect(acceptSuggestion('suggestion:one')).resolves.toEqual({ ...suggestion, status: 'accepted' });
+
+    expect(fetchMock).toHaveBeenCalledWith('/api/suggestions/suggestion%3Aone/accept', expect.objectContaining({
+      method: 'POST',
+      credentials: 'include',
+      headers: expect.objectContaining({ 'X-CSRF-Token': 'test-csrf-token' }),
+    }));
+  });
+
+  it('rejects suggestions', async () => {
+    fetchMock.mockResolvedValueOnce(new Response(
+      JSON.stringify({ ...suggestion, status: 'rejected' }),
+      { status: 200, headers: { 'Content-Type': 'application/json' } },
+    ));
+
+    await expect(rejectSuggestion('suggestion:one')).resolves.toEqual({ ...suggestion, status: 'rejected' });
+
+    expect(fetchMock).toHaveBeenCalledWith('/api/suggestions/suggestion%3Aone/reject', expect.objectContaining({
+      method: 'POST',
       credentials: 'include',
     }));
   });

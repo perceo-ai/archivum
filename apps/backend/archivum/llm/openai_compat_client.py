@@ -33,14 +33,21 @@ def _derive_base_url(settings: Settings) -> str:
     return _PROVIDER_BASE_URLS.get(provider, _PROVIDER_BASE_URLS["openai"])
 
 
+def _ollama_openai_base_url(base_url: str) -> str:
+    normalized = (base_url or "").rstrip("/")
+    if normalized.endswith("/v1"):
+        return normalized
+    return f"{normalized}/v1"
+
+
 def _resolve_llm_endpoint(settings: Settings, provider: str) -> tuple[str, str, dict[str, str], dict[str, Any] | None]:
     """
     Return (base_url, api_key, headers, params) for OpenAI-compatible chat.
     """
     p = (provider or "").strip().lower()
     if p == "ollama":
-        base_url = f"{settings.ollama_base_url.rstrip('/')}/v1"
-        return (base_url, "", {"Accept": "application/json"}, None)
+        base_url = _ollama_openai_base_url(settings.ollama_base_url)
+        return (base_url, settings.ollama_api_key, {"Accept": "application/json"}, None)
 
     # openai_compat
     base_url = _derive_base_url(settings)
@@ -159,4 +166,3 @@ async def openai_compat_stream_tokens(
                         yield token
 
         logger.info("OpenAI-compatible stream finished", extra={**sp})
-

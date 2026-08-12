@@ -76,6 +76,21 @@ class TestGetEmbedder:
         MockTE.assert_called_once_with("custom-model")
 
 
+class TestResolveEmbedEndpoint:
+    def test_ollama_keeps_v1_base_url_and_uses_api_key(self):
+        s = make_settings(
+            embed_provider="ollama",
+            ollama_base_url="https://ollama.example.com/v1",
+            ollama_api_key="ollama-key",
+        )
+
+        base_url, api_key, headers = qdrant_module._resolve_embed_endpoint(s)
+
+        assert base_url == "https://ollama.example.com/v1"
+        assert api_key == "ollama-key"
+        assert headers == {}
+
+
 # ── TestUpsertPage ────────────────────────────────────────────────────────────
 
 

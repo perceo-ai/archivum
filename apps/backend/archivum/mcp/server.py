@@ -1,15 +1,18 @@
 from __future__ import annotations
 
 import argparse
+import hmac
 import json
 import logging
+from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
-
-import anthropic
 from mcp.server.fastmcp import FastMCP
+from mcp.server.auth.middleware.auth_context import get_access_token
+from mcp.server.auth.provider import AccessToken
+from mcp.server.auth.settings import AuthSettings
 
 from archivum.capture.schema import Conversation, Turn
 from archivum.capture.store import CaptureStore
@@ -17,13 +20,15 @@ from archivum.config import Settings, get_settings
 from archivum.db import graph, qdrant_client as qdrant, sqlite
 from archivum.ingest.pipeline import ingest
 from archivum.ingest.agent import slugify
+from archivum.knowledge.repository import KnowledgeRepository
 from archivum.life_os.service import ensure_daily_note, register_project
 from archivum.linting import analyze_wiki_pages
-from archivum.llm.openrouter_client import openrouter_chat_completion
-from archivum.llm.openai_compat_client import openai_compat_chat_completion
 from archivum.logging_config import setup_logging
 from archivum.observability import new_trace_id, set_trace_id
 from archivum import page_write_queue
+from archivum.api.query import synthesize_query_answer
+from archivum.retrieval.context import ContextRequest, build_context_package as build_package
+from archivum.retrieval.hybrid import hybrid_retrieve
 
 logger = logging.getLogger(__name__)
 
@@ -36,19 +41,65 @@ class ToolContext:
 settings = get_settings()
 setup_logging()
 set_trace_id(new_trace_id("mcp-startup"))
-mcp = FastMCP(
-    "Archivum",
-    json_response=True,
-    host="0.0.0.0",
-    port=settings.mcp_port,
-)
+
+
+class StaticBearerTokenVerifier:
+    """Validate MCP bearer tokens against the configured static API key."""
+
+    def __init__(self, api_key: str) -> None:
+        self._api_key = api_key
+
+    async def verify_token(self, token: str) -> AccessToken | None:
+        if not self._api_key or not hmac.compare_digest(token, self._api_key):
+            return None
+        return AccessToken(token=token, client_id="archivum-mcp", scopes=[])
+
+
+def create_mcp(app_settings: Settings, *, register_existing_tools: bool = True) -> FastMCP:
+    token_verifier = None
+    auth = None
+    if app_settings.mcp_api_key:
+        token_verifier = StaticBearerTokenVerifier(app_settings.mcp_api_key)
+        resource_url = f"http://localhost:{app_settings.mcp_port}"
+        auth = AuthSettings(
+            issuer_url=resource_url,
+            resource_server_url=resource_url,
+            required_scopes=[],
+        )
+
+    app = FastMCP(
+        "Archivum",
+        json_response=True,
+        host=app_settings.mcp_host,
+        port=app_settings.mcp_port,
+        auth=auth,
+        token_verifier=token_verifier,
+    )
+
+    existing_mcp = globals().get("mcp")
+    if register_existing_tools and isinstance(existing_mcp, FastMCP):
+        for tool in existing_mcp._tool_manager._tools.values():
+            app.add_tool(
+                tool.fn,
+                name=tool.name,
+                title=tool.title,
+                description=tool.description,
+                annotations=tool.annotations,
+                icons=tool.icons,
+                meta=tool.meta,
+            )
+    return app
+
+
+mcp = create_mcp(settings, register_existing_tools=False)
 
 
 def _require_key() -> None:
-    if settings.mcp_api_key:
-        # FastMCP doesn't automatically enforce headers for stdio. We keep this as
-        # a soft requirement in v1 (clients supply it via their own configuration).
+    if not settings.mcp_api_key:
         return
+    token = get_access_token()
+    if token is None or not hmac.compare_digest(token.token, settings.mcp_api_key):
+        raise PermissionError("MCP bearer authentication required")
 
 
 # ── Tools ─────────────────────────────────────────────────────────────────────
@@ -203,6 +254,103 @@ async def graph_neighbors(node_id: str, wiki_id: str = "default") -> dict[str, A
 
 
 @mcp.tool()
+async def build_context_package(
+    query: str,
+    scope: str | None = None,
+    depth: int = 2,
+    max_nodes: int = 10,
+    relations: list[str] | None = None,
+) -> dict[str, Any]:
+    """Build a bounded cited graph context without returning page bodies."""
+    _require_key()
+    set_trace_id(new_trace_id("mcp-context"))
+    request = ContextRequest(
+        query=query,
+        scope=scope or "wiki:default",
+        depth=max(depth, 0),
+        max_nodes=min(max(max_nodes, 1), 50),
+        relations=relations,
+    )
+    async with sqlite.get_db() as connection:
+        package = await build_package(KnowledgeRepository(connection), request)
+    return package.model_dump()
+
+
+@mcp.tool()
+async def retrieve_memory(
+    query: str, wiki_id: str = "default", limit: int = 10
+) -> dict[str, Any]:
+    """Return compact hybrid memory evidence without returning page bodies."""
+    _require_key()
+    set_trace_id(new_trace_id("mcp-retrieve"))
+    query = query.strip()
+    if not query:
+        return {"error": "empty_query", "detail": "Query cannot be empty"}
+    hits = await hybrid_retrieve(
+        query, wiki_id, limit=min(max(limit, 1), 50), settings=settings
+    )
+    citations = _unique_retrieval_citations(
+        citation for hit in hits for citation in _retrieval_evidence_citations(hit)
+    )
+    return {
+        "query": query,
+        "wiki_id": wiki_id,
+        "hits": [
+            {
+                "id": hit.id,
+                "label": hit.label,
+                "score": hit.score,
+                "source": hit.source,
+                "citation": hit.citation.model_dump(),
+                "citations": [citation.model_dump() for citation in hit.citations],
+                **_retrieval_provenance_payload(hit),
+            }
+            for hit in hits
+        ],
+        "citations": [citation.model_dump() for citation in citations],
+        "insufficient_evidence": not bool(citations),
+        "reason": "No cited knowledge matched the retrieval query." if not citations else None,
+    }
+
+
+def _unique_retrieval_citations(citations: Iterable[Any]) -> list[Any]:
+    unique: list[Any] = []
+    seen: set[tuple[str, str, int | None, int | None, str | None]] = set()
+    for citation in citations:
+        key = (
+            citation.source_id,
+            citation.chunk_id,
+            citation.span_start,
+            citation.span_end,
+            citation.quote,
+        )
+        if key not in seen:
+            seen.add(key)
+            unique.append(citation)
+    return unique
+
+
+def _retrieval_provenance_payload(hit: Any) -> dict[str, Any]:
+    if hit.provenance == "canonical":
+        return {
+            "extraction_method": hit.extraction_method,
+            "confidence": hit.confidence,
+            "provenance": "canonical",
+        }
+    return {
+        "extraction_method": "DERIVED",
+        "confidence": None,
+        "provenance": "derived",
+    }
+
+
+def _retrieval_evidence_citations(hit: Any) -> tuple[Any, ...]:
+    if hit.provenance == "canonical":
+        return hit.citations
+    return (hit.citation,)
+
+
+@mcp.tool()
 async def export_graph_demo(output_dir: str | None = None) -> dict[str, Any]:
     """Generate a self-contained demo graph export (no DB required)."""
     _require_key()
@@ -260,65 +408,23 @@ async def query(question: str, wiki_id: str = "default") -> dict[str, Any]:
         return {"error": "missing_api_key", "detail": "OPENROUTER_API_KEY not configured"}
     if settings.llm_synthesis_provider == "openai_compat" and not settings.openai_compat_api_key:
         return {"error": "missing_api_key", "detail": "OPENAI_COMPAT_API_KEY not configured"}
-
-    hits = await qdrant.search_raw(question, wiki_id=wiki_id, limit=6, settings=settings)
-    by_slug: dict[str, dict[str, Any]] = {}
-    for h in hits:
-        s = h.get("slug")
-        if not s:
-            continue
-        if s not in by_slug or float(h.get("score", 0)) > float(by_slug[s].get("score", 0)):
-            by_slug[s] = h
-
-    contexts = list(by_slug.values())
-    slugs = [c.get("slug") for c in contexts if c.get("slug")]
-
-    citations = []
-    citation_rows = await sqlite.get_pages(slugs[:8], wiki_id)
-    for row in citation_rows:
-        citations.append({"slug": row["slug"], "title": row["title"]})
-
-    ctx_lines = []
-    for i, c in enumerate(contexts, start=1):
-        ctx_lines.append(f"[{i}] {c.get('title','')} ({c.get('slug','')})\n{(c.get('excerpt') or '')[:1200]}")
-
-    prompt = (
-        "Answer using ONLY the provided context snippets. If insufficient, say so.\n\n"
-        f"Question:\n{question}\n\nContext:\n" + "\n\n".join(ctx_lines)
-    )
-
-    if settings.llm_synthesis_provider == "anthropic":
-        client = anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key)
-        resp = await client.messages.create(
-            model=settings.llm_synthesis_model,
-            max_tokens=1024,
-            messages=[{"role": "user", "content": prompt}],
-        )
-        answer = (resp.content[0].text if resp.content else "").strip()
-    elif settings.llm_synthesis_provider == "openrouter":
-        answer = await openrouter_chat_completion(
-            settings=settings,
-            model=settings.llm_synthesis_model,
-            max_tokens=1024,
-            temperature=0.2,
-            messages=[{"role": "user", "content": prompt}],
-        )
-    elif settings.llm_synthesis_provider in {"openai_compat", "ollama"}:
-        answer = await openai_compat_chat_completion(
-            settings=settings,
-            provider=settings.llm_synthesis_provider,
-            model=settings.llm_synthesis_model,
-            max_tokens=1024,
-            temperature=0.2,
-            messages=[{"role": "user", "content": prompt}],
-        )
-    else:
+    try:
+        result = await synthesize_query_answer(question.strip(), wiki_id, settings)
+    except ValueError as exc:
         return {
             "error": "unsupported_llm_synthesis_provider",
-            "detail": f"Unsupported llm_synthesis_provider: {settings.llm_synthesis_provider}",
+            "detail": str(exc),
         }
-    logger.info("MCP query done", extra={"wiki_id": wiki_id, "citations": len(citations), "answer_chars": len(answer or "")})
-    return {"answer": answer, "citations": citations}
+    logger.info(
+        "MCP query done",
+        extra={
+            "wiki_id": wiki_id,
+            "citations": len(result.get("citations", [])),
+            "answer_chars": len(result.get("answer") or ""),
+            "insufficient_evidence": result.get("insufficient_evidence"),
+        },
+    )
+    return result
 
 
 @mcp.tool()
@@ -526,7 +632,7 @@ def main() -> None:
 
     # Default to SSE for container usage. Host is set when FastMCP is created;
     # port is configured via MCP_PORT.
-    logger.info("Starting MCP server (sse)", extra={"port": settings.mcp_port})
+    logger.info("Starting MCP server (sse)", extra={"host": settings.mcp_host, "port": settings.mcp_port})
     mcp.run(transport="sse", mount_path="/")
 
 

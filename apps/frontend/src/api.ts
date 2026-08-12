@@ -290,6 +290,150 @@ export async function getGraph(): Promise<{ nodes: GraphNode[]; edges: GraphEdge
   return res.json();
 }
 
+export type Citation = {
+  source_id: string;
+  chunk_id: string;
+  span_start: number | null;
+  span_end: number | null;
+  quote: string | null;
+};
+
+export type ContextNode = {
+  id: string;
+  label: string;
+  node_type: string;
+  scope: string;
+  extraction_method: 'EXTRACTED' | 'INFERRED' | 'AMBIGUOUS' | 'USER_AUTHORED';
+  confidence: number;
+  citations: Citation[];
+};
+
+export type ContextEdge = {
+  from_id: string;
+  to_id: string;
+  relation: string;
+  scope: string;
+  extraction_method: 'EXTRACTED' | 'INFERRED' | 'AMBIGUOUS' | 'USER_AUTHORED';
+  confidence: number;
+  citations: Citation[];
+};
+
+export type ContextPackage = {
+  query: string;
+  seeds: string[];
+  nodes: ContextNode[];
+  edges: ContextEdge[];
+  citations: Citation[];
+  insufficient_evidence: boolean;
+  reason: string | null;
+};
+
+export type ContextPackageRequest = {
+  query?: string;
+  scope?: string;
+  source_type?: string;
+  depth?: number;
+  max_nodes?: number;
+  relations?: string[];
+  seed_ids?: string[];
+};
+
+export type RetrievalHit = {
+  id: string;
+  label: string;
+  score: number;
+  source: string;
+  citation: Citation;
+  citations: Citation[];
+  extraction_method: ContextNode['extraction_method'] | 'DERIVED' | null;
+  confidence: number | null;
+  provenance: 'canonical' | 'derived';
+};
+
+export type RetrieveResponse = {
+  query: string;
+  hits: RetrievalHit[];
+  citations: Citation[];
+  insufficient_evidence: boolean;
+  reason: string | null;
+};
+
+export type MemorySuggestion = {
+  id: string;
+  target_id: string;
+  suggestion_type: string;
+  proposed_markdown: string;
+  proposed_objects: unknown[];
+  citations: Citation[];
+  status: 'pending' | 'accepted' | 'rejected';
+};
+
+export type CreateSuggestionInput = {
+  target_id?: string;
+  page_slug?: string;
+  suggestion_type: string;
+  proposed_markdown?: string;
+  proposed_objects?: unknown[];
+  citations?: Citation[];
+};
+
+export async function listSuggestions(): Promise<MemorySuggestion[]> {
+  const res = await apiFetch('/api/suggestions');
+  return res.json();
+}
+
+export async function listPageSuggestions(slug: string): Promise<MemorySuggestion[]> {
+  const res = await apiFetch(`/api/suggestions?page_slug=${encodeURIComponent(slug)}`);
+  return res.json();
+}
+
+export async function createSuggestion(input: CreateSuggestionInput): Promise<MemorySuggestion> {
+  const res = await apiFetch('/api/suggestions', {
+    method: 'POST',
+    body: JSON.stringify({
+      target_id: input.target_id,
+      page_slug: input.page_slug,
+      suggestion_type: input.suggestion_type,
+      proposed_markdown: input.proposed_markdown ?? '',
+      proposed_objects: input.proposed_objects ?? [],
+      citations: input.citations ?? [],
+    }),
+  });
+  return res.json();
+}
+
+export async function acceptSuggestion(suggestionId: string): Promise<MemorySuggestion> {
+  const res = await apiFetch(`/api/suggestions/${encodeURIComponent(suggestionId)}/accept`, {
+    method: 'POST',
+  });
+  return res.json();
+}
+
+export async function rejectSuggestion(suggestionId: string): Promise<MemorySuggestion> {
+  const res = await apiFetch(`/api/suggestions/${encodeURIComponent(suggestionId)}/reject`, {
+    method: 'POST',
+  });
+  return res.json();
+}
+
+export async function getContextPackage(
+  input: ContextPackageRequest = {},
+): Promise<ContextPackage> {
+  const res = await apiFetch('/api/context-package', {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+  return res.json();
+}
+
+export async function retrieveContext(input: { query: string; limit?: number }): Promise<RetrieveResponse> {
+  const res = await apiFetch('/api/retrieve', {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+  return res.json();
+}
+
 export async function ensureDailyNote(date?: string): Promise<Page> {
   const res = await apiFetch('/api/life/daily', {
     method: 'POST',
@@ -488,6 +632,38 @@ export async function listInvites(): Promise<InviteToken[]> {
 
 export async function getAudioSupport(): Promise<AudioSupportStatus> {
   const res = await apiFetch('/api/audio-support');
+  return res.json();
+}
+
+export type LlmSettings = {
+  llm_extraction_provider: string;
+  llm_synthesis_provider: string;
+  llm_model: string;
+  llm_synthesis_model: string;
+  ollama_base_url: string;
+  ollama_api_key_configured: boolean;
+  ollama_api_key_masked: string;
+};
+
+export type UpdateLlmSettingsInput = {
+  llm_extraction_provider: string;
+  llm_synthesis_provider: string;
+  llm_model: string;
+  llm_synthesis_model: string;
+  ollama_base_url: string;
+  ollama_api_key?: string | null;
+};
+
+export async function getLlmSettings(): Promise<LlmSettings> {
+  const res = await apiFetch('/api/settings/llm');
+  return res.json();
+}
+
+export async function updateLlmSettings(input: UpdateLlmSettingsInput): Promise<LlmSettings> {
+  const res = await apiFetch('/api/settings/llm', {
+    method: 'PUT',
+    body: JSON.stringify(input),
+  });
   return res.json();
 }
 

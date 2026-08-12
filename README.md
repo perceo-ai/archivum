@@ -6,6 +6,10 @@ A self-hosted, Obsidian-style second brain: a private markdown wiki in your brow
 
 Archivum keeps your knowledge base as plain markdown files you own, then layers a browser wiki, semantic search, cited Q&A, and file/URL ingest on top. It kills the trade-off between a local vault you control and a hosted app you have to hand your notes to — everything runs on your own machine, and the same content is exposed to Claude Desktop, Claude Code, Cursor, and other MCP clients without a third party in the loop.
 
+Archivum keeps markdown editable for humans while maintaining rebuildable semantic and graph indexes for search, citations, and agent context.
+
+Archivum organizes your notes, projects, sources, and agent context around you as the center of the graph. The default view starts from your owner profile, then lets you zoom into projects, thoughts, people, code, and decisions.
+
 ## Part of the Perceo stack
 
 Archivum is part of [Perceo](https://perceo.ai) — a local-first developer suite. Related tools:
@@ -97,18 +101,20 @@ MCP tools exposed to agents: `ingest_source`, `search_wiki`, `list_pages`, `get_
 
 ## How it works
 
-1. **Files are the source of truth.** Markdown pages live in the `wiki_data` volume; original uploads land in `raw_data`. Everything else is a derived index.
+1. **Editable markdown is the source of truth.** Markdown pages live in the `wiki_data` volume; original uploads land in `raw_data`. Canonical knowledge rows preserve page-authored content and its provenance, while indexes are derived and rebuildable.
 2. **Ingest normalizes sources.** File paths and URLs are parsed into wiki pages with source metadata, then chunked and indexed. Supported inputs include markdown, PDF, HTML, EPUB, DOCX/PPTX/XLSX, CSV/JSON, source code, EML/MBOX, and subtitles.
-3. **Three stores index the vault.** SQLite (`db_data`) holds auth, metadata, the ingest log, shares, and keyword search; Qdrant (`qdrant_data`) holds semantic vectors; Kuzu (`kuzu_data`) holds the graph.
-4. **Search and Q&A run over your content.** Semantic search returns ranked excerpts; `query` retrieves context and synthesizes an answer with citations back to the source pages.
+3. **Canonical knowledge powers the vault.** Canonical knowledge rows preserve the owner profile, page-authored content, projects, thoughts, extracted entities, relationships, citations, confidence, and extraction method. Qdrant (`qdrant_data`), Kuzu (`kuzu_data`), FTS, and code lexical indexes are rebuildable projections.
+4. **Search and Q&A run over your content.** Retrieval defaults to `person:self` when the caller does not provide another seed, returns cited context and ranked excerpts, and `query` synthesizes an answer with citations back to the source pages.
 5. **Caddy fronts the app.** It terminates TLS and routes the browser UI, REST API, and MCP endpoint. Set `ARCHIVUM_HOST` and point DNS at the host for automatic HTTPS.
 6. **Agents reach the same vault over MCP** via stdio or HTTP/SSE — reading, writing, searching, and querying the identical data the browser sees.
 
-If Qdrant or Kuzu drift out of sync with the files, rebuild them:
+To refresh page vectors, page nodes, and wikilink reference edges in the legacy page-based Qdrant/Kuzu projections, run:
 
 ```bash
 node packages/archivum-cli/src/index.js wiki rebuild-indexes
 ```
+
+This command upserts those page records and reference edges. It does not remove stale page vectors or nodes, update entity/mention/relationship projections, or rebuild canonical knowledge projections, FTS, or the code lexical index.
 
 ## Features
 
@@ -129,9 +135,14 @@ node packages/archivum-cli/src/index.js wiki rebuild-indexes
 ## Operations
 
 ```bash
-./update.sh                 # pull/update and restart
-./uninstall.sh              # remove containers/network, keep data
-./uninstall.sh --volumes    # also delete wiki/raw/db/Kuzu/Qdrant/Ollama volumes
+./update.sh                         # back up precious data, pull/update, and restart
+./update.sh --no-backup             # update without creating a pre-update backup
+node packages/archivum-cli/src/index.js recovery backup
+node packages/archivum-cli/src/index.js recovery validate backups/<backup-dir>
+node packages/archivum-cli/src/index.js recovery restore backups/<backup-dir> --dry-run
+node packages/archivum-cli/src/index.js recovery restore backups/<backup-dir> --yes
+./uninstall.sh                      # remove containers/network, keep data
+./uninstall.sh --volumes            # also delete wiki/raw/db/Kuzu/Qdrant/Ollama volumes
 
 docker compose logs -f backend
 docker compose logs -f mcp

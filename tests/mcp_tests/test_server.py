@@ -1,10 +1,13 @@
+from contextlib import asynccontextmanager
 from unittest.mock import AsyncMock, patch
 
 import pytest
 
 from archivum.config import Settings
 from archivum.db import sqlite
+from archivum.knowledge.models import Citation, ContextPackage, ContextNode
 from archivum.mcp import server
+from archivum.retrieval.hybrid import HybridHit
 
 
 @pytest.fixture
@@ -109,6 +112,29 @@ async def test_query_returns_missing_key_for_openrouter(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_query_uses_shared_cited_synthesis_path(monkeypatch):
+    async def fail_raw_search(*args, **kwargs):
+        raise AssertionError("MCP query should not bypass cited query synthesis")
+
+    expected = {
+        "answer": "Alpha is supported [1]",
+        "citations": [{"slug": "alpha", "title": "Alpha"}],
+        "insufficient_evidence": False,
+        "reason": None,
+    }
+    monkeypatch.setattr(server.settings, "llm_synthesis_provider", "ollama")
+    monkeypatch.setattr(server.qdrant, "search_raw", fail_raw_search)
+    monkeypatch.setattr(server, "synthesize_query_answer", AsyncMock(return_value=expected))
+
+    result = await server.query("What changed?", wiki_id="default")
+
+    assert result == expected
+    server.synthesize_query_answer.assert_awaited_once_with(
+        "What changed?", "default", server.settings
+    )
+
+
+@pytest.mark.asyncio
 async def test_write_page_queues_backend_job_instead_of_direct_indexing(monkeypatch):
     monkeypatch.setattr(server.sqlite, "enqueue_page_write_job", AsyncMock(return_value=17))
     monkeypatch.setattr(
@@ -140,3 +166,153 @@ async def test_write_page_queues_backend_job_instead_of_direct_indexing(monkeypa
     upsert_page.assert_not_awaited()
     upsert_graph.assert_not_awaited()
     assert result["slug"] == "queued-page"
+
+
+@pytest.mark.asyncio
+async def test_retrieve_memory_returns_compact_cited_provenance(monkeypatch):
+    hit = HybridHit(
+        id="entity:alpha",
+        label="Alpha",
+        score=0.9,
+        source="graph",
+        citation=Citation(
+            source_id="page:default:alpha",
+            chunk_id="page:default:alpha:chunk:0",
+            span_start=0,
+            span_end=5,
+            quote="Alpha evidence",
+        ),
+    )
+    monkeypatch.setattr(server, "hybrid_retrieve", AsyncMock(return_value=[hit]))
+
+    result = await server.retrieve_memory("Alpha")
+
+    assert result["hits"] == [
+        {
+            "id": "entity:alpha",
+            "label": "Alpha",
+            "score": 0.9,
+            "source": "graph",
+            "citation": hit.citation.model_dump(),
+            "citations": [],
+            "extraction_method": "DERIVED",
+            "confidence": None,
+            "provenance": "derived",
+        }
+    ]
+    assert result["citations"] == [hit.citation.model_dump()]
+    assert "content" not in result["hits"][0]
+
+
+@pytest.mark.asyncio
+async def test_retrieve_memory_preserves_canonical_provenance(monkeypatch):
+    hit = HybridHit(
+        id="entity:alpha",
+        label="Alpha",
+        score=0.9,
+        source="graph",
+        citation=Citation(
+            source_id="page:default:alpha",
+            chunk_id="page:default:alpha:chunk:0",
+            span_start=0,
+            span_end=5,
+            quote="Alpha evidence",
+        ),
+        extraction_method="USER_AUTHORED",
+        confidence=0.75,
+        provenance="canonical",
+    )
+    monkeypatch.setattr(server, "hybrid_retrieve", AsyncMock(return_value=[hit]))
+
+    result = await server.retrieve_memory("Alpha")
+
+    assert result["hits"][0]["extraction_method"] == "USER_AUTHORED"
+    assert result["hits"][0]["confidence"] == 0.75
+    assert result["hits"][0]["provenance"] == "canonical"
+
+
+@pytest.mark.asyncio
+async def test_retrieve_memory_preserves_partial_canonical_confidence(monkeypatch):
+    hit = HybridHit(
+        id="entity:alpha",
+        label="Alpha",
+        score=0.9,
+        source="graph",
+        citation=Citation(
+            source_id="entity:alpha",
+            chunk_id="derived:alpha",
+            span_start=None,
+            span_end=None,
+            quote=None,
+        ),
+        confidence=0.75,
+        provenance="canonical",
+    )
+    monkeypatch.setattr(server, "hybrid_retrieve", AsyncMock(return_value=[hit]))
+
+    result = await server.retrieve_memory("Alpha")
+
+    assert result["hits"][0]["provenance"] == "canonical"
+    assert result["hits"][0]["extraction_method"] is None
+    assert result["hits"][0]["confidence"] == 0.75
+    assert result["hits"][0]["citations"] == []
+    assert result["citations"] == []
+    assert result["insufficient_evidence"] is True
+
+
+@pytest.mark.asyncio
+async def test_retrieve_memory_rejects_whitespace_only_query(monkeypatch):
+    retrieve = AsyncMock()
+    monkeypatch.setattr(server, "hybrid_retrieve", retrieve)
+
+    result = await server.retrieve_memory("  ")
+
+    assert result == {"error": "empty_query", "detail": "Query cannot be empty"}
+    retrieve.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_build_context_package_returns_canonical_context_without_page_bodies(monkeypatch):
+    package = ContextPackage(
+        query="Alpha",
+        seeds=["entity:alpha"],
+        nodes=[
+            ContextNode(
+                id="entity:alpha",
+                label="Alpha",
+                node_type="entity",
+                scope="wiki:default",
+                extraction_method="USER_AUTHORED",
+                confidence=1.0,
+                citations=[
+                    Citation(
+                        source_id="page:default:alpha",
+                        chunk_id="page:default:alpha:chunk:0",
+                        span_start=0,
+                        span_end=5,
+                        quote="Alpha evidence",
+                    )
+                ],
+            )
+        ],
+        edges=[],
+        citations=[],
+        insufficient_evidence=False,
+        reason=None,
+    )
+
+    @asynccontextmanager
+    async def fake_db():
+        yield object()
+
+    monkeypatch.setattr(server.sqlite, "get_db", fake_db)
+    monkeypatch.setattr(server, "build_package", AsyncMock(return_value=package))
+
+    result = await server.build_context_package("Alpha")
+
+    assert result["nodes"][0]["id"] == "entity:alpha"
+    assert result["nodes"][0]["label"] == "Alpha"
+    assert result["nodes"][0]["extraction_method"] == "USER_AUTHORED"
+    assert result["nodes"][0]["confidence"] == 1.0
+    assert result["nodes"][0]["citations"]
+    assert "content" not in result["nodes"][0]

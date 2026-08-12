@@ -4,8 +4,7 @@ from fastapi import APIRouter, Depends, Query
 
 from archivum.auth import CurrentUser, get_current_user
 from archivum.config import Settings, get_settings
-from archivum.db import qdrant_client as qdrant
-from archivum.db import sqlite
+from archivum.retrieval.hybrid import hybrid_retrieve
 
 router = APIRouter(prefix="/api", tags=["search"])
 
@@ -18,41 +17,30 @@ async def search(
     settings: Settings = Depends(get_settings),
 ) -> list[dict]:
     """
-    Semantic search via Qdrant (primary) with keyword FTS fallback.
+    Hybrid semantic, keyword, and bounded graph search.
 
     Returns [{slug,title,excerpt,score}, ...]
     """
     q = q.strip()
+    hits = await hybrid_retrieve(
+        q, current_user.wiki_id, limit=limit, settings=settings
+    )
     results: list[dict] = []
+    for hit in hits:
+        slug = _slug_from_page_id(hit.id, current_user.wiki_id)
+        if slug is None:
+            continue
+        results.append(
+            {
+                "slug": slug,
+                "title": hit.label,
+                "excerpt": hit.citation.quote or "",
+                "score": hit.raw_score,
+            }
+        )
+    return results
 
-    try:
-        results = await qdrant.search(q, wiki_id=current_user.wiki_id, limit=limit, settings=settings)
-    except Exception:
-        results = []
 
-    if len(results) < max(3, min(limit, 10)):
-        # Fill remaining slots with keyword matches (dedup by slug)
-        try:
-            fts = await sqlite.search_pages_fts(q, wiki_id=current_user.wiki_id, limit=limit)
-        except Exception:
-            fts = []
-
-        seen = {r.get("slug") for r in results if r.get("slug")}
-        for row in fts:
-            slug = row.get("slug")
-            if not slug or slug in seen:
-                continue
-            results.append(
-                {
-                    "slug": slug,
-                    "title": row.get("title", ""),
-                    "excerpt": row.get("excerpt", ""),
-                    "score": 0.0,
-                }
-            )
-            seen.add(slug)
-            if len(results) >= limit:
-                break
-
-    return results[:limit]
-
+def _slug_from_page_id(page_id: str, wiki_id: str) -> str | None:
+    prefix = f"page:{wiki_id}:"
+    return page_id.removeprefix(prefix) if page_id.startswith(prefix) else None

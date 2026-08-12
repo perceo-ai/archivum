@@ -1,6 +1,8 @@
 # MCP Server Tools
 
-Archivum exposes the wiki through a built-in MCP server implemented in `apps/backend/archivum/mcp/server.py`.
+Archivum exposes the editable markdown wiki, cited retrieval, and owner-centered agent context through a built-in MCP server implemented in `apps/backend/archivum/mcp/server.py`.
+
+Agents read and write the same markdown pages that humans edit. Canonical knowledge rows preserve citations, confidence, and extraction method, while Qdrant, Kuzu, FTS, and code lexical indexes remain rebuildable projections. Context retrieval defaults to `person:self` when the caller does not provide another seed.
 
 ## Transports
 
@@ -45,7 +47,7 @@ HTTP/SSE:
 | Tool | Purpose |
 |---|---|
 | `ingest_source(source, wiki_id)` | Process a file path or URL into the wiki |
-| `search_wiki(query, top_k, wiki_id)` | Semantic search via Qdrant |
+| `search_wiki(query, top_k, wiki_id)` | Search the indexed markdown vault |
 | `list_pages(wiki_id)` | List wiki pages from SQLite |
 | `get_page(slug, wiki_id)` | Read full markdown for one page |
 | `write_page(title, content, slug, tags, wiki_id)` | Queue a page create/update and wait for re-indexing |
@@ -55,7 +57,7 @@ HTTP/SSE:
 | `graph_neighbors(node_id, wiki_id)` | Return one-hop Kuzu neighbors |
 | `export_graph_demo(output_dir)` | Write a self-contained demo graph export |
 | `lint_wiki(wiki_id)` | Report broken wikilinks, orphan pages, and contradictory claims |
-| `query(question, wiki_id)` | Retrieve context and synthesize an answer with citations |
+| `query(question, wiki_id)` | Retrieve cited context and synthesize an answer |
 | `dispatch_command(command, wiki_id)` | Text wrapper for ingest/search/query/pages/open/write/lint/graph actions |
 
 Life OS tools are early product surfaces. Keep public positioning centered on the wiki, ingest, search, graph, sharing, export, and agent access.

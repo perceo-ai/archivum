@@ -1,20 +1,25 @@
 import { useEffect, useRef, useCallback, forwardRef, useImperativeHandle } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { autocompletion } from '@codemirror/autocomplete';
 import { EditorView, keymap } from '@codemirror/view';
 import { EditorState } from '@codemirror/state';
 import { markdown, markdownLanguage } from '@codemirror/lang-markdown';
 import { languages } from '@codemirror/language-data';
 import { defaultKeymap, history, historyKeymap } from '@codemirror/commands';
-import { oneDark } from '@codemirror/theme-one-dark';
 import { useAppState } from '../../store';
-import { updatePage } from '../../api';
-import { wikilinkExtension } from './wikilinkExtension';
+import { updatePage, type MemorySuggestion } from '../../api';
+import { Button } from '../ui/Button';
+import { makeWikilinkCompletion, wikilinkExtension } from './wikilinkExtension';
+import { markdownBlockExtension, slashCommandCompletion } from './markdownBlockExtension';
 
 export interface EditorProps {
   slug: string;
   initialContent: string;
   onSave?: (status: 'saving' | 'saved' | 'error') => void;
   onChange?: (content: string) => void;
+  pendingSuggestions?: MemorySuggestion[];
+  onAcceptSuggestion?: (suggestion: MemorySuggestion) => void | Promise<void>;
+  onRejectSuggestion?: (suggestion: MemorySuggestion) => void | Promise<void>;
 }
 
 export type EditorHandle = {
@@ -23,7 +28,7 @@ export type EditorHandle = {
 };
 
 const Editor = forwardRef<EditorHandle, EditorProps>(function Editor(
-  { slug, initialContent, onSave, onChange },
+  { slug, initialContent, onSave, onChange, pendingSuggestions = [], onAcceptSuggestion, onRejectSuggestion },
   ref,
 ) {
   const { pages } = useAppState();
@@ -82,13 +87,18 @@ const Editor = forwardRef<EditorHandle, EditorProps>(function Editor(
     const baseTheme = EditorView.theme({
       '&': {
         height: '100%',
-        backgroundColor: '#1e1e2e',
-        fontSize: '14px',
+        backgroundColor: 'transparent',
+        color: 'hsl(var(--foreground))',
+        fontSize: '16px',
+      },
+      '.cm-scroller': {
+        fontFamily: "'Instrument Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
+        backgroundColor: 'transparent',
       },
       '.cm-content': {
-        padding: '16px 24px',
-        maxWidth: '800px',
-        margin: '0 auto',
+        padding: '18px 32px 72px',
+        width: '100%',
+        caretColor: '#ffffff',
       },
       '.cm-focused': {
         outline: 'none',
@@ -96,17 +106,25 @@ const Editor = forwardRef<EditorHandle, EditorProps>(function Editor(
       '.cm-line': {
         lineHeight: '1.7',
       },
+      '.cm-activeLine': {
+        backgroundColor: 'transparent',
+      },
       '.cm-cursor': {
-        borderLeftColor: '#4B91F1',
+        borderLeftColor: 'hsl(var(--foreground))',
       },
       '.cm-selectionBackground': {
-        backgroundColor: '#4B91F130 !important',
+        backgroundColor: 'hsl(var(--primary) / 0.22) !important',
       },
       '&.cm-focused .cm-selectionBackground': {
-        backgroundColor: '#4B91F140 !important',
+        backgroundColor: 'hsl(var(--primary) / 0.28) !important',
+      },
+      '.cm-matchingBracket, .cm-nonmatchingBracket': {
+        backgroundColor: 'transparent',
+        outline: 'none',
       },
       '.cm-gutters': {
-        backgroundColor: '#1e1e2e',
+        display: 'none',
+        backgroundColor: 'transparent',
         border: 'none',
         color: '#3a3a4a',
       },
@@ -121,8 +139,12 @@ const Editor = forwardRef<EditorHandle, EditorProps>(function Editor(
           base: markdownLanguage,
           codeLanguages: languages,
         }),
-        oneDark,
         baseTheme,
+        autocompletion({
+          override: [slashCommandCompletion, makeWikilinkCompletion(pages)],
+          activateOnTyping: true,
+        }),
+        markdownBlockExtension(),
         updateListener,
         ...wikilinks,
         EditorView.lineWrapping,
@@ -151,12 +173,30 @@ const Editor = forwardRef<EditorHandle, EditorProps>(function Editor(
   // the latest slugSet via closure. For a full refresh, a compartment could be
   // used, but for typical usage this is fine.
 
+  const suggestions = pendingSuggestions.filter((suggestion) => suggestion.status === 'pending');
+
   return (
-    <div
-      ref={containerRef}
-      className="h-full w-full overflow-auto"
-      style={{ backgroundColor: '#1e1e2e' }}
-    />
+    <div className="flex h-full w-full flex-col">
+      {suggestions.length > 0 && (
+        <div className="border-b border-white/[0.06] px-4 py-3">
+          <div className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Suggestions</div>
+          <div className="space-y-2">
+            {suggestions.map((suggestion) => (
+              <div key={suggestion.id} className="flex flex-wrap items-center gap-2 text-sm">
+                <code className="min-w-0 flex-1 truncate text-zinc-300">{suggestion.proposed_markdown}</code>
+                <Button type="button" variant="secondary" size="sm" onClick={() => void onAcceptSuggestion?.(suggestion)}>
+                  Accept
+                </Button>
+                <Button type="button" variant="ghost" size="sm" onClick={() => void onRejectSuggestion?.(suggestion)}>
+                  Reject
+                </Button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+      <div ref={containerRef} className="min-h-0 flex-1 overflow-auto" style={{ backgroundColor: 'transparent' }} />
+    </div>
   );
 });
 

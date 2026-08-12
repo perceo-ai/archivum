@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import { spawnSync } from "node:child_process";
 import { composeCommand, ensureDockerReady, runCompose } from "./docker.js";
+import { createBackup } from "./recovery.js";
 import { ensureRoot, parseOptions } from "./util.js";
 
 function runChecked(command, args) {
@@ -13,6 +14,9 @@ export async function updateCommand(args) {
   const root = ensureRoot();
   const useImages = !flags.has("build");
   const compose = ensureDockerReady();
+  const backupDir = flags.has("no-backup")
+    ? null
+    : createBackup({ root, compose, prefix: "pre-update" });
 
   if (fs.existsSync(".git")) {
     runChecked("git", ["fetch", "--all", "--prune"]);
@@ -27,11 +31,16 @@ export async function updateCommand(args) {
 
   const base = composeCommand(compose, { useImages });
   if (useImages) {
-    runCompose(base, ["pull"]);
-    runCompose(base, ["up", "-d", "--no-build", "--remove-orphans"]);
+    const pull = runCompose(base, ["pull"]);
+    if (pull.status !== 0) throw new Error("Docker Compose pull failed.");
+    const up = runCompose(base, ["up", "-d", "--no-build", "--remove-orphans"]);
+    if (up.status !== 0) throw new Error("Docker Compose update failed.");
   } else {
-    runCompose(base, ["build", "--pull"]);
-    runCompose(base, ["up", "-d", "--build", "--remove-orphans"]);
+    const build = runCompose(base, ["build", "--pull"]);
+    if (build.status !== 0) throw new Error("Docker Compose build failed.");
+    const up = runCompose(base, ["up", "-d", "--build", "--remove-orphans"]);
+    if (up.status !== 0) throw new Error("Docker Compose update failed.");
   }
+  if (backupDir) console.log(`Pre-update backup: ${backupDir}`);
   console.log("Archivum update completed.");
 }
