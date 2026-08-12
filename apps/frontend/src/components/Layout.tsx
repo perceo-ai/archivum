@@ -1,8 +1,10 @@
+import { useEffect, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { BookOpen, Blocks, PanelRight, Search, Sparkles, Wrench, X } from 'lucide-react';
 import { type ActiveView, useAppDispatch, useAppState } from '../store';
 import { cn } from '../lib/cn';
 import FileTree from './FileTree';
+import QuickSearchModal from './QuickSearchModal';
 import RightSidebar from './RightSidebar';
 import StatusBar from './StatusBar';
 import { Button } from './ui/Button';
@@ -29,6 +31,7 @@ export default function Layout({ children }: LayoutProps) {
   const dispatch = useAppDispatch();
   const navigate = useNavigate();
   const location = useLocation();
+  const [searchOpen, setSearchOpen] = useState(false);
 
   const currentSection = location.pathname.startsWith('/workflows/')
     ? 'workflows'
@@ -48,6 +51,37 @@ export default function Layout({ children }: LayoutProps) {
     }
     navigate(item.path);
   }
+
+  useEffect(() => {
+    function shouldIgnoreShortcut(target: EventTarget | null) {
+      if (!(target instanceof HTMLElement)) return false;
+      return (
+        target.tagName === 'INPUT' ||
+        target.tagName === 'TEXTAREA' ||
+        target.isContentEditable ||
+        target.closest('[cmdk-input-wrapper]') !== null
+      );
+    }
+
+    function handleKeydown(event: KeyboardEvent) {
+      if (shouldIgnoreShortcut(event.target)) return;
+      if (event.key === '/' || ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k')) {
+        event.preventDefault();
+        setSearchOpen(true);
+      }
+    }
+
+    function handleOpenSearch() {
+      setSearchOpen(true);
+    }
+
+    window.addEventListener('keydown', handleKeydown);
+    window.addEventListener('archivum:open-search', handleOpenSearch);
+    return () => {
+      window.removeEventListener('keydown', handleKeydown);
+      window.removeEventListener('archivum:open-search', handleOpenSearch);
+    };
+  }, []);
 
   return (
     <div className="perceo-shell grid-lines flex h-screen overflow-hidden">
@@ -122,11 +156,11 @@ export default function Layout({ children }: LayoutProps) {
 
           <button
             type="button"
-            onClick={() => navigate('/library')}
+            onClick={() => setSearchOpen(true)}
             className="soft-border ml-2 hidden min-w-[260px] items-center gap-3 rounded-[5px] border bg-white/[0.05] px-4 py-2 text-left text-sm text-zinc-400 transition-colors hover:bg-white/[0.08] hover:text-white md:flex"
           >
             <Search className="h-4 w-4" />
-            <span>Search pages, notes, and context</span>
+            <span>Search notes</span>
             <span className="soft-border ml-auto rounded-[5px] border bg-white/[0.05] px-2 py-1 text-[11px] font-semibold text-zinc-300">
               /
             </span>
@@ -201,6 +235,7 @@ export default function Layout({ children }: LayoutProps) {
 
         <StatusBar />
       </div>
+      <QuickSearchModal open={searchOpen} onOpenChange={setSearchOpen} />
     </div>
   );
 }

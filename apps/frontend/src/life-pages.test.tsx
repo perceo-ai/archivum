@@ -3,7 +3,9 @@ import { renderToString } from 'react-dom/server';
 import { StaticRouter } from 'react-router-dom/server';
 import { AppProvider } from './store';
 import Layout from './components/Layout';
+import NotesInteractionPanel from './components/NotesInteractionPanel';
 import DailyPage from './pages/DailyPage';
+import LibraryPage from './pages/LibraryPage';
 import WorkflowsPage from './pages/WorkflowsPage';
 import ToolsPage from './pages/ToolsPage';
 import SettingsPage from './pages/SettingsPage';
@@ -46,6 +48,28 @@ describe('Life OS pages', () => {
     expect(html).toContain('Daily');
     expect(html).toContain('Projects');
     expect(html).toContain('Tasks');
+  });
+
+  it('keeps search as a shell modal instead of a page-level search surface', () => {
+    const libraryHtml = renderToString(
+      <StaticRouter location="/library">
+        <LibraryPage />
+      </StaticRouter>,
+    );
+    const notesActionsHtml = renderToString(
+      <StaticRouter location="/wiki/home">
+        <AppProvider>
+          <NotesInteractionPanel />
+        </AppProvider>
+      </StaticRouter>,
+    );
+
+    expect(libraryHtml).toContain('Vault Structure');
+    expect(libraryHtml).toContain('Search notes');
+    expect(libraryHtml).not.toContain('Search pages');
+    expect(libraryHtml).not.toContain('Search pages, slugs');
+    expect(notesActionsHtml).toContain('Copy page link');
+    expect(notesActionsHtml).not.toContain('Search notes to open');
   });
 
   it('uses page-focused workflow copy', () => {

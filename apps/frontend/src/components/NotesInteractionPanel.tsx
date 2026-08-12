@@ -1,10 +1,9 @@
 import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { Copy, ExternalLink, Pencil } from 'lucide-react';
 import { useAppDispatch, useAppState } from '../store';
-import { getPage, search, updatePage } from '../api';
-import type { SearchResult } from '../types';
+import { getPage, updatePage } from '../api';
 import { Button } from './ui/Button';
-import { Card } from './ui/Card';
 import { Input } from './ui/Input';
 import { Dialog } from './ui/Dialog';
 
@@ -20,11 +19,6 @@ export default function NotesInteractionPanel() {
   const dispatch = useAppDispatch();
   const navigate = useNavigate();
 
-  const [query, setQuery] = useState('');
-  const [results, setResults] = useState<SearchResult[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
   const [editOpen, setEditOpen] = useState(false);
   const [editSlug, setEditSlug] = useState<string | null>(null);
   const [editTitle, setEditTitle] = useState('');
@@ -33,22 +27,6 @@ export default function NotesInteractionPanel() {
   const [editError, setEditError] = useState<string | null>(null);
 
   const editTagsParsed = useMemo(() => parseTags(editTags), [editTags]);
-
-  async function runSearch(e?: React.FormEvent) {
-    e?.preventDefault();
-    if (!query.trim()) return;
-    setLoading(true);
-    setError(null);
-    try {
-      const res = await search(query.trim());
-      setResults(res);
-    } catch (err) {
-      setError((err as Error).message);
-      setResults([]);
-    } finally {
-      setLoading(false);
-    }
-  }
 
   async function openEdit(slug: string) {
     setEditError(null);
@@ -90,6 +68,10 @@ export default function NotesInteractionPanel() {
     }
   }
 
+  function openCurrentPage() {
+    if (currentSlug) navigate(`/wiki/${currentSlug}`);
+  }
+
   async function copyLink(slug: string) {
     const url = `${window.location.origin}/wiki/${slug}`;
     try {
@@ -101,91 +83,44 @@ export default function NotesInteractionPanel() {
 
   return (
     <div className="flex h-full flex-col">
-      <div className="subtle-divider shrink-0 border-b px-3 py-2">
-        <form onSubmit={runSearch} className="flex gap-2">
-          <Input
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search notes…"
-          />
-          <Button type="submit" variant="primary" size="sm" disabled={loading || !query.trim()}>
-            {loading ? '…' : 'Search'}
-          </Button>
-        </form>
+      <div className="space-y-2">
+        <Button
+          variant="secondary"
+          size="sm"
+          onClick={openCurrentPage}
+          disabled={!currentSlug}
+          className="w-full justify-start"
+        >
+          <ExternalLink className="h-4 w-4" />
+          Open page
+        </Button>
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => currentSlug && openEdit(currentSlug)}
+          disabled={!currentSlug}
+          className="w-full justify-start"
+        >
+          <Pencil className="h-4 w-4" />
+          Edit title and tags
+        </Button>
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => currentSlug && copyLink(currentSlug)}
+          disabled={!currentSlug}
+          className="w-full justify-start"
+        >
+          <Copy className="h-4 w-4" />
+          Copy page link
+        </Button>
       </div>
 
-      <div className="flex-1 overflow-y-auto py-1 px-3">
-        {error && <div className="text-xs text-red-400 py-2">{error}</div>}
-
-        {loading && (
-          <div className="space-y-2 py-2">
-            {[...Array(3)].map((_, i) => (
-              <div key={i} className="skeleton h-20 w-full" />
-            ))}
-          </div>
-        )}
-
-        {!loading && !error && results.length === 0 && query.trim() && (
-          <div className="text-xs text-muted-foreground py-6 text-center">No matches.</div>
-        )}
-
-        {!loading && results.length > 0 && (
-          <div className="space-y-2 pb-3">
-            {results.map((r) => (
-              <div key={r.slug} className="space-y-2">
-                <Card className="p-3 hover:border-accent/30">
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0 flex-1">
-                      <div className="text-sm font-medium text-foreground truncate">{r.title}</div>
-                      <div className="text-xs text-muted-foreground truncate">{r.slug}</div>
-                    </div>
-                    <div className="shrink-0">
-                      {r.slug === currentSlug ? (
-                        <span className="text-xs text-green-400">Active</span>
-                      ) : null}
-                    </div>
-                  </div>
-                  <div className="mt-2 text-xs text-text-secondary leading-relaxed line-clamp-3">
-                    {r.excerpt}
-                  </div>
-                  <div className="mt-3 flex gap-2">
-                    <Button
-                      variant="secondary"
-                      size="sm"
-                      onClick={() => navigate(`/wiki/${r.slug}`)}
-                      className="flex-1"
-                    >
-                      Open
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => openEdit(r.slug)}
-                      title="Edit title/tags"
-                    >
-                      Edit
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => copyLink(r.slug)}
-                      title="Copy link"
-                    >
-                      Copy
-                    </Button>
-                  </div>
-                </Card>
-              </div>
-            ))}
-          </div>
-        )}
-
-        {!loading && !error && !query.trim() && (
-          <div className="text-xs text-muted-foreground py-6 text-center">
-            Search notes to open, edit, or copy a page link.
-          </div>
-        )}
-      </div>
+      {!currentSlug && (
+        <div className="mt-4 text-xs leading-5 text-muted-foreground">
+          Open a note to edit metadata or copy its link.
+        </div>
+      )}
 
       <Dialog
         open={editOpen}
