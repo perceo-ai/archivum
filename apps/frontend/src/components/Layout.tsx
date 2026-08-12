@@ -249,7 +249,14 @@ export default function Layout({ children }: LayoutProps) {
           </main>
 
           {rightOpen && (
-            <aside className="subtle-divider hidden w-[320px] shrink-0 border-l bg-[#171616]/70 xl:flex">
+            <aside
+              className={cn(
+                'hidden shrink-0 xl:flex',
+                isEditingPage
+                  ? 'w-[280px] bg-[#161616] pr-2'
+                  : 'subtle-divider w-[320px] border-l bg-[#171616]/70',
+              )}
+            >
               <RightSidebar />
             </aside>
           )}
