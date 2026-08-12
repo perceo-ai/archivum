@@ -28,10 +28,10 @@ class ContextPackageRequest(BaseModel):
     relations: list[str] | None = None
     seed_ids: list[str] | None = None
 
-    def to_context_request(self, wiki_id: str) -> ContextRequest:
+    def to_context_request(self, scope: str) -> ContextRequest:
         return ContextRequest(
             query=self.query,
-            scope=self.scope or f"wiki:{wiki_id}",
+            scope=scope,
             source_type=self.source_type,
             depth=self.depth,
             max_nodes=self.max_nodes,
@@ -71,9 +71,10 @@ async def context_package(
     current_user: CurrentUser = Depends(get_current_user),
 ) -> ContextPackage:
     """Build a bounded cited subgraph for an authenticated wiki."""
+    request = _context_request_for_user(body, current_user)
     async with sqlite.get_db() as connection:
         return await build_context_package(
-            KnowledgeRepository(connection), body.to_context_request(current_user.wiki_id)
+            KnowledgeRepository(connection), request
         )
 
 
@@ -130,6 +131,22 @@ def _provenance_payload(hit) -> dict[str, ExtractionMethod | str | float | None]
         "confidence": None,
         "provenance": "derived",
     }
+
+
+def _context_request_for_user(
+    body: ContextPackageRequest, current_user: CurrentUser
+) -> ContextRequest:
+    allowed_scope = f"wiki:{current_user.wiki_id}"
+    requested_scope = body.scope.strip() if body.scope is not None else None
+    if requested_scope and requested_scope != allowed_scope:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={
+                "detail": "Context scope is not authorized for this wiki",
+                "code": "unauthorized_context_scope",
+            },
+        )
+    return body.to_context_request(allowed_scope)
 
 
 def _evidence_citations(hit) -> tuple[Citation, ...]:

@@ -67,6 +67,92 @@ async def test_context_package_defaults_to_the_authenticated_wiki(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_context_package_allows_explicit_authenticated_wiki_scope(monkeypatch):
+    package = ContextPackage(
+        query="Alpha",
+        seeds=[],
+        nodes=[],
+        edges=[],
+        citations=[],
+        insufficient_evidence=True,
+        reason="No cited knowledge objects matched the requested context.",
+    )
+
+    @asynccontextmanager
+    async def fake_db():
+        yield object()
+
+    build = AsyncMock(return_value=package)
+    monkeypatch.setattr(context_api.sqlite, "get_db", fake_db)
+    monkeypatch.setattr(context_api, "build_context_package", build)
+
+    await context_api.context_package(
+        context_api.ContextPackageRequest(query="Alpha", scope="wiki:owner"),
+        CurrentUser(username="owner", role="owner", wiki_id="owner"),
+    )
+
+    assert build.await_args.args[1].scope == "wiki:owner"
+
+
+@pytest.mark.asyncio
+async def test_context_package_rejects_other_wiki_scope(monkeypatch):
+    @asynccontextmanager
+    async def fake_db():
+        yield object()
+
+    package = ContextPackage(
+        query="Alpha",
+        seeds=[],
+        nodes=[],
+        edges=[],
+        citations=[],
+        insufficient_evidence=True,
+        reason="No cited knowledge objects matched the requested context.",
+    )
+    build = AsyncMock(return_value=package)
+    monkeypatch.setattr(context_api.sqlite, "get_db", fake_db)
+    monkeypatch.setattr(context_api, "build_context_package", build)
+
+    with pytest.raises(HTTPException) as error:
+        await context_api.context_package(
+            context_api.ContextPackageRequest(query="Alpha", scope="wiki:other"),
+            CurrentUser(username="owner", role="owner", wiki_id="owner"),
+        )
+
+    assert error.value.status_code == 403
+    build.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_context_package_rejects_repo_scope_without_authorization(monkeypatch):
+    @asynccontextmanager
+    async def fake_db():
+        yield object()
+
+    package = ContextPackage(
+        query="Alpha",
+        seeds=[],
+        nodes=[],
+        edges=[],
+        citations=[],
+        insufficient_evidence=True,
+        reason="No cited knowledge objects matched the requested context.",
+    )
+    build = AsyncMock(return_value=package)
+    monkeypatch.setattr(context_api.sqlite, "get_db", fake_db)
+    monkeypatch.setattr(context_api, "build_context_package", build)
+
+    with pytest.raises(HTTPException) as error:
+        await context_api.context_package(
+            context_api.ContextPackageRequest(query="Alpha", scope="repo:test"),
+            CurrentUser(username="owner", role="owner", wiki_id="owner"),
+        )
+
+    assert error.value.status_code == 403
+    build.assert_not_awaited()
+
+
+@pytest.mark.asyncio
 async def test_retrieve_returns_compact_cited_hybrid_hits(monkeypatch):
     hit = HybridHit(
         id="entity:alpha",
