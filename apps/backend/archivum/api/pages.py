@@ -195,11 +195,13 @@ async def _sync_page_graph(
     await graph.upsert_page(slug, title, wiki_id)
 
     linked_targets = {
-        target.strip()
+        slugify(target.strip())
         for target in WIKILINK_RE.findall(content or "")
-        if target.strip() and target.strip() != slug
+        if target.strip()
     }
     for target_slug in sorted(linked_targets):
+        if not target_slug or target_slug == slug:
+            continue
         existing = await sqlite.get_page(target_slug, wiki_id)
         if existing:
             await graph.add_reference(slug, target_slug, wiki_id)
