@@ -160,6 +160,36 @@ class TestRebuildIndexes(unittest.TestCase):
         self.assertEqual(data["pages"], 2)
         self.assertIn("detail", data)
 
+    def test_rebuild_slugifies_display_text_wikilinks(self):
+        """POST /api/rebuild-indexes indexes [[Target Page|Target]] as target-page."""
+        fake_pages = [
+            {
+                "slug": "source-page",
+                "title": "Source Page",
+                "content": "See [[Target Page|Target]].",
+            },
+            {"slug": "target-page", "title": "Target Page", "content": ""},
+        ]
+
+        async def get_page(slug: str, wiki_id: str):
+            if slug == "target-page" and wiki_id == "default":
+                return {"slug": "target-page", "title": "Target Page"}
+            return None
+
+        with (
+            patch("archivum.api.system.sqlite.list_pages", new=AsyncMock(return_value=fake_pages)),
+            patch("archivum.api.system.qdrant.init_collection", new=AsyncMock()),
+            patch("archivum.api.system.graph.init_graph", new=AsyncMock()),
+            patch("archivum.api.system.qdrant.upsert_page", new=AsyncMock()),
+            patch("archivum.api.system.graph.upsert_page", new=AsyncMock()),
+            patch("archivum.api.system.graph.add_reference", new=AsyncMock()) as add_reference,
+            patch("archivum.api.system.sqlite.get_page", new=AsyncMock(side_effect=get_page)),
+        ):
+            response = self.client.post("/api/rebuild-indexes")
+
+        self.assertEqual(response.status_code, 200)
+        add_reference.assert_awaited_once_with("source-page", "target-page", "default")
+
 
 class TestLintWiki(unittest.TestCase):
     def setUp(self):

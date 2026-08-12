@@ -193,6 +193,7 @@ async def _sync_page_graph(
     wiki_id: str,
 ) -> None:
     await graph.upsert_page(slug, title, wiki_id)
+    await graph.clear_references_from_page(slug, wiki_id)
 
     linked_targets = {
         slugify(target.strip())

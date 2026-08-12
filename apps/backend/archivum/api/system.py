@@ -14,6 +14,7 @@ from pydantic import BaseModel
 from archivum.auth import CurrentUser, require_owner
 from archivum.config import Settings, get_settings
 from archivum.db import graph, qdrant_client as qdrant, sqlite
+from archivum.ingest.agent import slugify
 from archivum.linting import WIKILINK_RE, analyze_wiki_pages
 
 router = APIRouter(prefix="/api", tags=["system"])
@@ -198,8 +199,8 @@ async def rebuild_indexes(
         # Rebuild REFERENCES edges from wikilinks
         content = p.get("content", "") or ""
         for target in WIKILINK_RE.findall(content):
-            target_slug = target.strip()
-            if not target_slug:
+            target_slug = slugify(target.strip())
+            if not target_slug or target_slug == p["slug"]:
                 continue
             existing = await sqlite.get_page(target_slug, current_user.wiki_id)
             if existing:
