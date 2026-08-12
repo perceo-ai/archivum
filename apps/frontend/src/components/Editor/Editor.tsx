@@ -115,7 +115,7 @@ const Editor = forwardRef<EditorHandle, EditorProps>(function Editor(
         cursor: 'text',
       },
       '.cm-content': {
-        padding: '18px 32px 72px',
+        padding: '18px var(--wiki-document-x, 1.5rem) 72px',
         width: '100%',
         caretColor: '#ffffff',
         cursor: 'text',

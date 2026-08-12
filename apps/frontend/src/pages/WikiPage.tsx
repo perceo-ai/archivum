@@ -223,8 +223,8 @@ export default function WikiPage() {
   }
 
   return (
-    <div className="flex h-full min-h-0 w-full flex-col bg-transparent">
-      <div className="group/document shrink-0 px-6 pb-2 pt-7 md:px-10 lg:px-14">
+    <div className="wiki-document-surface flex h-full min-h-0 w-full flex-col bg-transparent">
+      <div className="wiki-document-gutter group/document shrink-0 pb-2 pt-7">
         <div className="flex w-full items-start gap-4">
           <div className="min-w-0 flex-1">
             <Input
@@ -238,9 +238,6 @@ export default function WikiPage() {
               aria-label="Page title"
             />
             <div className="mt-2 flex min-h-8 flex-wrap items-center gap-1.5">
-              <span className="mr-1 truncate font-mono text-[11px] text-muted-foreground/70">
-                {slugStr}
-              </span>
               {page?.authored_by === 'agent' && <Badge variant="info">AI-authored</Badge>}
               {parsedTags.map((tag) => (
                 <span

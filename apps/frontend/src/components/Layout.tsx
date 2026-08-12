@@ -152,25 +152,25 @@ export default function Layout({ children }: LayoutProps) {
             Vault
           </Button>
 
-          <div className="min-w-0 flex items-center gap-2 text-sm">
-            <button
-              type="button"
-              onClick={() => navigate(currentSlug ? `/wiki/${currentSlug}` : '/library')}
-              className="truncate text-muted-foreground transition-colors hover:text-foreground"
-            >
-              Archivum
-            </button>
-            <span className="text-muted-foreground/45">/</span>
-            <span className="truncate text-foreground/85">
-              {isEditingPage && currentSlug
-                ? currentSlug.split('/').pop()
-                : currentSection === 'library'
+          {!isEditingPage && (
+            <div className="min-w-0 flex items-center gap-2 text-sm">
+              <button
+                type="button"
+                onClick={() => navigate(currentSlug ? `/wiki/${currentSlug}` : '/library')}
+                className="truncate text-muted-foreground transition-colors hover:text-foreground"
+              >
+                Archivum
+              </button>
+              <span className="text-muted-foreground/45">/</span>
+              <span className="truncate text-foreground/85">
+                {currentSection === 'library'
                   ? 'Library'
                   : currentSection === 'workflows'
                     ? 'Workflows'
                     : 'Tools'}
-            </span>
-          </div>
+              </span>
+            </div>
+          )}
 
           <button
             type="button"

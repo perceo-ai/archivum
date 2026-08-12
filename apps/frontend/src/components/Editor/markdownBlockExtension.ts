@@ -545,7 +545,7 @@ export function markdownBlockExtension(): Extension {
       },
       '.cm-line.cm-markdown-block': {
         position: 'relative',
-        padding: '3px 0 3px 40px',
+        padding: '3px 0',
         borderRadius: '5px',
         color: 'inherit',
       },
@@ -601,6 +601,7 @@ export function markdownBlockExtension(): Extension {
       '.cm-markdown-quote': {
         paddingTop: '6px',
         paddingBottom: '6px',
+        paddingLeft: '14px',
         borderLeft: '3px solid hsl(var(--border) / 0.18)',
         color: 'hsl(var(--muted-foreground))',
         fontStyle: 'italic',
@@ -618,9 +619,9 @@ export function markdownBlockExtension(): Extension {
       },
       '.cm-markdown-marker': {
         display: 'inline-flex',
-        minWidth: '26px',
-        marginLeft: '-34px',
-        marginRight: '6px',
+        minWidth: '22px',
+        marginLeft: '-30px',
+        marginRight: '8px',
         justifyContent: 'center',
         color: 'hsl(var(--muted-foreground))',
         fontWeight: '600',
@@ -653,7 +654,7 @@ export function markdownBlockExtension(): Extension {
       '.cm-markdown-marker-code-fence': {
         minWidth: '34px',
         marginLeft: '-44px',
-        marginRight: '6px',
+        marginRight: '10px',
         borderRadius: '4px',
         backgroundColor: 'hsl(var(--foreground) / 0.06)',
         color: 'hsl(var(--muted-foreground))',
@@ -662,7 +663,7 @@ export function markdownBlockExtension(): Extension {
       },
       '.cm-block-handle': {
         position: 'absolute',
-        left: '4px',
+        left: '-58px',
         top: '50%',
         display: 'inline-flex',
         height: '22px',

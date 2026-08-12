@@ -176,6 +176,27 @@
     border-color: rgba(255, 255, 255, 0.06);
   }
 
+  .wiki-document-surface {
+    --wiki-document-x: 1.5rem;
+  }
+
+  @media (min-width: 768px) {
+    .wiki-document-surface {
+      --wiki-document-x: 2.5rem;
+    }
+  }
+
+  @media (min-width: 1024px) {
+    .wiki-document-surface {
+      --wiki-document-x: 3.5rem;
+    }
+  }
+
+  .wiki-document-gutter {
+    padding-left: var(--wiki-document-x);
+    padding-right: var(--wiki-document-x);
+  }
+
   .page-frame {
     @apply flex w-full flex-1 flex-col overflow-hidden px-3 pb-3 pt-3 md:px-5 md:pb-5 md:pt-5;
   }
