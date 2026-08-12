@@ -229,6 +229,21 @@ async def add_reference(from_slug: str, to_slug: str, wiki_id: str = "default") 
     await _run(_do)
 
 
+async def clear_references_from_page(slug: str, wiki_id: str = "default") -> None:
+    """Remove all outgoing REFERENCES edges for a page before rebuilding them."""
+    def _do():
+        conn = _get_conn()
+        try:
+            conn.execute(
+                "MATCH (p:Page {slug: $slug})-[r:REFERENCES]->(:Page) DELETE r",
+                {"slug": slug},
+            )
+        except Exception as exc:
+            logger.debug("clear_references_from_page warning: %s", exc)
+
+    await _run(_do)
+
+
 async def add_mention(page_slug: str, entity_name: str, wiki_id: str = "default") -> None:
     def _do():
         conn = _get_conn()
