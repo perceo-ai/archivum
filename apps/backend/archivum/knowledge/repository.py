@@ -179,6 +179,22 @@ class KnowledgeRepository:
             await self._conn.rollback()
             raise
 
+    async def delete_relationship(self, relationship_id: str) -> None:
+        """Delete one relationship and its citations."""
+        await self._conn.execute("BEGIN")
+        try:
+            await self._conn.execute(
+                "DELETE FROM knowledge_citations WHERE knowledge_type='relationship' AND knowledge_id=?",
+                (relationship_id,),
+            )
+            await self._conn.execute(
+                "DELETE FROM knowledge_relationships WHERE id=?", (relationship_id,)
+            )
+            await self._conn.commit()
+        except Exception:
+            await self._conn.rollback()
+            raise
+
     async def delete_object(self, object_id: str) -> None:
         """Delete an object, all incident relationships, and their citations."""
         await self._conn.execute("BEGIN")
@@ -208,6 +224,50 @@ class KnowledgeRepository:
         except Exception:
             await self._conn.rollback()
             raise
+
+    async def delete_records_with_only_citations_in(
+        self, *, scope: str, chunk_ids: set[str]
+    ) -> tuple[int, int]:
+        """Delete scoped records whose complete provenance belongs to deleted chunks."""
+        if not chunk_ids:
+            return 0, 0
+
+        placeholders = ", ".join("?" for _ in chunk_ids)
+        deleted_chunks = sorted(chunk_ids)
+
+        async with self._conn.execute(
+            f"""
+            SELECT c.knowledge_id
+            FROM knowledge_citations AS c
+            JOIN knowledge_objects AS o ON o.id = c.knowledge_id
+            WHERE c.knowledge_type='object' AND o.scope=?
+            GROUP BY c.knowledge_id
+            HAVING SUM(CASE WHEN c.chunk_id NOT IN ({placeholders}) THEN 1 ELSE 0 END)=0
+            """,
+            [scope, *deleted_chunks],
+        ) as cursor:
+            object_ids = [row[0] for row in await cursor.fetchall()]
+
+        for object_id in object_ids:
+            await self.delete_object(object_id)
+
+        async with self._conn.execute(
+            f"""
+            SELECT c.knowledge_id
+            FROM knowledge_citations AS c
+            JOIN knowledge_relationships AS r ON r.id = c.knowledge_id
+            WHERE c.knowledge_type='relationship' AND r.scope=?
+            GROUP BY c.knowledge_id
+            HAVING SUM(CASE WHEN c.chunk_id NOT IN ({placeholders}) THEN 1 ELSE 0 END)=0
+            """,
+            [scope, *deleted_chunks],
+        ) as cursor:
+            relationship_ids = [row[0] for row in await cursor.fetchall()]
+
+        for relationship_id in relationship_ids:
+            await self.delete_relationship(relationship_id)
+
+        return len(object_ids), len(relationship_ids)
 
     async def _replace_citations(
         self, knowledge_type: str, knowledge_id: str, citations: list[Citation]

@@ -13,25 +13,6 @@ from archivum.archgraph.mapper import CandidateEntity, Provenance
 from archivum.knowledge.repository import KnowledgeRepository, init_knowledge_schema
 
 
-class FakeValidationLayer:
-    """Local copy of FakeValidationLayer — mirrors conftest exactly."""
-
-    _VALID_METHODS = {"EXTRACTED", "INFERRED", "AMBIGUOUS"}
-
-    def __init__(self) -> None:
-        self.accepted: list[object] = []
-        self.rejected: list[object] = []
-
-    def validate_batch(self, candidates: list) -> None:
-        for candidate in candidates:
-            provenance = getattr(candidate, "provenance", [])
-            method = getattr(candidate, "extraction_method", "")
-            if provenance and method in self._VALID_METHODS:
-                self.accepted.append(candidate)
-            else:
-                self.rejected.append(candidate)
-
-
 @pytest.fixture
 async def lexical_conn(tmp_path):
     async with aiosqlite.connect(tmp_path / "lexical.db") as conn:
@@ -68,44 +49,50 @@ async def test_archgraph_ingest_writes_to_knowledge_repository(git_repo, cache_d
         assert report.nodes > 0
         objects = await knowledge.list_objects(scope="repo:test")
         assert any(obj.kind in {"symbol", "type", "file"} for obj in objects)
+        relationships = await knowledge.list_relationships(scope="repo:test")
+        assert relationships
+        assert all(relationship.extraction_method in {"EXTRACTED", "INFERRED", "AMBIGUOUS"} for relationship in relationships)
+        assert all(relationship.citations and relationship.properties["source_scope"] == "repo:test" for relationship in relationships)
 
 
-async def test_full_ingest_lands_in_l1(git_repo, cache_dir, tmp_path, fake_validation):
+async def test_full_ingest_writes_canonical_objects(git_repo, cache_dir, tmp_path):
     async with aiosqlite.connect(tmp_path / "lexical.db") as conn:
+        await init_knowledge_schema(conn)
+        knowledge = KnowledgeRepository(conn)
         report = await ingest_repo(
             git_repo,
             scope="repo:test",
             cache_dir=cache_dir,
-            validation=fake_validation,
+            knowledge=knowledge,
             lexical_conn=conn,
         )
+        names = {obj.label for obj in await knowledge.list_objects(scope="repo:test")}
 
     assert report.nodes > 0
-    names = {c.name for c in fake_validation.accepted if hasattr(c, "name")}
     assert "Calculator" in names, f"Expected 'Calculator' in accepted names, got: {names}"
 
 
 async def test_second_run_uses_cache(git_repo, shared_cache_dir, tmp_path):
     # First run
-    fv1 = FakeValidationLayer()
     async with aiosqlite.connect(tmp_path / "lex1.db") as conn:
+        await init_knowledge_schema(conn)
         report1 = await ingest_repo(
             git_repo,
             scope="repo:test",
             cache_dir=shared_cache_dir,
-            validation=fv1,
+            knowledge=KnowledgeRepository(conn),
             lexical_conn=conn,
         )
     assert report1.files > 0
 
     # Second run with same cache_dir
-    fv2 = FakeValidationLayer()
     async with aiosqlite.connect(tmp_path / "lex2.db") as conn:
+        await init_knowledge_schema(conn)
         report2 = await ingest_repo(
             git_repo,
             scope="repo:test",
             cache_dir=shared_cache_dir,
-            validation=fv2,
+            knowledge=KnowledgeRepository(conn),
             lexical_conn=conn,
         )
 
@@ -115,20 +102,19 @@ async def test_second_run_uses_cache(git_repo, shared_cache_dir, tmp_path):
     )
 
 
-async def test_all_relationships_have_method(git_repo, cache_dir, tmp_path, fake_validation):
+async def test_all_relationships_have_method(git_repo, cache_dir, tmp_path):
     valid_methods = {"EXTRACTED", "INFERRED", "AMBIGUOUS"}
     async with aiosqlite.connect(tmp_path / "lexical.db") as conn:
+        await init_knowledge_schema(conn)
+        knowledge = KnowledgeRepository(conn)
         await ingest_repo(
             git_repo,
             scope="repo:test",
             cache_dir=cache_dir,
-            validation=fake_validation,
+            knowledge=knowledge,
             lexical_conn=conn,
         )
-
-    from archivum.archgraph.mapper import CandidateRelationship
-
-    rels = [c for c in fake_validation.accepted if isinstance(c, CandidateRelationship)]
+        rels = await knowledge.list_relationships(scope="repo:test")
     assert len(rels) > 0, "Expected at least one accepted relationship"
     for rel in rels:
         assert rel.extraction_method in valid_methods, (
@@ -173,7 +159,7 @@ def _make_two_file_repo(tmp_path: Path) -> Path:
     return repo
 
 
-async def test_update_reextracts_only_changed(tmp_path, fake_validation):
+async def test_update_reextracts_only_changed(tmp_path):
     """Incremental update only processes the changed file and finds new symbols."""
     if shutil.which("git") is None:
         pytest.skip("git not available")
@@ -190,43 +176,41 @@ async def test_update_reextracts_only_changed(tmp_path, fake_validation):
     cache_dir = tmp_path / "cache"
     cache_dir.mkdir()
 
-    # Full ingest at first commit
-    fv1 = FakeValidationLayer()
-    async with aiosqlite.connect(tmp_path / "lex1.db") as conn:
+    async with aiosqlite.connect(tmp_path / "knowledge.db") as conn:
+        await init_knowledge_schema(conn)
+        knowledge = KnowledgeRepository(conn)
         await ingest_repo(
             repo,
             scope="repo:test",
             cache_dir=cache_dir,
-            validation=fv1,
+            knowledge=knowledge,
             lexical_conn=conn,
         )
-
-    # Modify calc.py and commit
+    # Modify calc.py and commit before the incremental run.
     with open(repo / "calc.py", "a") as f:
         f.write("\ndef new_function():\n    return 42\n")
     subprocess.run(["git", "add", "-A"], cwd=repo, check=True, env=_git_env())
     subprocess.run(["git", "commit", "-q", "-m", "add new_function"], cwd=repo, check=True, env=_git_env())
 
-    # Incremental update
-    fv2 = FakeValidationLayer()
-    async with aiosqlite.connect(tmp_path / "lex2.db") as conn:
+    async with aiosqlite.connect(tmp_path / "knowledge.db") as conn:
+        await init_knowledge_schema(conn)
+        knowledge = KnowledgeRepository(conn)
         report = await ingest_repo(
             repo,
             scope="repo:test",
             cache_dir=cache_dir,
-            validation=fv2,
+            knowledge=knowledge,
             lexical_conn=conn,
             update=True,
             since_sha=first_sha,
         )
+        names = {obj.label for obj in await knowledge.list_objects(scope="repo:test")}
 
-    # Only calc.py was changed — exactly 1 file processed
     assert report.files == 1, f"Expected 1 changed file processed, got {report.files}"
-    names = {c.name for c in fv2.accepted if hasattr(c, "name")}
     assert "new_function" in names, f"Expected 'new_function' in accepted names, got: {names}"
 
 
-async def test_update_prunes_deleted_file(tmp_path, fake_validation):
+async def test_update_prunes_deleted_file(tmp_path):
     """After deleting a file and running update, that file's objects are pruned."""
     if shutil.which("git") is None:
         pytest.skip("git not available")
@@ -236,41 +220,41 @@ async def test_update_prunes_deleted_file(tmp_path, fake_validation):
     cache_dir = tmp_path / "cache"
     cache_dir.mkdir()
 
-    # Full ingest
-    fv1 = FakeValidationLayer()
-    async with aiosqlite.connect(tmp_path / "lex1.db") as conn:
+    async with aiosqlite.connect(tmp_path / "knowledge.db") as conn:
+        await init_knowledge_schema(conn)
+        knowledge = KnowledgeRepository(conn)
         report1 = await ingest_repo(
             repo,
             scope="repo:test",
             cache_dir=cache_dir,
-            validation=fv1,
+            knowledge=knowledge,
             lexical_conn=conn,
         )
     assert report1.files == 2
 
-    # Delete utils.py and commit
     (repo / "utils.py").unlink()
     subprocess.run(["git", "add", "-A"], cwd=repo, check=True, env=_git_env())
     subprocess.run(["git", "commit", "-q", "-m", "delete utils.py"], cwd=repo, check=True, env=_git_env())
 
-    # Incremental update — utils.py objects should be pruned
-    fv2 = FakeValidationLayer()
-    async with aiosqlite.connect(tmp_path / "lex2.db") as conn:
+    async with aiosqlite.connect(tmp_path / "knowledge.db") as conn:
+        await init_knowledge_schema(conn)
+        knowledge = KnowledgeRepository(conn)
         report2 = await ingest_repo(
             repo,
             scope="repo:test",
             cache_dir=cache_dir,
-            validation=fv2,
+            knowledge=knowledge,
             lexical_conn=conn,
             update=True,
             since_sha=first_sha,
         )
+        names = {obj.label for obj in await knowledge.list_objects(scope="repo:test")}
 
-    names = {c.name for c in fv2.accepted if hasattr(c, "name")}
+    assert report2.files == 0
     assert "Helper" not in names, f"'Helper' from deleted utils.py should be pruned, got: {names}"
 
 
-async def test_cross_file_edge_provenance_is_file_addressable_and_prunable(tmp_path, fake_validation):
+async def test_cross_file_edge_provenance_is_file_addressable_and_prunable(tmp_path):
     """A cross-file INFERRED edge must be anchored to its source FILE (not a
     synthetic repo-level key) so prune_dangling can reach it when that file is
     deleted — otherwise the edge would dangle forever after a file removal."""
@@ -283,36 +267,60 @@ async def test_cross_file_edge_provenance_is_file_addressable_and_prunable(tmp_p
     (repo / "a.py").write_text("from b import helper\n\ndef run():\n    return helper()\n")
     for args in (["init", "-q"], ["add", "-A"], ["commit", "-q", "-m", "init"]):
         subprocess.run(["git", *args], cwd=repo, check=True, env=_git_env())
+    first_sha = _run_git(["rev-parse", "HEAD"], repo)
 
     cache_dir = tmp_path / "cache"
     cache_dir.mkdir()
-    fv = FakeValidationLayer()
     async with aiosqlite.connect(tmp_path / "lex.db") as conn:
+        await init_knowledge_schema(conn)
+        knowledge = KnowledgeRepository(conn)
         await ingest_repo(
-            repo, scope="repo:test", cache_dir=cache_dir, validation=fv, lexical_conn=conn
+            repo, scope="repo:test", cache_dir=cache_dir, knowledge=knowledge, lexical_conn=conn
         )
+        relationships = await knowledge.list_relationships(scope="repo:test")
 
     inferred = [
-        c for c in fv.accepted
-        if getattr(c, "extraction_method", None) == "INFERRED" and hasattr(c, "src_id")
+        relationship for relationship in relationships
+        if relationship.extraction_method == "INFERRED"
     ]
     assert inferred, "expected a cross-file INFERRED relationship (a.run -> b.helper)"
     a_py = str(repo / "a.py")
-    for c in inferred:
-        chunk_ids = {p.chunk_id for p in c.provenance}
+    for relationship in inferred:
+        chunk_ids = {citation.chunk_id for citation in relationship.citations}
         # file-addressable, NOT the old synthetic "cross_file:..." key
         assert all(not cid.startswith("cross_file:") for cid in chunk_ids), chunk_ids
         assert any(cid.endswith("a.py") or cid.endswith("b.py") for cid in chunk_ids), chunk_ids
 
-    # Deleting a.py must let prune_dangling remove its cross-file edge.
-    kept, pruned = prune_dangling(fv.accepted, {a_py})
-    assert pruned >= 1
+    # The stored relationship retains file-addressable canonical provenance.
     stale = [
-        c for c in kept
-        if getattr(c, "extraction_method", None) == "INFERRED"
-        and any(p.chunk_id == a_py for p in getattr(c, "provenance", []))
+        relationship for relationship in relationships
+        if relationship.extraction_method == "INFERRED"
+        and any(citation.chunk_id == a_py for citation in relationship.citations)
     ]
-    assert not stale, f"cross-file edge from deleted a.py should be prunable, got {stale}"
+    assert stale
+
+    (repo / "a.py").unlink()
+    subprocess.run(["git", "add", "-A"], cwd=repo, check=True, env=_git_env())
+    subprocess.run(["git", "commit", "-q", "-m", "delete caller"], cwd=repo, check=True, env=_git_env())
+
+    async with aiosqlite.connect(tmp_path / "lex.db") as conn:
+        await init_knowledge_schema(conn)
+        knowledge = KnowledgeRepository(conn)
+        await ingest_repo(
+            repo,
+            scope="repo:test",
+            cache_dir=cache_dir,
+            knowledge=knowledge,
+            lexical_conn=conn,
+            update=True,
+            since_sha=first_sha,
+        )
+        relationships = await knowledge.list_relationships(scope="repo:test")
+
+    assert not any(
+        any(citation.chunk_id == a_py for citation in relationship.citations)
+        for relationship in relationships
+    )
 
 
 def test_prune_dangling_pure():

@@ -8,37 +8,35 @@ import pytest
 
 # Public API — imported through the package root (tests __init__.py re-exports)
 from archivum.archgraph import ingest_repo, retrieve_code, ScopedSubgraph, IngestReport
-from archivum.archgraph.mapper import CandidateArtifact, CandidateEntity, CandidateRelationship
+from archivum.knowledge.repository import KnowledgeRepository, init_knowledge_schema
 
 
 # ---------------------------------------------------------------------------
-# Test-local helper: build adjacency + node_meta from a FakeValidationLayer
-# This stands in for what PER-317's real L2 projector will emit.
+# Test-local helper: build adjacency + node metadata from canonical storage.
 # ---------------------------------------------------------------------------
 
-def _build_graph_inputs(accepted: list) -> tuple[dict, dict]:
-    """Return (adjacency, node_meta) from accepted candidates."""
+def _build_graph_inputs(objects: list, relationships: list) -> tuple[dict, dict]:
+    """Return (adjacency, node_meta) from canonical objects and relationships."""
     node_meta: dict[str, dict] = {}
     adjacency: dict[str, list[dict]] = defaultdict(list)
 
-    for c in accepted:
-        if isinstance(c, (CandidateEntity, CandidateArtifact)):
-            citation = c.provenance[0].chunk_id if c.provenance else c.id
-            node_meta[c.id] = {
-                "label": c.name,
-                "kind": c.kind,
-                "scope": c.scope,
-                "confidence": c.confidence,
-                "extraction_method": c.extraction_method,
+    for object_ in objects:
+        citation = object_.citations[0].chunk_id if object_.citations else object_.id
+        node_meta[object_.id] = {
+                "label": object_.label,
+                "kind": object_.kind,
+                "scope": object_.scope,
+                "confidence": object_.confidence,
+                "extraction_method": object_.extraction_method,
                 "citation": citation,
             }
-        elif isinstance(c, CandidateRelationship):
-            adjacency[c.src_id].append(
+    for relationship in relationships:
+        adjacency[relationship.src_id].append(
                 {
-                    "target": c.dst_id,
-                    "relation": c.rel_type,
-                    "extraction_method": c.extraction_method,
-                    "confidence": c.confidence,
+                    "target": relationship.dst_id,
+                    "relation": relationship.rel_type,
+                    "extraction_method": relationship.extraction_method,
+                    "confidence": relationship.confidence,
                 }
             )
 
@@ -49,21 +47,26 @@ def _build_graph_inputs(accepted: list) -> tuple[dict, dict]:
 # Tests
 # ---------------------------------------------------------------------------
 
-async def test_ingest_then_retrieve(git_repo, fake_validation, tmp_path):
+async def test_ingest_then_retrieve(git_repo, tmp_path):
     """After ingest, retrieve_code finds the hypot node with required fields."""
     cache_dir = tmp_path / "cache"
     cache_dir.mkdir()
 
     async with aiosqlite.connect(tmp_path / "lexical.db") as conn:
+        await init_knowledge_schema(conn)
+        knowledge = KnowledgeRepository(conn)
         await ingest_repo(
             git_repo,
             scope="repo:test",
             cache_dir=cache_dir,
-            validation=fake_validation,
+            knowledge=knowledge,
             lexical_conn=conn,
         )
 
-        adj, meta = _build_graph_inputs(fake_validation.accepted)
+        adj, meta = _build_graph_inputs(
+            await knowledge.list_objects(scope="repo:test"),
+            await knowledge.list_relationships(scope="repo:test"),
+        )
 
         sg = await retrieve_code(conn, "hypot", adjacency=adj, node_meta=meta)
 
@@ -87,21 +90,26 @@ async def test_ingest_then_retrieve(git_repo, fake_validation, tmp_path):
         )
 
 
-async def test_retrieve_finds_call_neighbor(git_repo, fake_validation, tmp_path):
+async def test_retrieve_finds_call_neighbor(git_repo, tmp_path):
     """The hypot->add calls edge is reachable in the retrieved subgraph."""
     cache_dir = tmp_path / "cache"
     cache_dir.mkdir()
 
     async with aiosqlite.connect(tmp_path / "lexical.db") as conn:
+        await init_knowledge_schema(conn)
+        knowledge = KnowledgeRepository(conn)
         await ingest_repo(
             git_repo,
             scope="repo:test",
             cache_dir=cache_dir,
-            validation=fake_validation,
+            knowledge=knowledge,
             lexical_conn=conn,
         )
 
-        adj, meta = _build_graph_inputs(fake_validation.accepted)
+        adj, meta = _build_graph_inputs(
+            await knowledge.list_objects(scope="repo:test"),
+            await knowledge.list_relationships(scope="repo:test"),
+        )
 
         # Verify add is at least in node_meta (extracted)
         add_ids = [nid for nid, m in meta.items() if "add" in m["label"].lower() or "add" in nid.lower()]
@@ -148,7 +156,7 @@ async def test_retrieve_finds_call_neighbor(git_repo, fake_validation, tmp_path)
         )
 
 
-async def test_no_llm_call(git_repo, fake_validation, tmp_path, monkeypatch):
+async def test_no_llm_call(git_repo, tmp_path, monkeypatch):
     """Full ingest completes without ever constructing an Anthropic client (zero-LLM)."""
     cache_dir = tmp_path / "cache"
     cache_dir.mkdir()
@@ -162,11 +170,12 @@ async def test_no_llm_call(git_repo, fake_validation, tmp_path, monkeypatch):
     monkeypatch.setattr(anthropic, "AsyncAnthropic", _boom)
 
     async with aiosqlite.connect(tmp_path / "lexical.db") as conn:
+        await init_knowledge_schema(conn)
         report = await ingest_repo(
             git_repo,
             scope="repo:test",
             cache_dir=cache_dir,
-            validation=fake_validation,
+            knowledge=KnowledgeRepository(conn),
             lexical_conn=conn,
         )
 

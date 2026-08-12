@@ -6,7 +6,7 @@ from pathlib import Path
 
 import aiosqlite
 
-from archivum.archgraph.cache import content_hash, load_cached, save_cached
+from archivum.archgraph.cache import load_cached, save_cached
 from archivum.archgraph.extract import extract_file
 from archivum.archgraph.mapper import (
     CandidateArtifact,
@@ -159,14 +159,11 @@ async def ingest_repo(
     *,
     scope: str,
     cache_dir: Path,
-    knowledge: KnowledgeRepository | None = None,
+    knowledge: KnowledgeRepository,
     lexical_conn: aiosqlite.Connection,
-    validation=None,
     update: bool = False,
     since_sha: str | None = None,
 ) -> IngestReport:
-    if knowledge is None and validation is None:
-        raise ValueError("knowledge is required outside legacy validation tests")
     # Step 1: snapshot repo and collect repo-level artifacts
     snap = snapshot_repo(root)
     repo_cands = repo_artifacts(snap, scope=scope)
@@ -217,23 +214,17 @@ async def ingest_repo(
     if update and deleted:
         deleted_strs = {str(p) for p in deleted}
         all_candidates, _ = prune_dangling(all_candidates, deleted_strs)
+        await knowledge.delete_records_with_only_citations_in(
+            scope=scope, chunk_ids=deleted_strs
+        )
 
-    # Step 6: persist canonical knowledge. The validation path remains only for
-    # legacy tests while they are migrated to repository assertions.
-    if knowledge is not None:
-        for candidate in all_candidates:
-            if isinstance(candidate, (CandidateEntity, CandidateArtifact)):
-                await knowledge.upsert_object(candidate_to_knowledge_object(candidate))
-            elif isinstance(candidate, CandidateRelationship):
-                await knowledge.upsert_relationship(candidate_to_knowledge_relationship(candidate))
-        accepted = all_candidates
-        rejected = 0
-    else:
-        accepted_before = len(validation.accepted)
-        rejected_before = len(validation.rejected)
-        validation.validate_batch(all_candidates)
-        accepted = validation.accepted[accepted_before:]
-        rejected = len(validation.rejected) - rejected_before
+    # Step 6: persist canonical knowledge records and their provenance.
+    for candidate in all_candidates:
+        if isinstance(candidate, (CandidateEntity, CandidateArtifact)):
+            await knowledge.upsert_object(candidate_to_knowledge_object(candidate))
+        elif isinstance(candidate, CandidateRelationship):
+            await knowledge.upsert_relationship(candidate_to_knowledge_relationship(candidate))
+    accepted = all_candidates
 
     # Step 7: build a read view from this run and resolve derived relationships.
     l1_view = _L1View(accepted)
@@ -241,13 +232,9 @@ async def ingest_repo(
     bridge_rels = await bridge_evidence(l1_view)
     extra_rels: list[object] = [*cross_repo_rels, *bridge_rels]
     if extra_rels:
-        if knowledge is not None:
-            for relationship in extra_rels:
-                await knowledge.upsert_relationship(candidate_to_knowledge_relationship(relationship))
-            accepted.extend(extra_rels)
-        else:
-            validation.validate_batch(extra_rels)
-            accepted.extend(validation.accepted[len(validation.accepted) - len(extra_rels):])
+        for relationship in extra_rels:
+            await knowledge.upsert_relationship(candidate_to_knowledge_relationship(relationship))
+        accepted.extend(extra_rels)
 
     # Step 8: build lexical index from accepted entity/artifact candidates
     code_nodes = [
@@ -272,6 +259,6 @@ async def ingest_repo(
         files=len(files),
         nodes=nodes_accepted,
         edges=edges_accepted,
-        rejected=rejected,
+        rejected=0,
         cache_hits=cache_hits,
     )

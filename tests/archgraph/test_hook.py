@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import sqlite3
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -74,3 +75,8 @@ def test_cli_real_ingest_smoke(git_repo, tmp_path):
     cache_dir = tmp_path / "c"
     rc = main(["ingest", str(git_repo), "--scope", "repo:test", "--cache-dir", str(cache_dir)])
     assert rc == 0
+    assert (git_repo / ".archivum" / "knowledge.db").exists()
+
+    with sqlite3.connect(cache_dir / "index.db") as conn:
+        tables = {row[0] for row in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+    assert "knowledge_objects" not in tables

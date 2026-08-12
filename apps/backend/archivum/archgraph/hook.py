@@ -1,8 +1,9 @@
 """archgraph.hook — CLI entrypoint and git post-commit hook installer.
 
 The CLI stores the extracted code graph in the canonical knowledge repository.
-The SQLite lexical index in ``<cache_dir>/index.db`` remains a rebuildable
-projection used for deterministic code retrieval.
+Canonical records live in ``<repo>/.archivum/knowledge.db``. The SQLite lexical
+index in ``<cache_dir>/index.db`` remains a rebuildable projection used for
+deterministic code retrieval.
 """
 from __future__ import annotations
 
@@ -26,16 +27,19 @@ from archivum.knowledge.repository import KnowledgeRepository, init_knowledge_sc
 async def _run_ingest(repo: Path, scope: str, cache_dir: Path, update: bool) -> IngestReport:
     """Open canonical knowledge storage and run the ingest pipeline."""
     cache_dir.mkdir(parents=True, exist_ok=True)
-    async with aiosqlite.connect(cache_dir / "index.db") as conn:
-        await init_knowledge_schema(conn)
-        report = await ingest_repo(
-            repo,
-            scope=scope,
-            cache_dir=cache_dir,
-            knowledge=KnowledgeRepository(conn),
-            lexical_conn=conn,
-            update=update,
-        )
+    knowledge_path = repo / ".archivum" / "knowledge.db"
+    knowledge_path.parent.mkdir(parents=True, exist_ok=True)
+    async with aiosqlite.connect(knowledge_path) as knowledge_conn:
+        await init_knowledge_schema(knowledge_conn)
+        async with aiosqlite.connect(cache_dir / "index.db") as lexical_conn:
+            report = await ingest_repo(
+                repo,
+                scope=scope,
+                cache_dir=cache_dir,
+                knowledge=KnowledgeRepository(knowledge_conn),
+                lexical_conn=lexical_conn,
+                update=update,
+            )
     return report
 
 
@@ -46,17 +50,20 @@ async def _run_ingest_and_export(
     from archivum.archgraph.export import export_graph
 
     cache_dir.mkdir(parents=True, exist_ok=True)
-    async with aiosqlite.connect(cache_dir / "index.db") as conn:
-        await init_knowledge_schema(conn)
-        knowledge = KnowledgeRepository(conn)
-        report = await ingest_repo(
-            repo,
-            scope=scope,
-            cache_dir=cache_dir,
-            knowledge=knowledge,
-            lexical_conn=conn,
-            update=update,
-        )
+    knowledge_path = repo / ".archivum" / "knowledge.db"
+    knowledge_path.parent.mkdir(parents=True, exist_ok=True)
+    async with aiosqlite.connect(knowledge_path) as knowledge_conn:
+        await init_knowledge_schema(knowledge_conn)
+        knowledge = KnowledgeRepository(knowledge_conn)
+        async with aiosqlite.connect(cache_dir / "index.db") as lexical_conn:
+            report = await ingest_repo(
+                repo,
+                scope=scope,
+                cache_dir=cache_dir,
+                knowledge=knowledge,
+                lexical_conn=lexical_conn,
+                update=update,
+            )
         objects = await knowledge.list_objects(scope=scope)
         relationships = await knowledge.list_relationships(scope=scope)
     json_path, _ = export_graph(
