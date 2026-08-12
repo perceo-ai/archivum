@@ -290,6 +290,102 @@ export async function getGraph(): Promise<{ nodes: GraphNode[]; edges: GraphEdge
   return res.json();
 }
 
+export type Citation = {
+  source_id: string;
+  chunk_id: string;
+  span_start: number | null;
+  span_end: number | null;
+  quote: string | null;
+};
+
+export type ContextNode = {
+  id: string;
+  label: string;
+  node_type: string;
+  scope: string;
+  extraction_method: 'EXTRACTED' | 'INFERRED' | 'AMBIGUOUS' | 'USER_AUTHORED';
+  confidence: number;
+  citations: Citation[];
+};
+
+export type ContextEdge = {
+  from_id: string;
+  to_id: string;
+  relation: string;
+  scope: string;
+  extraction_method: 'EXTRACTED' | 'INFERRED' | 'AMBIGUOUS' | 'USER_AUTHORED';
+  confidence: number;
+  citations: Citation[];
+};
+
+export type ContextPackage = {
+  query: string;
+  seeds: string[];
+  nodes: ContextNode[];
+  edges: ContextEdge[];
+  citations: Citation[];
+  insufficient_evidence: boolean;
+  reason: string | null;
+};
+
+export type ContextPackageRequest = {
+  query?: string;
+  scope?: string;
+  source_type?: string;
+  depth?: number;
+  max_nodes?: number;
+  relations?: string[];
+  seed_ids?: string[];
+};
+
+export type RetrievalHit = {
+  id: string;
+  label: string;
+  score: number;
+  source: string;
+  citation: Citation;
+  citations: Citation[];
+  extraction_method: ContextNode['extraction_method'] | 'DERIVED' | null;
+  confidence: number | null;
+  provenance: 'canonical' | 'derived';
+};
+
+export type RetrieveResponse = {
+  query: string;
+  hits: RetrievalHit[];
+  citations: Citation[];
+  insufficient_evidence: boolean;
+  reason: string | null;
+};
+
+export type MemorySuggestion = {
+  id: string;
+  target_id: string;
+  suggestion_type: string;
+  proposed_markdown: string;
+  proposed_objects: unknown[];
+  citations: Citation[];
+  status: 'pending' | 'accepted' | 'rejected';
+};
+
+export async function getContextPackage(
+  input: ContextPackageRequest = {},
+): Promise<ContextPackage> {
+  const res = await apiFetch('/api/context-package', {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+  return res.json();
+}
+
+export async function retrieveContext(input: { query: string; limit?: number }): Promise<RetrieveResponse> {
+  const res = await apiFetch('/api/retrieve', {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+  return res.json();
+}
+
 export async function ensureDailyNote(date?: string): Promise<Page> {
   const res = await apiFetch('/api/life/daily', {
     method: 'POST',

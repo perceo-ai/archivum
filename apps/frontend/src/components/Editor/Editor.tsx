@@ -7,7 +7,8 @@ import { languages } from '@codemirror/language-data';
 import { defaultKeymap, history, historyKeymap } from '@codemirror/commands';
 import { oneDark } from '@codemirror/theme-one-dark';
 import { useAppState } from '../../store';
-import { updatePage } from '../../api';
+import { updatePage, type MemorySuggestion } from '../../api';
+import { Button } from '../ui/Button';
 import { wikilinkExtension } from './wikilinkExtension';
 import { markdownBlockExtension } from './markdownBlockExtension';
 
@@ -16,6 +17,9 @@ export interface EditorProps {
   initialContent: string;
   onSave?: (status: 'saving' | 'saved' | 'error') => void;
   onChange?: (content: string) => void;
+  pendingSuggestions?: MemorySuggestion[];
+  onAcceptSuggestion?: (suggestion: MemorySuggestion) => void | Promise<void>;
+  onRejectSuggestion?: (suggestion: MemorySuggestion) => void | Promise<void>;
 }
 
 export type EditorHandle = {
@@ -24,7 +28,7 @@ export type EditorHandle = {
 };
 
 const Editor = forwardRef<EditorHandle, EditorProps>(function Editor(
-  { slug, initialContent, onSave, onChange },
+  { slug, initialContent, onSave, onChange, pendingSuggestions = [], onAcceptSuggestion, onRejectSuggestion },
   ref,
 ) {
   const { pages } = useAppState();
@@ -157,12 +161,30 @@ const Editor = forwardRef<EditorHandle, EditorProps>(function Editor(
   // the latest slugSet via closure. For a full refresh, a compartment could be
   // used, but for typical usage this is fine.
 
+  const suggestions = pendingSuggestions.filter((suggestion) => suggestion.status === 'pending');
+
   return (
-    <div
-      ref={containerRef}
-      className="h-full w-full overflow-auto"
-      style={{ backgroundColor: '#171616' }}
-    />
+    <div className="flex h-full w-full flex-col">
+      {suggestions.length > 0 && (
+        <div className="border-b border-white/[0.08] bg-white/[0.02] px-4 py-3">
+          <div className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Suggestions</div>
+          <div className="space-y-2">
+            {suggestions.map((suggestion) => (
+              <div key={suggestion.id} className="flex flex-wrap items-center gap-2 text-sm">
+                <code className="min-w-0 flex-1 truncate text-zinc-300">{suggestion.proposed_markdown}</code>
+                <Button type="button" variant="secondary" size="sm" onClick={() => void onAcceptSuggestion?.(suggestion)}>
+                  Accept
+                </Button>
+                <Button type="button" variant="ghost" size="sm" onClick={() => void onRejectSuggestion?.(suggestion)}>
+                  Reject
+                </Button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+      <div ref={containerRef} className="min-h-0 flex-1 overflow-auto" style={{ backgroundColor: '#171616' }} />
+    </div>
   );
 });
 
