@@ -412,6 +412,16 @@ async def upsert_page(
     return len(points)
 
 
+async def index_page(
+    slug: str,
+    title: str,
+    markdown: str,
+    wiki_id: str = "default",
+) -> int:
+    """Index one natural-language knowledge object using the page chunk schema."""
+    return await upsert_page(slug, title, markdown, wiki_id)
+
+
 async def search(
     query: str,
     wiki_id: str = "default",

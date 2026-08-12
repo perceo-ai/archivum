@@ -7,6 +7,7 @@ so they don't block the event loop.
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 from pathlib import Path
 from typing import Any
@@ -54,10 +55,30 @@ def _init_schema(conn: kuzu.Connection) -> None:
             wiki_id STRING,
             PRIMARY KEY (name)
         )""",
+        """CREATE NODE TABLE IF NOT EXISTS KnowledgeNode(
+            id STRING,
+            label STRING,
+            kind STRING,
+            scope STRING,
+            wiki_id STRING,
+            confidence DOUBLE,
+            extraction_method STRING,
+            citations STRING,
+            PRIMARY KEY (id)
+        )""",
         # Relationship tables
         "CREATE REL TABLE IF NOT EXISTS REFERENCES(FROM Page TO Page)",
         "CREATE REL TABLE IF NOT EXISTS MENTIONS(FROM Page TO Entity)",
         "CREATE REL TABLE IF NOT EXISTS RELATED_TO(FROM Entity TO Entity)",
+        """CREATE REL TABLE IF NOT EXISTS KNOWLEDGE_RELATIONSHIP(
+            FROM KnowledgeNode TO KnowledgeNode,
+            id STRING,
+            rel_type STRING,
+            scope STRING,
+            confidence DOUBLE,
+            extraction_method STRING,
+            citations STRING
+        )""",
     ]
     for stmt in ddl_statements:
         try:
@@ -101,6 +122,87 @@ async def upsert_entity(name: str, entity_type: str, wiki_id: str = "default") -
             "MERGE (e:Entity {name: $name}) SET e.type = $type, e.wiki_id = $wiki_id",
             {"name": name, "type": entity_type, "wiki_id": wiki_id},
         )
+    await _run(_do)
+
+
+async def upsert_knowledge_node(
+    node_id: str,
+    label: str,
+    kind: str,
+    scope: str,
+    confidence: float,
+    extraction_method: str,
+    citations: list[dict[str, Any]],
+    wiki_id: str = "default",
+) -> None:
+    """Upsert a canonical object in the rebuildable knowledge projection."""
+    def _do():
+        conn = _get_conn()
+        conn.execute(
+            "MERGE (n:KnowledgeNode {id: $id}) "
+            "SET n.label = $label, n.kind = $kind, n.scope = $scope, "
+            "n.wiki_id = $wiki_id, n.confidence = $confidence, "
+            "n.extraction_method = $extraction_method, n.citations = $citations",
+            {
+                "id": node_id,
+                "label": label,
+                "kind": kind,
+                "scope": scope,
+                "wiki_id": wiki_id,
+                "confidence": confidence,
+                "extraction_method": extraction_method,
+                "citations": json.dumps(citations),
+            },
+        )
+    await _run(_do)
+
+
+async def add_knowledge_relationship(
+    src_id: str,
+    dst_id: str,
+    relationship_id: str,
+    rel_type: str,
+    scope: str,
+    confidence: float,
+    extraction_method: str,
+    citations: list[dict[str, Any]],
+) -> None:
+    """Project a canonical relationship with its provenance metadata."""
+    def _do():
+        conn = _get_conn()
+        try:
+            conn.execute(
+                "MATCH (a:KnowledgeNode {id: $src_id}), (b:KnowledgeNode {id: $dst_id}) "
+                "MERGE (a)-[r:KNOWLEDGE_RELATIONSHIP {id: $id}]->(b) "
+                "SET r.rel_type = $rel_type, r.scope = $scope, r.confidence = $confidence, "
+                "r.extraction_method = $extraction_method, r.citations = $citations",
+                {
+                    "src_id": src_id,
+                    "dst_id": dst_id,
+                    "id": relationship_id,
+                    "rel_type": rel_type,
+                    "scope": scope,
+                    "confidence": confidence,
+                    "extraction_method": extraction_method,
+                    "citations": json.dumps(citations),
+                },
+            )
+        except Exception as exc:
+            logger.debug("add_knowledge_relationship warning: %s", exc)
+    await _run(_do)
+
+
+async def clear_knowledge_projection(wiki_id: str = "default") -> None:
+    """Remove a wiki's generic canonical projection before rebuilding it."""
+    def _do():
+        conn = _get_conn()
+        try:
+            conn.execute(
+                "MATCH (n:KnowledgeNode {wiki_id: $wiki_id}) DETACH DELETE n",
+                {"wiki_id": wiki_id},
+            )
+        except Exception as exc:
+            logger.debug("clear_knowledge_projection warning: %s", exc)
     await _run(_do)
 
 
