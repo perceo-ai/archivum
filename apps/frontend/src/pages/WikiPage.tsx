@@ -223,16 +223,10 @@ export default function WikiPage() {
   }
 
   return (
-    <div className="page-frame !max-w-none bg-transparent">
-      <div className="page-header shrink-0 px-4 pt-2 md:px-8">
-        <div className="flex w-full items-start gap-3">
+    <div className="flex h-full min-h-0 w-full flex-col bg-transparent">
+      <div className="group/document shrink-0 px-6 pb-2 pt-7 md:px-10 lg:px-14">
+        <div className="flex w-full items-start gap-4">
           <div className="min-w-0 flex-1">
-            <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-              <span className="font-mono text-[11px] text-muted-foreground">
-                {slugStr}
-              </span>
-              {page?.authored_by === 'agent' && <Badge variant="info">AI-authored</Badge>}
-            </div>
             <Input
               value={titleDraft}
               onChange={(e) => {
@@ -240,10 +234,14 @@ export default function WikiPage() {
                 scheduleMetaSave({ title: e.target.value });
               }}
               placeholder={loading ? 'Loading…' : 'Untitled'}
-              className="mt-3 h-auto min-h-14 border-0 bg-transparent px-0 py-0 text-[34px] font-bold leading-tight tracking-normal text-foreground shadow-none placeholder:text-muted-foreground/60 focus-visible:ring-0 md:text-[42px]"
+              className="h-auto min-h-14 border-0 bg-transparent px-0 py-0 text-[38px] font-bold leading-tight tracking-normal text-foreground shadow-none placeholder:text-muted-foreground/45 focus-visible:ring-0 md:text-[46px]"
               aria-label="Page title"
             />
-            <div className="mt-4 flex min-h-8 flex-wrap items-center gap-1.5">
+            <div className="mt-2 flex min-h-8 flex-wrap items-center gap-1.5">
+              <span className="mr-1 truncate font-mono text-[11px] text-muted-foreground/70">
+                {slugStr}
+              </span>
+              {page?.authored_by === 'agent' && <Badge variant="info">AI-authored</Badge>}
               {parsedTags.map((tag) => (
                 <span
                   key={tag}
@@ -295,7 +293,7 @@ export default function WikiPage() {
               )}
             </div>
           </div>
-          <div className="flex shrink-0 items-center">
+          <div className="sticky top-3 flex shrink-0 items-center opacity-80 transition-opacity group-hover/document:opacity-100">
             <PageActions
               slug={slugStr}
               disabled={!page}

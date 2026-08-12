@@ -3,7 +3,7 @@ import { renderToString } from 'react-dom/server';
 import PageActions from './PageActions';
 
 describe('PageActions', () => {
-  it('keeps smoke-critical page actions visible', () => {
+  it('keeps the document action surface compact', () => {
     const html = renderToString(
       <PageActions
         slug="release-notes"
@@ -15,9 +15,9 @@ describe('PageActions', () => {
       />,
     );
 
-    expect(html).toContain('Save');
     expect(html).toContain('Share page');
-    expect(html).toContain('Export page as HTML');
-    expect(html).toContain('Export page as PDF');
+    expect(html).toContain('More page actions');
+    expect(html).not.toContain('Export page as HTML');
+    expect(html).not.toContain('Export page as PDF');
   });
 });

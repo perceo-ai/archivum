@@ -30,10 +30,7 @@ export default function PageActions({
   }
 
   return (
-    <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
-      <Button variant="secondary" size="sm" onClick={onSave} disabled={disabled}>
-        Save
-      </Button>
+    <div className="flex shrink-0 items-center justify-end gap-1.5">
       <Button
         variant="ghost"
         size="sm"
@@ -43,29 +40,7 @@ export default function PageActions({
         title="Share page"
       >
         <Share2 className="h-4 w-4" />
-        <span className="hidden sm:inline">{shareLoading ? 'Sharing...' : 'Share'}</span>
-      </Button>
-      <Button
-        variant="ghost"
-        size="sm"
-        onClick={() => handleExport('html')}
-        disabled={disabled}
-        aria-label="Export page as HTML"
-        title="Export page as HTML"
-      >
-        <FileCode2 className="h-4 w-4" />
-        <span className="hidden lg:inline">HTML</span>
-      </Button>
-      <Button
-        variant="ghost"
-        size="sm"
-        onClick={() => handleExport('pdf')}
-        disabled={disabled}
-        aria-label="Export page as PDF"
-        title="Export page as PDF"
-      >
-        <Download className="h-4 w-4" />
-        <span className="hidden lg:inline">PDF</span>
+        <span>{shareLoading ? 'Sharing...' : 'Share'}</span>
       </Button>
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
@@ -74,6 +49,18 @@ export default function PageActions({
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end">
+          <DropdownMenuItem onSelect={onSave}>
+            Save
+          </DropdownMenuItem>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem onSelect={() => handleExport('html')}>
+            <FileCode2 className="h-4 w-4" />
+            Export HTML
+          </DropdownMenuItem>
+          <DropdownMenuItem onSelect={() => handleExport('pdf')}>
+            <Download className="h-4 w-4" />
+            Export PDF
+          </DropdownMenuItem>
           <DropdownMenuSeparator />
           <DropdownMenuItem onSelect={onDelete} className="text-destructive">
             <Trash2 className="h-4 w-4" />
