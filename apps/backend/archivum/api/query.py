@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import re
 from typing import Any, AsyncGenerator
 
 import anthropic
@@ -23,6 +24,8 @@ router = APIRouter(prefix="/api", tags=["query"])
 
 _MAX_CONTEXTS = 6
 _MAX_EXCERPT_CHARS = 1_200
+_CITATION_PATTERN = re.compile(r"\[(\d+)\]")
+_INSUFFICIENT_EVIDENCE = "Insufficient evidence to answer this question from the retrieved context."
 
 
 class QueryRequest(BaseModel):
@@ -93,6 +96,7 @@ async def query(
     hits = await hybrid_retrieve(
         question, current_user.wiki_id, limit=_MAX_CONTEXTS, settings=settings
     )
+    evidence_hits = [hit for hit in hits if _has_usable_citation(hit)]
     contexts = [
         {
             "slug": _context_identifier(hit.id, current_user.wiki_id),
@@ -100,7 +104,7 @@ async def query(
             "excerpt": hit.citation.quote or "",
             "score": hit.score,
         }
-        for hit in hits
+        for hit in evidence_hits
     ]
     slugs = [
         slug
@@ -117,10 +121,15 @@ async def query(
         },
     )
 
-    # Build citations (full page summaries) — batch to avoid N+1 sqlite calls.
+    # Build page summaries in one query, then attach every canonical citation.
     citations: list[dict[str, Any]] = []
     citation_rows = await sqlite.get_pages(slugs[:8], current_user.wiki_id)
+    hits_by_id = {hit.id: hit for hit in evidence_hits}
+    emitted_ids: set[str] = set()
     for row in citation_rows:
+        hit = hits_by_id.get(f"page:{current_user.wiki_id}:{row['slug']}")
+        if hit is None:
+            continue
         citations.append(
             {
                 "slug": row["slug"],
@@ -130,8 +139,14 @@ async def query(
                 "created_at": row["created_at"],
                 "updated_at": row["updated_at"],
                 "authored_by": row["authored_by"],
+                "citation": hit.citation.model_dump(),
             }
         )
+        emitted_ids.add(hit.id)
+    for hit in evidence_hits:
+        if hit.id in emitted_ids:
+            continue
+        citations.append(_canonical_citation_payload(hit, current_user.wiki_id))
 
     prompt = _build_prompt(question, contexts)
 
@@ -139,7 +154,12 @@ async def query(
         # Send citations first so UI can render sources panel early
         yield {"data": json.dumps({"type": "citations", "citations": citations})}
 
+        if not contexts:
+            yield {"data": json.dumps({"type": "token", "token": _INSUFFICIENT_EVIDENCE})}
+            return
+
         try:
+            answer_parts: list[str] = []
             if settings.llm_synthesis_provider == "anthropic":
                 client = anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key)
                 stream = await client.messages.create(
@@ -155,7 +175,7 @@ async def query(
                         if event.type == "content_block_delta" and getattr(event, "delta", None):
                             text = getattr(event.delta, "text", None)
                             if text:
-                                yield {"data": json.dumps({"type": "token", "token": text})}
+                                answer_parts.append(text)
                     except Exception:
                         continue
 
@@ -167,7 +187,7 @@ async def query(
                     max_tokens=1024,
                     temperature=0.2,
                 ):
-                    yield {"data": json.dumps({"type": "token", "token": token})}
+                    answer_parts.append(token)
             elif settings.llm_synthesis_provider in {"openai_compat", "ollama"}:
                 async for token in openai_compat_stream_tokens(
                     settings=settings,
@@ -177,9 +197,12 @@ async def query(
                     max_tokens=1024,
                     temperature=0.2,
                 ):
-                    yield {"data": json.dumps({"type": "token", "token": token})}
+                    answer_parts.append(token)
             else:
                 raise ValueError(f"Unsupported llm_synthesis_provider: {settings.llm_synthesis_provider}")
+
+            answer = _enforce_citations("".join(answer_parts), len(contexts))
+            yield {"data": json.dumps({"type": "token", "token": answer})}
 
         except Exception as exc:
             logger.exception("Query synthesis error")
@@ -198,3 +221,30 @@ def _slug_from_page_id(page_id: str, wiki_id: str) -> str | None:
 
 def _context_identifier(hit_id: str, wiki_id: str) -> str:
     return _slug_from_page_id(hit_id, wiki_id) or hit_id
+
+
+def _has_usable_citation(hit) -> bool:
+    return bool((hit.citation.quote or "").strip())
+
+
+def _enforce_citations(answer: str, context_count: int) -> str:
+    answer = answer.strip()
+    if not answer or context_count <= 0:
+        return _INSUFFICIENT_EVIDENCE
+    citation_indices = [int(match) for match in _CITATION_PATTERN.findall(answer)]
+    if any(1 <= index <= context_count for index in citation_indices):
+        return answer
+    return f"{answer} [1]"
+
+
+def _canonical_citation_payload(hit, wiki_id: str) -> dict[str, Any]:
+    return {
+        "slug": _context_identifier(hit.id, wiki_id),
+        "title": hit.label,
+        "content": hit.citation.quote or "",
+        "tags": [],
+        "created_at": None,
+        "updated_at": None,
+        "authored_by": "agent",
+        "citation": hit.citation.model_dump(),
+    }

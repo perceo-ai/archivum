@@ -4,8 +4,6 @@ from fastapi import APIRouter, Depends, Query
 
 from archivum.auth import CurrentUser, get_current_user
 from archivum.config import Settings, get_settings
-from archivum.db import qdrant_client as qdrant
-from archivum.db import sqlite
 from archivum.retrieval.hybrid import hybrid_retrieve
 
 router = APIRouter(prefix="/api", tags=["search"])

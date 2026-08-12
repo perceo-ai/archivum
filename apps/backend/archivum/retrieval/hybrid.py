@@ -17,6 +17,7 @@ from archivum.retrieval.context import ContextRequest, build_context_package
 _RRF_K = 60
 _CHANNEL_WEIGHTS = {"keyword": 1.0, "vector": 1.0, "graph": 0.8}
 _PAGE_PREFIX = "page:"
+_GRAPH_NEIGHBOR_RESERVE = 4
 
 
 @dataclass(frozen=True)
@@ -92,7 +93,8 @@ async def hybrid_retrieve(
         _keyword_rows(query, wiki_id, channel_limit),
     )
     metadata = _page_metadata(vector_rows, keyword_rows, wiki_id)
-    seed_ids = [SELF_ID, *metadata][:channel_limit]
+    seed_limit = max(1, channel_limit - _GRAPH_NEIGHBOR_RESERVE)
+    seed_ids = [SELF_ID, *metadata][:seed_limit]
     graph_nodes = await _graph_nodes(query, wiki_id, seed_ids, channel_limit)
 
     fused = fuse_ranked_hits(
