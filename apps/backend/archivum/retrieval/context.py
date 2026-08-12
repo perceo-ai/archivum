@@ -151,7 +151,9 @@ def _build_canonical_code_fallback(
     relationships: list[KnowledgeRelationship],
     request: ContextRequest,
 ) -> ContextPackage:
-    seeds = _select_seeds(list(objects_by_id.values()), request)
+    seeds = _bounded_unique(
+        _select_seeds(list(objects_by_id.values()), request), request.max_nodes
+    )
     if not seeds and request.source_type is None and SELF_ID in objects_by_id:
         seeds = [SELF_ID]
     node_ids, edges = _expand(objects_by_id, relationships, seeds, request)

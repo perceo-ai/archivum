@@ -269,3 +269,26 @@ async def test_context_package_falls_back_to_canonical_code_context_without_lexi
         assert package.seeds == ["symbol:runner"]
         assert [node.id for node in package.nodes] == ["symbol:runner", "symbol:helper"]
         assert package.edges[0].relation == "calls"
+
+
+@pytest.mark.asyncio
+async def test_canonical_code_fallback_preserves_explicit_seed_ids():
+    async with aiosqlite.connect(":memory:") as conn:
+        await init_knowledge_schema(conn)
+        repo = KnowledgeRepository(conn)
+        await repo.upsert_object(_object("symbol:runner", "runner", scope="repo:test"))
+        await repo.upsert_object(_object("symbol:helper", "helper", scope="repo:test"))
+
+        package = await build_context_package(
+            repo,
+            ContextRequest(
+                query="runner",
+                scope="repo:test",
+                source_type="code",
+                seed_ids=["symbol:helper"],
+                max_nodes=1,
+            ),
+        )
+
+        assert package.seeds == ["symbol:helper"]
+        assert [node.id for node in package.nodes] == ["symbol:helper"]
