@@ -15,7 +15,21 @@ async def test_ensure_personal_root_creates_me_node():
         assert root.id == SELF_ID
         assert root.kind == "person"
         assert root.label == "Pranav"
+        assert root.scope == SELF_ID
         assert root.properties["is_owner"] is True
+
+
+@pytest.mark.asyncio
+async def test_personal_root_scope_is_stable_across_wikis():
+    async with aiosqlite.connect(":memory:") as conn:
+        await init_knowledge_schema(conn)
+        repo = KnowledgeRepository(conn)
+        await ensure_personal_root(repo, display_name="Me", wiki_id="alpha")
+        await ensure_personal_root(repo, display_name="Me", wiki_id="beta")
+
+        root = await repo.get_object(SELF_ID)
+        assert root is not None
+        assert root.scope == SELF_ID
 
 
 @pytest.mark.asyncio
@@ -43,3 +57,4 @@ async def test_link_project_to_self():
         assert rel.src_id == SELF_ID
         assert rel.dst_id == "project:archivum"
         assert rel.rel_type == "owns_project"
+        assert rel.scope == "wiki:default"

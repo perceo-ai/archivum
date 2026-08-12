@@ -18,6 +18,7 @@ from archivum.db.graph import (
 )
 from archivum.db.qdrant_client import clear_projection_index, index_page
 from archivum.knowledge.models import Citation, KnowledgeObject
+from archivum.knowledge.personal_root import SELF_ID
 from archivum.knowledge.repository import KnowledgeRepository
 
 
@@ -66,14 +67,24 @@ async def rebuild_knowledge_projections(
     repo: KnowledgeRepository, wiki_id: str
 ) -> ProjectionReport:
     """Project canonical knowledge into rebuildable graph and semantic indexes."""
-    objects = await repo.list_objects(limit=_OBJECT_REBUILD_LIMIT)
-    if len(objects) == _OBJECT_REBUILD_LIMIT:
+    target_scope = f"wiki:{wiki_id}"
+    all_objects = await repo.list_objects(limit=_OBJECT_REBUILD_LIMIT)
+    if len(all_objects) == _OBJECT_REBUILD_LIMIT:
         raise RuntimeError(
             "Knowledge projection rebuild reached its object limit; "
             "paginate canonical objects before retrying."
         )
-    relationships = await repo.list_relationships()
+    objects = [
+        object_
+        for object_ in all_objects
+        if object_.scope == target_scope or object_.id == SELF_ID
+    ]
     objects_by_id = {object_.id: object_ for object_ in objects}
+    relationships = [
+        relationship
+        for relationship in await repo.list_relationships(scope=target_scope)
+        if relationship.src_id in objects_by_id and relationship.dst_id in objects_by_id
+    ]
 
     await clear_projection_index(wiki_id)
     await _project_kuzu(clear_knowledge_projection, wiki_id)

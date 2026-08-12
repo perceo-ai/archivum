@@ -7,6 +7,7 @@ from archivum.knowledge.repository import KnowledgeRepository
 
 
 SELF_ID = "person:self"
+SELF_SCOPE = "person:self"
 
 PERSONAL_RELATIONSHIP_TYPES = frozenset(
     {
@@ -31,7 +32,7 @@ async def ensure_personal_root(
         id=SELF_ID,
         kind="person",
         label=display_name,
-        scope=f"wiki:{wiki_id}",
+        scope=SELF_SCOPE,
         confidence=1.0,
         extraction_method="USER_AUTHORED",
         citations=[
@@ -64,13 +65,14 @@ async def link_to_self(
     root = await repo.get_object(SELF_ID)
     if root is None:
         raise ValueError("Personal root must exist before creating relationships")
+    target = await repo.get_object(object_id)
 
     relationship = KnowledgeRelationship(
         id=f"rel:{SELF_ID}:{rel_type}:{object_id}",
         src_id=SELF_ID,
         dst_id=object_id,
         rel_type=rel_type,
-        scope=root.scope,
+        scope=target.scope if target is not None else root.scope,
         confidence=confidence,
         extraction_method="USER_AUTHORED",
         citations=[citation],

@@ -43,6 +43,10 @@ async def build_context_package(
     all_objects = await repo.list_objects(
         scope=request.scope, limit=_OBJECT_SCAN_LIMIT
     )
+    if request.scope is not None:
+        root = await repo.get_object(SELF_ID)
+        if root is not None and all(obj.id != SELF_ID for obj in all_objects):
+            all_objects.append(root)
     relationships = await repo.list_relationships(scope=request.scope)
     if _is_code_request(request):
         return await _build_code_context_package(

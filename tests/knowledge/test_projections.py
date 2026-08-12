@@ -2,6 +2,7 @@ import aiosqlite
 import pytest
 
 from archivum.knowledge.models import Citation, KnowledgeObject, KnowledgeRelationship
+from archivum.knowledge.personal_root import SELF_ID
 from archivum.knowledge.projections import rebuild_knowledge_projections
 from archivum.knowledge.repository import KnowledgeRepository, init_knowledge_schema
 
@@ -34,12 +35,12 @@ async def test_projection_excludes_code_objects_from_qdrant(monkeypatch):
         assert indexed == []
 
 
-def knowledge_object(object_id, kind, label, **properties):
+def knowledge_object(object_id, kind, label, scope="wiki:default", **properties):
     return KnowledgeObject(
         id=object_id,
         kind=kind,
         label=label,
-        scope="wiki:default",
+        scope=scope,
         confidence=0.8,
         extraction_method="EXTRACTED",
         citations=[Citation(source_id="note", chunk_id="chunk:1", span_start=1, span_end=5, quote="evidence")],
@@ -98,6 +99,67 @@ async def test_rebuild_clears_derived_indexes_and_projects_provenance(monkeypatc
     assert report.qdrant_indexed == 2
     assert report.kuzu_nodes == 3
     assert report.kuzu_edges == 2
+
+
+@pytest.mark.asyncio
+async def test_rebuild_projects_only_requested_wiki_scope_plus_self(monkeypatch):
+    calls = {"indexed": [], "nodes": [], "edges": [], "pages": []}
+
+    async def record(name, result=None):
+        async def operation(*args):
+            calls[name].append(args)
+            return result
+        return operation
+
+    monkeypatch.setattr("archivum.knowledge.projections.clear_projection_index", async_noop)
+    monkeypatch.setattr("archivum.knowledge.projections.index_page", await record("indexed", 1))
+    monkeypatch.setattr("archivum.knowledge.projections.clear_knowledge_projection", async_noop)
+    monkeypatch.setattr("archivum.knowledge.projections.clear_legacy_projection", async_noop)
+    monkeypatch.setattr("archivum.knowledge.projections.upsert_knowledge_node", await record("nodes"))
+    monkeypatch.setattr("archivum.knowledge.projections.add_knowledge_relationship", await record("edges"))
+    monkeypatch.setattr("archivum.knowledge.projections.upsert_page", await record("pages"))
+    monkeypatch.setattr("archivum.knowledge.projections.upsert_entity", async_noop)
+    monkeypatch.setattr("archivum.knowledge.projections.add_reference", async_noop)
+    monkeypatch.setattr("archivum.knowledge.projections.add_mention", async_noop)
+
+    async with aiosqlite.connect(":memory:") as conn:
+        await init_knowledge_schema(conn)
+        repo = KnowledgeRepository(conn)
+        root = KnowledgeObject(
+            id=SELF_ID,
+            kind="person",
+            label="Me",
+            scope=SELF_ID,
+            confidence=1.0,
+            extraction_method="USER_AUTHORED",
+            citations=[Citation(source_id=SELF_ID, chunk_id=SELF_ID, span_start=None, span_end=None, quote="Me")],
+            properties={"is_owner": True},
+        )
+        default_page = knowledge_object("page:default:alpha", "page", "Alpha", slug="alpha", markdown="# Alpha")
+        other_page = knowledge_object("page:other:beta", "page", "Beta", scope="wiki:other", slug="beta", markdown="# Beta")
+        repo_symbol = knowledge_object("symbol:repo:service", "symbol", "Service", scope="repo:test")
+        for object_ in (root, default_page, other_page, repo_symbol):
+            await repo.upsert_object(object_)
+        await repo.upsert_relationship(KnowledgeRelationship(
+            id="rel:self-alpha", src_id=SELF_ID, dst_id=default_page.id, rel_type="authored_thought",
+            scope="wiki:default", confidence=1.0, extraction_method="USER_AUTHORED",
+            citations=default_page.citations, properties={},
+        ))
+        await repo.upsert_relationship(KnowledgeRelationship(
+            id="rel:self-beta", src_id=SELF_ID, dst_id=other_page.id, rel_type="authored_thought",
+            scope="wiki:other", confidence=1.0, extraction_method="USER_AUTHORED",
+            citations=other_page.citations, properties={},
+        ))
+
+        report = await rebuild_knowledge_projections(repo, wiki_id="default")
+
+    projected_ids = {call[0] for call in calls["nodes"]}
+    assert projected_ids == {SELF_ID, default_page.id}
+    assert {call[0] for call in calls["indexed"]} == {default_page.id}
+    assert calls["pages"] == [("alpha", "Alpha", "default")]
+    assert [call[2] for call in calls["edges"]] == ["rel:self-alpha"]
+    assert report.objects == 2
+    assert report.relationships == 1
 
 
 async def async_noop(*args):
