@@ -11,6 +11,7 @@ from typing import Any, AsyncGenerator
 import aiosqlite
 
 from archivum.config import Settings, get_settings
+from archivum.knowledge.suggestions import init_suggestion_schema
 from archivum.store.schema import EVIDENCE_SCHEMA
 
 # ── Schema ────────────────────────────────────────────────────────────────────
@@ -254,6 +255,7 @@ async def init_db(settings: Settings) -> None:
     async with get_db() as db:
         await db.executescript(_SCHEMA)
         await db.executescript(EVIDENCE_SCHEMA)
+        await init_suggestion_schema(db)
         await db.commit()
 
 
