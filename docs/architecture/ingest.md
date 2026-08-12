@@ -61,4 +61,4 @@ Ingest creates these graph relationships:
 | `Page -[:MENTIONS]-> Entity` | Case-insensitive entity-name match in page content |
 | `Entity -[:RELATED_TO]-> Entity` | Extraction LLM `relationships[]` output |
 
-If a wikilink target is created later, run the rebuild endpoint/CLI to regenerate the legacy page-based `REFERENCES` edge projection. The current rebuild endpoint/CLI does not rebuild canonical knowledge projections, FTS, or the code lexical index.
+If a wikilink target is created later, run the index refresh endpoint/CLI to add the legacy page-based `REFERENCES` edge projection. The current endpoint/CLI upserts page vectors, page nodes, and reference edges; it does not remove stale page projections or references, update entity/mention/relationship projections, or rebuild canonical knowledge projections, FTS, or the code lexical index.

@@ -108,13 +108,13 @@ MCP tools exposed to agents: `ingest_source`, `search_wiki`, `list_pages`, `get_
 5. **Caddy fronts the app.** It terminates TLS and routes the browser UI, REST API, and MCP endpoint. Set `ARCHIVUM_HOST` and point DNS at the host for automatic HTTPS.
 6. **Agents reach the same vault over MCP** via stdio or HTTP/SSE — reading, writing, searching, and querying the identical data the browser sees.
 
-To rebuild the current legacy page-based Qdrant and Kuzu projections, including wikilink reference edges, run:
+To refresh page vectors, page nodes, and wikilink reference edges in the legacy page-based Qdrant/Kuzu projections, run:
 
 ```bash
 node packages/archivum-cli/src/index.js wiki rebuild-indexes
 ```
 
-This command does not rebuild canonical knowledge projections, FTS, or the code lexical index.
+This command upserts those page records and reference edges. It does not remove stale page vectors or nodes, update entity/mention/relationship projections, or rebuild canonical knowledge projections, FTS, or the code lexical index.
 
 ## Features
 

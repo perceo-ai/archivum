@@ -38,10 +38,10 @@ The following `Page` and `Entity` tables and edges are the legacy compatibility 
 
 ## Rebuild
 
-Use the legacy rebuild command when content changes outside the normal write path or when ingest order left missing `REFERENCES` edges:
+Use the legacy index refresh command when content changes outside the normal write path or when ingest order left missing `REFERENCES` edges:
 
 ```bash
 node packages/archivum-cli/src/index.js wiki rebuild-indexes
 ```
 
-This command reinitializes the legacy page-based Qdrant and Kuzu projections from SQLite page content and metadata. It does not rebuild canonical knowledge projections, FTS, or the code lexical index.
+This command upserts page vectors, page nodes, and wikilink `REFERENCES` edges in the legacy page-based Qdrant/Kuzu projections from SQLite page content and metadata. It does not remove stale page vectors or nodes, update entity/mention/relationship projections, or rebuild canonical knowledge projections, FTS, or the code lexical index.
