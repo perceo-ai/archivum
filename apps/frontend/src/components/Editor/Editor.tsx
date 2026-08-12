@@ -6,7 +6,6 @@ import { EditorState } from '@codemirror/state';
 import { markdown, markdownLanguage } from '@codemirror/lang-markdown';
 import { languages } from '@codemirror/language-data';
 import { defaultKeymap, history, historyKeymap } from '@codemirror/commands';
-import { oneDark } from '@codemirror/theme-one-dark';
 import { useAppState } from '../../store';
 import { updatePage, type MemorySuggestion } from '../../api';
 import { Button } from '../ui/Button';
@@ -89,7 +88,8 @@ const Editor = forwardRef<EditorHandle, EditorProps>(function Editor(
       '&': {
         height: '100%',
         backgroundColor: 'transparent',
-        fontSize: '15px',
+        color: 'hsl(var(--foreground))',
+        fontSize: '16px',
       },
       '.cm-scroller': {
         fontFamily: "'Instrument Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
@@ -106,14 +106,21 @@ const Editor = forwardRef<EditorHandle, EditorProps>(function Editor(
       '.cm-line': {
         lineHeight: '1.7',
       },
+      '.cm-activeLine': {
+        backgroundColor: 'transparent',
+      },
       '.cm-cursor': {
-        borderLeftColor: '#4B91F1',
+        borderLeftColor: 'hsl(var(--foreground))',
       },
       '.cm-selectionBackground': {
-        backgroundColor: '#4B91F130 !important',
+        backgroundColor: 'hsl(var(--primary) / 0.22) !important',
       },
       '&.cm-focused .cm-selectionBackground': {
-        backgroundColor: '#4B91F140 !important',
+        backgroundColor: 'hsl(var(--primary) / 0.28) !important',
+      },
+      '.cm-matchingBracket, .cm-nonmatchingBracket': {
+        backgroundColor: 'transparent',
+        outline: 'none',
       },
       '.cm-gutters': {
         display: 'none',
@@ -132,7 +139,6 @@ const Editor = forwardRef<EditorHandle, EditorProps>(function Editor(
           base: markdownLanguage,
           codeLanguages: languages,
         }),
-        oneDark,
         baseTheme,
         autocompletion({
           override: [slashCommandCompletion, makeWikilinkCompletion(pages)],
@@ -172,7 +178,7 @@ const Editor = forwardRef<EditorHandle, EditorProps>(function Editor(
   return (
     <div className="flex h-full w-full flex-col">
       {suggestions.length > 0 && (
-        <div className="border-b border-white/[0.08] bg-white/[0.02] px-4 py-3">
+        <div className="border-b border-white/[0.06] px-4 py-3">
           <div className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Suggestions</div>
           <div className="space-y-2">
             {suggestions.map((suggestion) => (

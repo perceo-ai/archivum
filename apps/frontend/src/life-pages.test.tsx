@@ -53,7 +53,9 @@ describe('Life OS pages', () => {
   it('keeps search as a shell modal instead of a page-level search surface', () => {
     const libraryHtml = renderToString(
       <StaticRouter location="/library">
-        <LibraryPage />
+        <AppProvider>
+          <LibraryPage />
+        </AppProvider>
       </StaticRouter>,
     );
     const notesActionsHtml = renderToString(

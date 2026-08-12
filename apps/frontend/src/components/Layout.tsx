@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { BookOpen, Blocks, PanelRight, Search, Sparkles, Wrench, X } from 'lucide-react';
 import { type ActiveView, useAppDispatch, useAppState } from '../store';
@@ -27,11 +27,10 @@ const NAV_ITEMS: NavItem[] = [
 ];
 
 export default function Layout({ children }: LayoutProps) {
-  const { leftOpen, rightOpen, currentSlug } = useAppState();
+  const { leftOpen, rightOpen, currentSlug, quickSearchOpen } = useAppState();
   const dispatch = useAppDispatch();
   const navigate = useNavigate();
   const location = useLocation();
-  const [searchOpen, setSearchOpen] = useState(false);
 
   const currentSection = location.pathname.startsWith('/workflows/')
     ? 'workflows'
@@ -67,12 +66,12 @@ export default function Layout({ children }: LayoutProps) {
       if (shouldIgnoreShortcut(event.target)) return;
       if (event.key === '/' || ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k')) {
         event.preventDefault();
-        setSearchOpen(true);
+        dispatch({ type: 'SET_QUICK_SEARCH_OPEN', open: true });
       }
     }
 
     function handleOpenSearch() {
-      setSearchOpen(true);
+      dispatch({ type: 'SET_QUICK_SEARCH_OPEN', open: true });
     }
 
     window.addEventListener('keydown', handleKeydown);
@@ -81,7 +80,7 @@ export default function Layout({ children }: LayoutProps) {
       window.removeEventListener('keydown', handleKeydown);
       window.removeEventListener('archivum:open-search', handleOpenSearch);
     };
-  }, []);
+  }, [dispatch]);
 
   return (
     <div className="perceo-shell grid-lines flex h-screen overflow-hidden">
@@ -156,7 +155,7 @@ export default function Layout({ children }: LayoutProps) {
 
           <button
             type="button"
-            onClick={() => setSearchOpen(true)}
+            onClick={() => dispatch({ type: 'SET_QUICK_SEARCH_OPEN', open: true })}
             className="soft-border ml-2 hidden min-w-[260px] items-center gap-3 rounded-[5px] border bg-white/[0.05] px-4 py-2 text-left text-sm text-zinc-400 transition-colors hover:bg-white/[0.08] hover:text-white md:flex"
           >
             <Search className="h-4 w-4" />
@@ -167,15 +166,16 @@ export default function Layout({ children }: LayoutProps) {
           </button>
 
           <div className="ml-auto flex items-center gap-2">
-            <Button onClick={() => dispatch({ type: 'TOGGLE_LEFT' })} variant="ghost" size="sm">
+            <Button type="button" onClick={() => dispatch({ type: 'TOGGLE_LEFT' })} variant="ghost" size="sm">
               <BookOpen className="h-4 w-4" />
               Vault
             </Button>
-            <Button onClick={() => navigate('/workflows/daily')} variant="ghost" size="sm">
+            <Button type="button" onClick={() => navigate('/workflows/daily')} variant="ghost" size="sm">
               <Sparkles className="h-4 w-4" />
               Resume
             </Button>
             <Button
+              type="button"
               onClick={() => dispatch({ type: 'TOGGLE_RIGHT' })}
               variant="ghost"
               size="icon"
@@ -235,7 +235,10 @@ export default function Layout({ children }: LayoutProps) {
 
         <StatusBar />
       </div>
-      <QuickSearchModal open={searchOpen} onOpenChange={setSearchOpen} />
+      <QuickSearchModal
+        open={quickSearchOpen}
+        onOpenChange={(open) => dispatch({ type: 'SET_QUICK_SEARCH_OPEN', open })}
+      />
     </div>
   );
 }

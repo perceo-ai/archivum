@@ -217,10 +217,14 @@ class BlockHandleWidget extends WidgetType {
     button.type = 'button';
     button.className = 'cm-block-handle';
     button.draggable = true;
+    button.tabIndex = -1;
     button.textContent = '⋮⋮';
     button.title = 'Drag to move block';
     button.setAttribute('aria-label', 'Drag to move block');
     button.dataset.line = String(this.lineNumber);
+    button.addEventListener('mousedown', (event) => {
+      event.preventDefault();
+    });
     button.addEventListener('dragstart', (event) => {
       event.dataTransfer?.setData('application/x-archivum-line', String(this.lineNumber));
       event.dataTransfer?.setData('text/plain', String(this.lineNumber));
@@ -309,6 +313,7 @@ const markdownBlockPlugin = ViewPlugin.fromClass(
     eventHandlers: {
       mousedown(event, view) {
         const target = event.target as HTMLElement | null;
+        if (target?.closest('.cm-block-handle')) return true;
         const toggle = target?.closest('.cm-task-toggle') as HTMLElement | null;
         if (!toggle?.dataset.line) return false;
         const line = view.state.doc.line(Number(toggle.dataset.line));
@@ -321,6 +326,17 @@ const markdownBlockPlugin = ViewPlugin.fromClass(
         });
         view.focus();
         return true;
+      },
+      click(event, view) {
+        const target = event.target as HTMLElement | null;
+        if (target?.closest('.cm-block-handle, .cm-task-toggle, .cm-wikilink-existing, .cm-wikilink-missing')) {
+          return false;
+        }
+        const position = view.posAtCoords({ x: event.clientX, y: event.clientY });
+        if (position == null) return false;
+        view.dispatch({ selection: { anchor: position } });
+        view.focus();
+        return false;
       },
       dragover(event) {
         if (!event.dataTransfer?.types.includes('application/x-archivum-line')) return false;
@@ -429,75 +445,75 @@ export function markdownBlockExtension(): Extension {
       },
       '.cm-line.cm-markdown-block': {
         position: 'relative',
-        padding: '2px 0 2px 42px',
+        padding: '2px 0 2px 40px',
         borderRadius: '5px',
-        color: '#dedede',
+        color: 'inherit',
       },
       '.cm-line.cm-markdown-block:hover': {
-        backgroundColor: 'rgba(255, 255, 255, 0.025)',
+        backgroundColor: 'transparent',
       },
       '.cm-line.cm-activeLine': {
-        backgroundColor: 'rgba(255, 255, 255, 0.035)',
+        backgroundColor: 'transparent',
       },
       '.cm-markdown-heading-1': {
         marginTop: '20px',
         marginBottom: '6px',
-        fontSize: '30px',
-        lineHeight: '1.18',
+        fontSize: '1.875rem',
+        lineHeight: '1.2',
         fontWeight: '700',
-        color: '#ffffff',
+        color: 'inherit',
       },
       '.cm-markdown-heading-2': {
         marginTop: '18px',
         marginBottom: '5px',
-        fontSize: '24px',
-        lineHeight: '1.22',
+        fontSize: '1.5rem',
+        lineHeight: '1.25',
         fontWeight: '700',
-        color: '#ffffff',
+        color: 'inherit',
       },
       '.cm-markdown-heading-3': {
         marginTop: '14px',
         marginBottom: '4px',
-        fontSize: '19px',
+        fontSize: '1.1875rem',
         lineHeight: '1.3',
-        fontWeight: '650',
-        color: '#f4f4f5',
+        fontWeight: '600',
+        color: 'inherit',
       },
       '.cm-markdown-heading-4, .cm-markdown-heading-5, .cm-markdown-heading-6': {
         marginTop: '10px',
         marginBottom: '3px',
-        fontSize: '16px',
+        fontSize: '1rem',
         lineHeight: '1.38',
-        fontWeight: '650',
-        color: '#f4f4f5',
+        fontWeight: '600',
+        color: 'inherit',
       },
       '.cm-markdown-paragraph': {
-        fontSize: '15px',
+        fontSize: '1rem',
         lineHeight: '1.74',
       },
       '.cm-markdown-unordered-list, .cm-markdown-ordered-list, .cm-markdown-task-open, .cm-markdown-task-done': {
-        fontSize: '15px',
+        fontSize: '1rem',
         lineHeight: '1.68',
       },
       '.cm-markdown-task-done': {
-        color: '#9ca3af',
+        color: 'hsl(var(--muted-foreground))',
       },
       '.cm-markdown-quote': {
         marginTop: '4px',
         marginBottom: '4px',
-        borderLeft: '3px solid rgba(255, 255, 255, 0.22)',
-        color: '#cfcfd6',
+        borderLeft: '3px solid hsl(var(--border) / 0.18)',
+        color: 'hsl(var(--muted-foreground))',
         fontStyle: 'italic',
       },
       '.cm-markdown-code-fence': {
-        color: '#a6adc8',
+        color: 'hsl(var(--muted-foreground))',
         fontFamily: "'JetBrains Mono', 'Fira Code', Consolas, monospace",
         fontSize: '13px',
       },
       '.cm-markdown-thematic-break': {
         height: '18px',
         margin: '8px 0',
-        borderTop: '1px solid rgba(255, 255, 255, 0.14)',
+        borderTop: '1px solid hsl(var(--border) / 0.16)',
         color: 'transparent',
       },
       '.cm-markdown-marker': {
@@ -506,7 +522,7 @@ export function markdownBlockExtension(): Extension {
         marginLeft: '-34px',
         marginRight: '6px',
         justifyContent: 'center',
-        color: '#8f8f98',
+        color: 'hsl(var(--muted-foreground))',
         fontWeight: '600',
         textDecoration: 'none',
         fontStyle: 'normal',
@@ -521,8 +537,8 @@ export function markdownBlockExtension(): Extension {
         padding: '0',
       },
       '.cm-task-toggle:hover': {
-        backgroundColor: 'rgba(255, 255, 255, 0.08)',
-        color: '#f4f4f5',
+        backgroundColor: 'hsl(var(--foreground) / 0.07)',
+        color: 'hsl(var(--foreground))',
       },
       '.cm-markdown-marker-heading-1, .cm-markdown-marker-heading-2, .cm-markdown-marker-heading-3, .cm-markdown-marker-heading-4, .cm-markdown-marker-heading-5, .cm-markdown-marker-heading-6, .cm-markdown-marker-quote, .cm-markdown-marker-thematic-break': {
         width: '0',
@@ -539,8 +555,8 @@ export function markdownBlockExtension(): Extension {
         marginLeft: '-44px',
         marginRight: '6px',
         borderRadius: '4px',
-        backgroundColor: 'rgba(255, 255, 255, 0.08)',
-        color: '#cdd6f4',
+        backgroundColor: 'hsl(var(--foreground) / 0.06)',
+        color: 'hsl(var(--muted-foreground))',
         fontSize: '10px',
         textTransform: 'uppercase',
       },
@@ -557,7 +573,7 @@ export function markdownBlockExtension(): Extension {
         border: '0',
         borderRadius: '5px',
         background: 'transparent',
-        color: '#6b7280',
+        color: 'hsl(var(--muted-foreground))',
         cursor: 'grab',
         fontSize: '13px',
         lineHeight: '1',
@@ -568,8 +584,8 @@ export function markdownBlockExtension(): Extension {
         opacity: '1',
       },
       '.cm-block-handle:hover': {
-        backgroundColor: 'rgba(255, 255, 255, 0.07)',
-        color: '#d4d4d8',
+        backgroundColor: 'hsl(var(--foreground) / 0.06)',
+        color: 'hsl(var(--foreground))',
       },
       '.cm-block-handle:active': {
         cursor: 'grabbing',

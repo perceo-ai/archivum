@@ -1,6 +1,7 @@
 import { useNavigate } from 'react-router-dom';
 import { Archive, CalendarDays, FolderOpen, Inbox, Search } from 'lucide-react';
 import { Button } from '../components/ui/Button';
+import { useAppDispatch } from '../store';
 
 const SECTIONS = [
   { name: 'Inbox', path: 'inbox', description: 'New captures and unsorted notes.', icon: Inbox },
@@ -11,9 +12,15 @@ const SECTIONS = [
 
 export default function LibraryPage() {
   const navigate = useNavigate();
+  const dispatch = useAppDispatch();
 
   function openSearch() {
-    window.dispatchEvent(new Event('archivum:open-search'));
+    dispatch({ type: 'SET_QUICK_SEARCH_OPEN', open: true });
+  }
+
+  function resumeDaily() {
+    dispatch({ type: 'SET_ACTIVE_VIEW', view: 'workflows' });
+    navigate('/workflows/daily');
   }
 
   return (
@@ -30,11 +37,11 @@ export default function LibraryPage() {
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
-            <Button variant="secondary" onClick={openSearch}>
+            <Button type="button" variant="secondary" onClick={openSearch}>
               <Search className="h-4 w-4" />
               Search notes
             </Button>
-            <Button variant="secondary" onClick={() => navigate('/workflows/daily')}>
+            <Button type="button" variant="secondary" onClick={resumeDaily}>
               Resume daily
             </Button>
           </div>

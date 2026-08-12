@@ -13,6 +13,14 @@ describe('app shell layout', () => {
     expect(state.leftOpen).toBe(true);
   });
 
+  it('tracks quick search as shell state', () => {
+    const opened = reducer(undefined, { type: 'SET_QUICK_SEARCH_OPEN', open: true });
+    const closed = reducer(opened, { type: 'SET_QUICK_SEARCH_OPEN', open: false });
+
+    expect(opened.quickSearchOpen).toBe(true);
+    expect(closed.quickSearchOpen).toBe(false);
+  });
+
   it('renders a full-width Perceo shell without nested surface panels', () => {
     const html = renderToString(
       <StaticRouter location="/wiki/home">

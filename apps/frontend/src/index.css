@@ -85,7 +85,7 @@
   /* CodeMirror container */
   .cm-editor {
     height: 100%;
-    font-size: 14px;
+    font-size: inherit;
   }
 
   .cm-editor.cm-focused {
@@ -93,8 +93,8 @@
   }
 
   .cm-scroller {
-    font-family: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', Consolas, monospace !important;
-    line-height: 1.6 !important;
+    font-family: inherit;
+    line-height: inherit;
   }
 
   /* Wikilink decorations */

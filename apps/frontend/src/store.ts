@@ -25,6 +25,7 @@ interface AppState {
   currentSlug: string | null;
   saveStatus: SaveStatus;
   activeView: ActiveView;
+  quickSearchOpen: boolean;
   leftOpen: boolean;
   rightOpen: boolean;
   isAuthenticated: boolean;
@@ -37,6 +38,7 @@ type Action =
   | { type: 'SET_CURRENT_SLUG'; slug: string | null }
   | { type: 'SET_SAVE_STATUS'; status: SaveStatus }
   | { type: 'SET_ACTIVE_VIEW'; view: ActiveView }
+  | { type: 'SET_QUICK_SEARCH_OPEN'; open: boolean }
   | { type: 'TOGGLE_LEFT' }
   | { type: 'TOGGLE_RIGHT' }
   | { type: 'SET_AUTH'; value: boolean };
@@ -47,6 +49,7 @@ const initialState: AppState = {
   currentSlug: null,
   saveStatus: 'idle',
   activeView: 'library',
+  quickSearchOpen: false,
   leftOpen: true,
   rightOpen: true,
   isAuthenticated: false,
@@ -71,6 +74,8 @@ function reducer(state: AppState = initialState, action: Action): AppState {
       return { ...state, saveStatus: action.status };
     case 'SET_ACTIVE_VIEW':
       return { ...state, activeView: action.view };
+    case 'SET_QUICK_SEARCH_OPEN':
+      return { ...state, quickSearchOpen: action.open };
     case 'TOGGLE_LEFT':
       return { ...state, leftOpen: !state.leftOpen };
     case 'TOGGLE_RIGHT':
