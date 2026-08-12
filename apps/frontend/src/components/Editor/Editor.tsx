@@ -20,6 +20,7 @@ export interface EditorProps {
   pendingSuggestions?: MemorySuggestion[];
   onAcceptSuggestion?: (suggestion: MemorySuggestion) => void | Promise<void>;
   onRejectSuggestion?: (suggestion: MemorySuggestion) => void | Promise<void>;
+  prepareContentForSave?: (content: string) => string;
 }
 
 export type EditorHandle = {
@@ -28,7 +29,16 @@ export type EditorHandle = {
 };
 
 const Editor = forwardRef<EditorHandle, EditorProps>(function Editor(
-  { slug, initialContent, onSave, onChange, pendingSuggestions = [], onAcceptSuggestion, onRejectSuggestion },
+  {
+    slug,
+    initialContent,
+    onSave,
+    onChange,
+    pendingSuggestions = [],
+    onAcceptSuggestion,
+    onRejectSuggestion,
+    prepareContentForSave,
+  },
   ref,
 ) {
   const { pages } = useAppState();
@@ -37,7 +47,13 @@ const Editor = forwardRef<EditorHandle, EditorProps>(function Editor(
   const viewRef = useRef<EditorView | null>(null);
   const saveTimer = useRef<ReturnType<typeof setTimeout>>();
   const slugRef = useRef(slug);
+  const onSaveRef = useRef(onSave);
+  const onChangeRef = useRef(onChange);
+  const prepareContentForSaveRef = useRef(prepareContentForSave);
   slugRef.current = slug;
+  onSaveRef.current = onSave;
+  onChangeRef.current = onChange;
+  prepareContentForSaveRef.current = prepareContentForSave;
 
   useImperativeHandle(
     ref,
@@ -50,15 +66,17 @@ const Editor = forwardRef<EditorHandle, EditorProps>(function Editor(
 
   const save = useCallback(
     async (content: string) => {
-      onSave?.('saving');
+      onSaveRef.current?.('saving');
       try {
-        await updatePage(slugRef.current, { content });
-        onSave?.('saved');
+        await updatePage(slugRef.current, {
+          content: prepareContentForSaveRef.current?.(content) ?? content,
+        });
+        onSaveRef.current?.('saved');
       } catch {
-        onSave?.('error');
+        onSaveRef.current?.('error');
       }
     },
-    [onSave],
+    [],
   );
 
   const scheduleSave = useCallback(
@@ -79,7 +97,7 @@ const Editor = forwardRef<EditorHandle, EditorProps>(function Editor(
     const updateListener = EditorView.updateListener.of((update) => {
       if (update.docChanged) {
         const content = update.state.doc.toString();
-        onChange?.(content);
+        onChangeRef.current?.(content);
         scheduleSave(content);
       }
     });

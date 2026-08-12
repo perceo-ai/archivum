@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { Hash, Plus, X } from 'lucide-react';
 import { useAppDispatch } from '../store';
@@ -21,6 +21,7 @@ import { Badge } from '../components/ui/Badge';
 import { Dialog } from '../components/ui/Dialog';
 import { useToast } from '../components/ui/Toast';
 import PageActions from '../components/PageActions';
+import { mergeFrontmatterProperties, parseFrontmatter } from './frontmatter';
 import { addTag, removeTag } from './wikiMetadata';
 
 export default function WikiPage() {
@@ -47,6 +48,12 @@ export default function WikiPage() {
   const parsedTags = useMemo(() => {
     return tagsDraft.map((t) => t.trim()).filter(Boolean);
   }, [tagsDraft]);
+  const editorContent = useMemo(() => (page ? parseFrontmatter(page.content).body : ''), [page]);
+  const prepareContentForSave = useCallback(
+    (content: string, title = titleDraft, tags = parsedTags) =>
+      page ? mergeFrontmatterProperties(page.content, content, title, tags) : content,
+    [page, parsedTags, titleDraft],
+  );
 
   useEffect(() => {
     if (!slug) return;
@@ -88,6 +95,13 @@ export default function WikiPage() {
         const updated = await updatePage(slugStr, {
           title: next.title ?? titleDraft,
           tags: next.tags ?? parsedTags,
+          content: page
+            ? prepareContentForSave(
+                contentDraft ?? editorRef.current?.getContent() ?? editorContent,
+                next.title ?? titleDraft,
+                next.tags ?? parsedTags,
+              )
+            : undefined,
         });
         setPage(updated);
         dispatch({ type: 'UPSERT_PAGE', page: updated });
@@ -118,7 +132,8 @@ export default function WikiPage() {
   async function handleSaveNow() {
     dispatch({ type: 'SET_SAVE_STATUS', status: 'saving' });
     try {
-      const content = contentDraft ?? editorRef.current?.getContent() ?? page?.content ?? '';
+      const editorBody = contentDraft ?? editorRef.current?.getContent() ?? editorContent;
+      const content = prepareContentForSave(editorBody);
       const updated = await updatePage(slugStr, { title: titleDraft, tags: parsedTags, content });
       setPage(updated);
       setContentDraft(null);
@@ -307,9 +322,10 @@ export default function WikiPage() {
           <Editor
             ref={editorRef}
             slug={page.slug}
-            initialContent={page.content}
+            initialContent={editorContent}
             onSave={(s) => dispatch({ type: 'SET_SAVE_STATUS', status: s })}
             onChange={(c) => setContentDraft(c)}
+            prepareContentForSave={prepareContentForSave}
             pendingSuggestions={suggestions}
             onAcceptSuggestion={handleAcceptSuggestion}
             onRejectSuggestion={handleRejectSuggestion}
