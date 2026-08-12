@@ -8,6 +8,7 @@ import aiosqlite
 
 from archivum.archgraph.cache import load_cached, save_cached
 from archivum.archgraph.extract import extract_file
+from archivum.archgraph.extractors.base import _file_namespace
 from archivum.archgraph.mapper import (
     CandidateArtifact,
     CandidateEntity,
@@ -106,14 +107,18 @@ def changed_files(root: Path, since_sha: str | None) -> tuple[list[Path], list[P
     for line in result.stdout.splitlines():
         if not line.strip():
             continue
-        parts = line.split("\t", 1)
+        parts = line.split("\t")
         if len(parts) < 2:
             continue
-        status, rel_path = parts[0].strip(), parts[1].strip()
-        # Rename lines look like "R100\told_name\tnew_name" — take the new name
+        status = parts[0].strip()
+        rel_path = parts[1].strip()
+        # Rename lines look like "R100\told_name\tnew_name" — index the new
+        # name and clean stale records for the old namespace.
         if status.startswith("R"):
-            sub = rel_path.split("\t", 1)
-            rel_path = sub[1] if len(sub) == 2 else rel_path
+            old_path = root / rel_path
+            if old_path.suffix in CODE_SUFFIXES:
+                deleted.append(old_path)
+            rel_path = parts[2].strip() if len(parts) >= 3 else rel_path
             status = "R"
 
         abs_path = root / rel_path
@@ -182,10 +187,11 @@ async def ingest_repo(
     for file in files:
         # Use str(file) as chunk_id so prune_dangling can match by file path
         chunk_id = str(file)
-        ext = load_cached(file, cache_dir)
+        cache_namespace = _file_namespace(file, root=root, scope=scope)
+        ext = load_cached(file, cache_dir, namespace=cache_namespace)
         if ext is None:
-            ext = extract_file(file)
-            save_cached(file, ext, cache_dir)
+            ext = extract_file(file, root=root, scope=scope)
+            save_cached(file, ext, cache_dir, namespace=cache_namespace)
         else:
             cache_hits += 1
         all_extractions.append(ext)
@@ -210,12 +216,17 @@ async def ingest_repo(
         mapped = map_extraction(ext, scope=scope, chunk_id=chunk_id)
         all_candidates.extend(mapped)
 
-    # Step 5 (incremental only): prune candidates from deleted files
+    # Step 5 (incremental only): prune candidates from deleted files and remove
+    # stale canonical records from every touched file before current upserts.
     if update and deleted:
         deleted_strs = {str(p) for p in deleted}
         all_candidates, _ = prune_dangling(all_candidates, deleted_strs)
+
+    if update:
+        touched_strs = {str(p) for p in files}
+        touched_strs.update(str(p) for p in deleted)
         await knowledge.delete_records_with_only_citations_in(
-            scope=scope, chunk_ids=deleted_strs
+            scope=scope, chunk_ids=touched_strs
         )
 
     # Step 6: persist canonical knowledge records and their provenance.
@@ -236,11 +247,14 @@ async def ingest_repo(
             await knowledge.upsert_relationship(candidate_to_knowledge_relationship(relationship))
         accepted.extend(extra_rels)
 
-    # Step 8: build lexical index from accepted entity/artifact candidates
+    # Step 8: rebuild lexical index from canonical code objects in this scope.
+    # Incremental runs only extract touched files, but lexical is a full
+    # projection and its builder clears existing rows before repopulating.
+    canonical_objects = await knowledge.list_objects(scope=scope, limit=100_000)
     code_nodes = [
-        (c.id, c.name)
-        for c in accepted
-        if isinstance(c, (CandidateEntity, CandidateArtifact))
+        (object_.id, object_.label)
+        for object_ in canonical_objects
+        if object_.properties.get("source_scope") == scope
     ]
     await build_lexical_index(lexical_conn, code_nodes)
 

@@ -99,6 +99,45 @@ class SuggestionRepository:
             row = await cursor.fetchone()
         return self._row_to_suggestion(row) if row else None
 
+    async def list_suggestions(
+        self,
+        *,
+        target_id: str | None = None,
+        target_ids: list[str] | None = None,
+        target_prefixes: list[str] | None = None,
+        status: SuggestionStatus | None = "pending",
+    ) -> list[MemorySuggestion]:
+        clauses: list[str] = []
+        params: list[str] = []
+        if target_id is not None:
+            clauses.append("target_id=?")
+            params.append(target_id)
+        target_clauses: list[str] = []
+        target_params: list[str] = []
+        if target_ids:
+            placeholders = ", ".join("?" for _ in target_ids)
+            target_clauses.append(f"target_id IN ({placeholders})")
+            target_params.extend(target_ids)
+        if target_prefixes:
+            for prefix in target_prefixes:
+                target_clauses.append("target_id LIKE ?")
+                target_params.append(f"{prefix}%")
+        if target_clauses:
+            clauses.append("(" + " OR ".join(target_clauses) + ")")
+            params.extend(target_params)
+        if status is not None:
+            clauses.append("status=?")
+            params.append(status)
+
+        where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
+        async with self._conn.execute(
+            f"SELECT * FROM memory_suggestions {where} "
+            "ORDER BY updated_at DESC, created_at DESC, id ASC",
+            params,
+        ) as cursor:
+            rows = await cursor.fetchall()
+        return [self._row_to_suggestion(row) for row in rows]
+
     async def accept_suggestion(self, suggestion_id: str) -> None:
         await self._transition(suggestion_id, "accepted")
 

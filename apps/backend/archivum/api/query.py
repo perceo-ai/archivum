@@ -15,8 +15,11 @@ from archivum.auth import CurrentUser, get_current_user
 from archivum.config import Settings, get_settings
 from archivum.db import sqlite
 from archivum.knowledge.repository import KnowledgeRepository
-from archivum.llm.openrouter_client import openrouter_stream_tokens
-from archivum.llm.openai_compat_client import openai_compat_stream_tokens
+from archivum.llm.openrouter_client import openrouter_chat_completion, openrouter_stream_tokens
+from archivum.llm.openai_compat_client import (
+    openai_compat_chat_completion,
+    openai_compat_stream_tokens,
+)
 from archivum.retrieval.hybrid import hybrid_retrieve
 from archivum.retrieval.context import ContextRequest, build_context_package
 
@@ -95,64 +98,19 @@ async def query(
         },
     )
 
-    hits = await hybrid_retrieve(
-        question, current_user.wiki_id, limit=_MAX_CONTEXTS, settings=settings
-    )
-    scoped_hits = await _scope_hits_to_context_package(
-        question, current_user.wiki_id, hits
-    )
-    evidence_hits = [hit for hit in scoped_hits if _has_usable_citation(hit)]
-    contexts = [
-        {
-            "slug": _context_identifier(hit.id, current_user.wiki_id),
-            "title": hit.label,
-            "excerpt": hit.citation.quote or "",
-            "score": hit.score,
-        }
-        for hit in evidence_hits
-    ]
-    slugs = [
-        slug
-        for hit in hits
-        if (slug := _slug_from_page_id(hit.id, current_user.wiki_id)) is not None
-    ]
+    evidence = await prepare_query_evidence(question, current_user.wiki_id, settings)
+    contexts = evidence["contexts"]
+    citations = evidence["citations"]
     logger.info(
         "API query context ready",
         extra={
             "wiki_id": current_user.wiki_id,
-            "hybrid_hits": len(hits),
-            "scoped_hits": len(scoped_hits),
+            "hybrid_hits": evidence["hybrid_hits"],
+            "scoped_hits": evidence["scoped_hits"],
             "contexts": len(contexts),
-            "slugs": len(slugs),
+            "citations": len(citations),
         },
     )
-
-    # Build page summaries in one query, then attach every canonical citation.
-    citations: list[dict[str, Any]] = []
-    citation_rows = await sqlite.get_pages(slugs[:8], current_user.wiki_id)
-    hits_by_id = {hit.id: hit for hit in evidence_hits}
-    emitted_ids: set[str] = set()
-    for row in citation_rows:
-        hit = hits_by_id.get(f"page:{current_user.wiki_id}:{row['slug']}")
-        if hit is None:
-            continue
-        citations.append(
-            {
-                "slug": row["slug"],
-                "title": row["title"],
-                "content": row["content"],
-                "tags": json.loads(row["tags"]) if isinstance(row["tags"], str) else row["tags"],
-                "created_at": row["created_at"],
-                "updated_at": row["updated_at"],
-                "authored_by": row["authored_by"],
-                "citation": hit.citation.model_dump(),
-            }
-        )
-        emitted_ids.add(hit.id)
-    for hit in evidence_hits:
-        if hit.id in emitted_ids:
-            continue
-        citations.append(_canonical_citation_payload(hit, current_user.wiki_id))
 
     prompt = _build_prompt(question, contexts)
 
@@ -229,6 +187,114 @@ def _slug_from_page_id(page_id: str, wiki_id: str) -> str | None:
     return page_id.removeprefix(prefix) if page_id.startswith(prefix) else None
 
 
+async def prepare_query_evidence(
+    question: str, wiki_id: str, settings: Settings
+) -> dict[str, Any]:
+    """Return bounded, cited evidence shared by REST and MCP query surfaces."""
+    hits = await hybrid_retrieve(question, wiki_id, limit=_MAX_CONTEXTS, settings=settings)
+    scoped_hits = await _scope_hits_to_context_package(question, wiki_id, hits)
+    evidence_hits = [hit for hit in scoped_hits if _has_usable_citation(hit)]
+    contexts = [
+        {
+            "slug": _context_identifier(hit.id, wiki_id),
+            "title": hit.label,
+            "excerpt": hit.citation.quote or "",
+            "score": hit.score,
+        }
+        for hit in evidence_hits
+    ]
+    slugs = [
+        slug
+        for hit in evidence_hits
+        if (slug := _slug_from_page_id(hit.id, wiki_id)) is not None
+    ]
+
+    citations: list[dict[str, Any]] = []
+    citation_rows = await sqlite.get_pages(slugs[:8], wiki_id)
+    hits_by_id = {hit.id: hit for hit in evidence_hits}
+    emitted_ids: set[str] = set()
+    for row in citation_rows:
+        hit = hits_by_id.get(f"page:{wiki_id}:{row['slug']}")
+        if hit is None:
+            continue
+        citations.append(
+            {
+                "slug": row["slug"],
+                "title": row["title"],
+                "content": row["content"],
+                "tags": json.loads(row["tags"]) if isinstance(row["tags"], str) else row["tags"],
+                "created_at": row["created_at"],
+                "updated_at": row["updated_at"],
+                "authored_by": row["authored_by"],
+                "citation": hit.citation.model_dump(),
+            }
+        )
+        emitted_ids.add(hit.id)
+    for hit in evidence_hits:
+        if hit.id in emitted_ids:
+            continue
+        citations.append(_canonical_citation_payload(hit, wiki_id))
+
+    return {
+        "contexts": contexts,
+        "citations": citations,
+        "hybrid_hits": len(hits),
+        "scoped_hits": len(scoped_hits),
+        "insufficient_evidence": not bool(contexts),
+        "reason": _INSUFFICIENT_EVIDENCE if not contexts else None,
+    }
+
+
+async def synthesize_query_answer(question: str, wiki_id: str, settings: Settings) -> dict[str, Any]:
+    """Return a non-streaming cited answer using the same evidence path as REST."""
+    evidence = await prepare_query_evidence(question, wiki_id, settings)
+    contexts = evidence["contexts"]
+    if not contexts:
+        return {
+            "answer": _INSUFFICIENT_EVIDENCE,
+            "citations": evidence["citations"],
+            "insufficient_evidence": True,
+            "reason": evidence["reason"],
+        }
+
+    prompt = _build_prompt(question, contexts)
+    if settings.llm_synthesis_provider == "anthropic":
+        client = anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key)
+        response = await client.messages.create(
+            model=settings.llm_synthesis_model,
+            max_tokens=1024,
+            messages=[{"role": "user", "content": prompt}],
+        )
+        answer = (response.content[0].text if response.content else "").strip()
+    elif settings.llm_synthesis_provider == "openrouter":
+        answer = await openrouter_chat_completion(
+            settings=settings,
+            model=settings.llm_synthesis_model,
+            messages=[{"role": "user", "content": prompt}],
+            max_tokens=1024,
+            temperature=0.2,
+        )
+    elif settings.llm_synthesis_provider in {"openai_compat", "ollama"}:
+        answer = await openai_compat_chat_completion(
+            settings=settings,
+            provider=settings.llm_synthesis_provider,
+            model=settings.llm_synthesis_model,
+            messages=[{"role": "user", "content": prompt}],
+            max_tokens=1024,
+            temperature=0.2,
+        )
+    else:
+        raise ValueError(f"Unsupported llm_synthesis_provider: {settings.llm_synthesis_provider}")
+
+    answer = _enforce_citations(answer, len(contexts))
+    return {
+        "answer": answer,
+        "citations": evidence["citations"],
+        "insufficient_evidence": answer == _INSUFFICIENT_EVIDENCE,
+        "reason": _INSUFFICIENT_EVIDENCE if answer == _INSUFFICIENT_EVIDENCE else None,
+    }
+
+
 async def _scope_hits_to_context_package(question: str, wiki_id: str, hits: list):
     """Restrict hybrid evidence to the matching bounded canonical subgraph.
 
@@ -256,8 +322,7 @@ async def _scope_hits_to_context_package(question: str, wiki_id: str, hits: list
         return hits
 
     scoped_ids = {node.id for node in package.nodes}
-    scoped_hits = [hit for hit in hits if hit.id in scoped_ids]
-    return scoped_hits or hits
+    return [hit for hit in hits if hit.id in scoped_ids]
 
 
 def _context_identifier(hit_id: str, wiki_id: str) -> str:
@@ -265,6 +330,8 @@ def _context_identifier(hit_id: str, wiki_id: str) -> str:
 
 
 def _has_usable_citation(hit) -> bool:
+    if hit.id == "person:self":
+        return False
     return bool((hit.citation.quote or "").strip())
 
 
@@ -275,7 +342,7 @@ def _enforce_citations(answer: str, context_count: int) -> str:
     citation_indices = [int(match) for match in _CITATION_PATTERN.findall(answer)]
     if any(1 <= index <= context_count for index in citation_indices):
         return answer
-    return f"{answer} [1]"
+    return _INSUFFICIENT_EVIDENCE
 
 
 def _canonical_citation_payload(hit, wiki_id: str) -> dict[str, Any]:

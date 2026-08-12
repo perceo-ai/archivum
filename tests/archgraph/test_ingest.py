@@ -33,6 +33,25 @@ def shared_cache_dir(tmp_path):
     return d
 
 
+def test_changed_files_reports_renamed_old_path_as_deleted(tmp_path):
+    if shutil.which("git") is None:
+        pytest.skip("git not available")
+
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / "old_service.py").write_text("def old_service():\n    return 1\n")
+    for args in (["init", "-q"], ["add", "-A"], ["commit", "-q", "-m", "init"]):
+        subprocess.run(["git", *args], cwd=repo, check=True, env=_git_env())
+    first_sha = _run_git(["rev-parse", "HEAD"], repo)
+    subprocess.run(["git", "mv", "old_service.py", "new_service.py"], cwd=repo, check=True, env=_git_env())
+    subprocess.run(["git", "commit", "-q", "-m", "rename service"], cwd=repo, check=True, env=_git_env())
+
+    changed, deleted = changed_files(repo, first_sha)
+
+    assert repo / "new_service.py" in changed
+    assert repo / "old_service.py" in deleted
+
+
 @pytest.mark.asyncio
 async def test_archgraph_ingest_writes_to_knowledge_repository(git_repo, cache_dir):
     async with aiosqlite.connect(":memory:") as conn:
@@ -79,6 +98,39 @@ async def test_full_ingest_writes_canonical_objects(git_repo, cache_dir, tmp_pat
 
     assert report.nodes > 0
     assert "Calculator" in names, f"Expected 'Calculator' in accepted names, got: {names}"
+
+
+async def test_full_ingest_namespaces_duplicate_basenames(tmp_path):
+    repo = tmp_path / "repo"
+    (repo / "pkg_a").mkdir(parents=True)
+    (repo / "pkg_b").mkdir(parents=True)
+    (repo / "pkg_a" / "service.py").write_text(
+        "class Service:\n    def run(self):\n        return 1\n"
+    )
+    (repo / "pkg_b" / "service.py").write_text(
+        "class Service:\n    def run(self):\n        return 2\n"
+    )
+
+    cache_dir = tmp_path / "cache"
+    cache_dir.mkdir()
+    async with aiosqlite.connect(tmp_path / "knowledge.db") as conn:
+        await init_knowledge_schema(conn)
+        knowledge = KnowledgeRepository(conn)
+        await ingest_repo(
+            repo,
+            scope="repo:test",
+            cache_dir=cache_dir,
+            knowledge=knowledge,
+            lexical_conn=conn,
+        )
+        objects = await knowledge.list_objects(scope="repo:test")
+
+    service_types = [obj for obj in objects if obj.kind == "type" and obj.label == "Service"]
+    assert len(service_types) == 2
+    service_ids = {obj.id for obj in service_types}
+    assert len(service_ids) == 2
+    assert "repo_test_pkg_a_service_service" in service_ids
+    assert "repo_test_pkg_b_service_service" in service_ids
 
 
 async def test_second_run_uses_cache(git_repo, shared_cache_dir, tmp_path):
@@ -219,6 +271,114 @@ async def test_update_reextracts_only_changed(tmp_path):
     assert "new_function" in names, f"Expected 'new_function' in accepted names, got: {names}"
 
 
+async def test_update_prunes_removed_symbols_from_changed_file(tmp_path):
+    """Incremental update removes canonical records that disappeared from an edited file."""
+    if shutil.which("git") is None:
+        pytest.skip("git not available")
+
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / "service.py").write_text(
+        "class OldService:\n    def run(self):\n        return 1\n"
+    )
+    for args in (["init", "-q"], ["add", "-A"], ["commit", "-q", "-m", "init"]):
+        subprocess.run(["git", *args], cwd=repo, check=True, env=_git_env())
+
+    first_sha = _run_git(["rev-parse", "HEAD"], repo)
+    cache_dir = tmp_path / "cache"
+    cache_dir.mkdir()
+
+    async with aiosqlite.connect(tmp_path / "knowledge.db") as conn:
+        await init_knowledge_schema(conn)
+        knowledge = KnowledgeRepository(conn)
+        await ingest_repo(
+            repo,
+            scope="repo:test",
+            cache_dir=cache_dir,
+            knowledge=knowledge,
+            lexical_conn=conn,
+        )
+
+    (repo / "service.py").write_text(
+        "class NewService:\n    def run(self):\n        return 2\n"
+    )
+    subprocess.run(["git", "add", "-A"], cwd=repo, check=True, env=_git_env())
+    subprocess.run(
+        ["git", "commit", "-q", "-m", "replace service"],
+        cwd=repo,
+        check=True,
+        env=_git_env(),
+    )
+
+    async with aiosqlite.connect(tmp_path / "knowledge.db") as conn:
+        await init_knowledge_schema(conn)
+        knowledge = KnowledgeRepository(conn)
+        report = await ingest_repo(
+            repo,
+            scope="repo:test",
+            cache_dir=cache_dir,
+            knowledge=knowledge,
+            lexical_conn=conn,
+            update=True,
+            since_sha=first_sha,
+        )
+        names = {obj.label for obj in await knowledge.list_objects(scope="repo:test")}
+
+    assert report.files == 1
+    assert "NewService" in names
+    assert "OldService" not in names
+
+
+async def test_update_preserves_lexical_rows_for_unchanged_files(tmp_path):
+    """Incremental lexical rebuild uses all canonical code nodes, not only touched files."""
+    if shutil.which("git") is None:
+        pytest.skip("git not available")
+
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / "service.py").write_text("class Service:\n    def run(self):\n        return 1\n")
+    (repo / "helper.py").write_text("class Helper:\n    def help(self):\n        return 1\n")
+    for args in (["init", "-q"], ["add", "-A"], ["commit", "-q", "-m", "init"]):
+        subprocess.run(["git", *args], cwd=repo, check=True, env=_git_env())
+
+    first_sha = _run_git(["rev-parse", "HEAD"], repo)
+    cache_dir = tmp_path / "cache"
+    cache_dir.mkdir()
+
+    async with aiosqlite.connect(tmp_path / "knowledge.db") as conn:
+        await init_knowledge_schema(conn)
+        knowledge = KnowledgeRepository(conn)
+        await ingest_repo(
+            repo,
+            scope="repo:test",
+            cache_dir=cache_dir,
+            knowledge=knowledge,
+            lexical_conn=conn,
+        )
+
+    (repo / "service.py").write_text("class NewService:\n    def run(self):\n        return 2\n")
+    subprocess.run(["git", "add", "-A"], cwd=repo, check=True, env=_git_env())
+    subprocess.run(["git", "commit", "-q", "-m", "replace service"], cwd=repo, check=True, env=_git_env())
+
+    async with aiosqlite.connect(tmp_path / "knowledge.db") as conn:
+        await init_knowledge_schema(conn)
+        knowledge = KnowledgeRepository(conn)
+        await ingest_repo(
+            repo,
+            scope="repo:test",
+            cache_dir=cache_dir,
+            knowledge=knowledge,
+            lexical_conn=conn,
+            update=True,
+            since_sha=first_sha,
+        )
+        rows = await conn.execute_fetchall("SELECT text FROM code_node_text")
+        indexed_text = {row[0] for row in rows}
+
+    assert "NewService" in indexed_text
+    assert "Helper" in indexed_text
+
+
 async def test_update_prunes_deleted_file(tmp_path):
     """After deleting a file and running update, that file's objects are pruned."""
     if shutil.which("git") is None:
@@ -330,6 +490,59 @@ async def test_cross_file_edge_provenance_is_file_addressable_and_prunable(tmp_p
         any(citation.chunk_id == a_py for citation in relationship.citations)
         for relationship in relationships
     )
+
+
+async def test_update_preserves_unchanged_file_inferred_edges_when_target_changes(tmp_path):
+    """Changing a callee file must not delete inferred edges owned by untouched callers."""
+    if shutil.which("git") is None:
+        pytest.skip("git not available")
+
+    repo = tmp_path / "xrepo"
+    repo.mkdir()
+    (repo / "b.py").write_text("def helper():\n    return 1\n")
+    (repo / "a.py").write_text("from b import helper\n\ndef run():\n    return helper()\n")
+    for args in (["init", "-q"], ["add", "-A"], ["commit", "-q", "-m", "init"]):
+        subprocess.run(["git", *args], cwd=repo, check=True, env=_git_env())
+    first_sha = _run_git(["rev-parse", "HEAD"], repo)
+
+    cache_dir = tmp_path / "cache"
+    cache_dir.mkdir()
+    async with aiosqlite.connect(tmp_path / "lex.db") as conn:
+        await init_knowledge_schema(conn)
+        knowledge = KnowledgeRepository(conn)
+        await ingest_repo(
+            repo, scope="repo:test", cache_dir=cache_dir, knowledge=knowledge, lexical_conn=conn
+        )
+        before = await knowledge.list_relationships(scope="repo:test")
+
+    inferred_before = [
+        relationship
+        for relationship in before
+        if relationship.extraction_method == "INFERRED"
+        and relationship.src_id.endswith("_a_run")
+        and relationship.dst_id.endswith("_b_helper")
+    ]
+    assert inferred_before
+
+    (repo / "b.py").write_text("def helper():\n    return 2\n")
+    subprocess.run(["git", "add", "-A"], cwd=repo, check=True, env=_git_env())
+    subprocess.run(["git", "commit", "-q", "-m", "change callee"], cwd=repo, check=True, env=_git_env())
+
+    async with aiosqlite.connect(tmp_path / "lex.db") as conn:
+        await init_knowledge_schema(conn)
+        knowledge = KnowledgeRepository(conn)
+        await ingest_repo(
+            repo,
+            scope="repo:test",
+            cache_dir=cache_dir,
+            knowledge=knowledge,
+            lexical_conn=conn,
+            update=True,
+            since_sha=first_sha,
+        )
+        after = await knowledge.list_relationships(scope="repo:test")
+
+    assert any(relationship.id == inferred_before[0].id for relationship in after)
 
 
 def test_prune_dangling_pure():

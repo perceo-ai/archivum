@@ -15,7 +15,10 @@ from archivum.auth import CurrentUser, require_owner
 from archivum.config import Settings, get_settings
 from archivum.db import graph, qdrant_client as qdrant, sqlite
 from archivum.ingest.agent import slugify
+from archivum.knowledge.projections import rebuild_knowledge_projections
+from archivum.knowledge.repository import KnowledgeRepository, init_knowledge_schema
 from archivum.linting import WIKILINK_RE, analyze_wiki_pages
+from archivum.pages_to_knowledge import sync_page_to_knowledge
 
 router = APIRouter(prefix="/api", tags=["system"])
 
@@ -206,7 +209,45 @@ async def rebuild_indexes(
             if existing:
                 await graph.add_reference(p["slug"], target_slug, current_user.wiki_id)
 
-    return {"detail": "Rebuilt indexes", "pages": len(pages)}
+    async with sqlite.get_db() as connection:
+        await init_knowledge_schema(connection)
+        repo = KnowledgeRepository(connection)
+        current_page_ids = {
+            f"page:{current_user.wiki_id}:{p['slug']}"
+            for p in pages
+        }
+        page_prefix = f"page:{current_user.wiki_id}:%"
+        async with connection.execute(
+            """
+            SELECT id FROM knowledge_objects
+            WHERE kind='page' AND scope=? AND id LIKE ?
+            ORDER BY id
+            """,
+            (f"wiki:{current_user.wiki_id}", page_prefix),
+        ) as cursor:
+            canonical_page_ids = [row["id"] for row in await cursor.fetchall()]
+        for page_id in canonical_page_ids:
+            if page_id not in current_page_ids:
+                await repo.delete_object(page_id)
+        for p in pages:
+            await sync_page_to_knowledge(
+                repo,
+                slug=p["slug"],
+                title=p["title"],
+                markdown=p.get("content", "") or "",
+                wiki_id=current_user.wiki_id,
+            )
+        projection = await rebuild_knowledge_projections(repo, current_user.wiki_id)
+
+    return {
+        "detail": "Rebuilt indexes",
+        "pages": len(pages),
+        "canonical_objects": projection.objects,
+        "canonical_relationships": projection.relationships,
+        "qdrant_indexed": projection.qdrant_indexed,
+        "kuzu_nodes": projection.kuzu_nodes,
+        "kuzu_edges": projection.kuzu_edges,
+    }
 
 
 @router.get("/lint")

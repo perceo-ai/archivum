@@ -19,6 +19,7 @@ from archivum.api import life_os as life_os_routes
 from archivum.api import pages as pages_routes
 from archivum.api import public as public_routes
 from archivum.api import share as share_routes
+from archivum.api import suggestions as suggestions_routes
 from archivum.api.graph import router as graph_router
 from archivum.api.context import router as context_router
 from archivum.api.query import router as query_router
@@ -164,6 +165,7 @@ def create_app() -> FastAPI:
     app.include_router(system_router)
     app.include_router(share_routes.router)
     app.include_router(share_routes.mgmt_router)
+    app.include_router(suggestions_routes.router)
 
     return app
 

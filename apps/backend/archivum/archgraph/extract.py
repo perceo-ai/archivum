@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from archivum.archgraph.extractors.base import (
+    _file_namespace,
     _file_stem,
     _make_id,
     _read_text,
@@ -12,21 +13,27 @@ from archivum.archgraph.models import CodeEdge, CodeNode, Extraction, Extraction
 from archivum.archgraph.registry import LanguageConfig, config_for_suffix, load_parser
 
 
-def extract_file(path: Path) -> Extraction:
+def extract_file(path: Path, *, root: Path | None = None, scope: str | None = None) -> Extraction:
     """Dispatch extraction by file suffix. Returns Extraction with error on unknown suffix."""
     cfg = config_for_suffix(path.suffix)
     if cfg is None:
         return Extraction(nodes=[], edges=[], error=f"unsupported suffix {path.suffix!r}")
-    return _extract_generic(path, cfg)
+    return _extract_generic(path, cfg, root=root, scope=scope)
 
 
-def _extract_generic(path: Path, cfg: LanguageConfig) -> Extraction:
+def _extract_generic(
+    path: Path,
+    cfg: LanguageConfig,
+    *,
+    root: Path | None = None,
+    scope: str | None = None,
+) -> Extraction:
     """Walk a tree-sitter parse tree and emit CodeNodes + CodeEdges."""
     try:
         source = path.read_bytes()
         parser = load_parser(cfg)
         tree = parser.parse(source)
-        root = tree.root_node
+        tree_root = tree.root_node
     except Exception as exc:
         return Extraction(nodes=[], edges=[], error=str(exc))
 
@@ -37,7 +44,8 @@ def _extract_generic(path: Path, cfg: LanguageConfig) -> Extraction:
     named_imports: dict[str, str] = {}
 
     stem = _file_stem(path)
-    file_id = _make_id(stem)
+    file_namespace = _file_namespace(path, root=root, scope=scope)
+    file_id = _make_id(file_namespace)
 
     # Emit the file node
     nodes.append(
@@ -46,7 +54,7 @@ def _extract_generic(path: Path, cfg: LanguageConfig) -> Extraction:
             label=stem,
             kind="file",
             source_file=str(path),
-            source_location=_source_location(root),
+            source_location=_source_location(tree_root),
         )
     )
 
@@ -62,7 +70,7 @@ def _extract_generic(path: Path, cfg: LanguageConfig) -> Extraction:
         for child in node.children:
             _find_classes(child)
 
-    _find_classes(root)
+    _find_classes(tree_root)
 
     def _enclosing_class(node) -> str | None:
         """Walk ancestors looking for a class_definition node."""
@@ -80,7 +88,7 @@ def _extract_generic(path: Path, cfg: LanguageConfig) -> Extraction:
                 name = _read_text(name_node, source)
                 nodes.append(
                     CodeNode(
-                        id=_make_id(stem, name),
+                        id=_make_id(file_namespace, name),
                         label=name,
                         kind="type",
                         source_file=str(path),
@@ -94,9 +102,9 @@ def _extract_generic(path: Path, cfg: LanguageConfig) -> Extraction:
                 fname = _read_text(name_node, source)
                 enc_class = _enclosing_class(node)
                 if enc_class is not None:
-                    sym_id = _make_id(stem, enc_class, fname)
+                    sym_id = _make_id(file_namespace, enc_class, fname)
                 else:
-                    sym_id = _make_id(stem, fname)
+                    sym_id = _make_id(file_namespace, fname)
                 nodes.append(
                     CodeNode(
                         id=sym_id,
@@ -124,7 +132,7 @@ def _extract_generic(path: Path, cfg: LanguageConfig) -> Extraction:
                 # TypeScript ES-module import: import { X } from "./module"
                 # source field is the string literal with the module path.
                 raw_path = _read_text(source_node, source).strip("\"'")
-                module_stem = Path(raw_path).stem
+                module_namespace = _module_namespace(raw_path)
                 # Walk import_clause > named_imports > import_specifier
                 for clause in node.children:
                     if clause.type == "import_clause":
@@ -135,7 +143,7 @@ def _extract_generic(path: Path, cfg: LanguageConfig) -> Extraction:
                                         name_field = specifier.child_by_field_name("name")
                                         if name_field is not None:
                                             local_name = _read_text(name_field, source)
-                                            target_id = _make_id(module_stem, local_name)
+                                            target_id = _make_id(module_namespace, local_name)
                                             named_imports[local_name] = target_id
                                             edges.append(
                                                 CodeEdge(
@@ -156,7 +164,7 @@ def _extract_generic(path: Path, cfg: LanguageConfig) -> Extraction:
                         if child.type == "aliased_import":
                             actual = child.children[0]  # the module name part
                         module_name = _read_text(actual, source).split(".")[0]
-                        target_id = _make_id(module_name)
+                        target_id = _make_id(_python_module_namespace(module_name))
                         edges.append(
                             CodeEdge(
                                 source=file_id,
@@ -172,7 +180,7 @@ def _extract_generic(path: Path, cfg: LanguageConfig) -> Extraction:
             mod_node = node.child_by_field_name("module_name")
             if mod_node is not None:
                 module_name = _read_text(mod_node, source).split(".")[0]
-                target_id = _make_id(module_name)
+                target_id = _make_id(_python_module_namespace(module_name))
                 edges.append(
                     CodeEdge(
                         source=file_id,
@@ -201,8 +209,8 @@ def _extract_generic(path: Path, cfg: LanguageConfig) -> Extraction:
                 else:
                     cls = enc_class
                 if cls is not None:
-                    return _make_id(stem, cls, fn_name)
-                return _make_id(stem, fn_name)
+                    return _make_id(file_namespace, cls, fn_name)
+                return _make_id(file_namespace, fn_name)
             if current.type in cfg.class_types:
                 enc_class = class_node_names.get(current.id)
             current = current.parent
@@ -227,8 +235,10 @@ def _extract_generic(path: Path, cfg: LanguageConfig) -> Extraction:
             else:
                 # best-effort: check if there's a class node with this method in same file
                 enc_fn_class = _get_enclosing_class_for_function_id(caller_id)
-                if enc_fn_class is not None and _make_id(stem, enc_fn_class, callee_name) in {n.id for n in nodes}:
-                    target_id = _make_id(stem, enc_fn_class, callee_name)
+                if enc_fn_class is not None and (
+                    same_class_target := _make_id(file_namespace, enc_fn_class, callee_name)
+                ) in {n.id for n in nodes}:
+                    target_id = same_class_target
                 else:
                     target_id = _make_id(callee_name)
 
@@ -247,9 +257,9 @@ def _extract_generic(path: Path, cfg: LanguageConfig) -> Extraction:
                 # self.method / this.method -> resolve to same-class method
                 enc_fn_class = _get_enclosing_class_for_function_id(caller_id)
                 if enc_fn_class is not None:
-                    target_id = _make_id(stem, enc_fn_class, attr_text)
+                    target_id = _make_id(file_namespace, enc_fn_class, attr_text)
                 else:
-                    target_id = _make_id(stem, attr_text)
+                    target_id = _make_id(file_namespace, attr_text)
             else:
                 # external: obj.method -> _make_id(obj, method)
                 target_id = _make_id(obj_text, attr_text)
@@ -276,20 +286,38 @@ def _extract_generic(path: Path, cfg: LanguageConfig) -> Extraction:
                 # Simpler: search class_node_names values
                 pass
         # Re-derive: parse fn_id pieces
-        # fn_id = _make_id(stem, class_name, fn_name) or _make_id(stem, fn_name)
+        # fn_id = _make_id(file_namespace, class_name, fn_name) or _make_id(file_namespace, fn_name)
         # We'll search via nodes
         for n in nodes:
             if n.id == fn_id and n.kind == "symbol":
                 fn_label = n.label
-                # try to find a class with id = _make_id(stem, class_name)
+                # try to find a class with id = _make_id(file_namespace, class_name)
                 for cls_name in class_node_names.values():
-                    candidate = _make_id(stem, cls_name, fn_label)
+                    candidate = _make_id(file_namespace, cls_name, fn_label)
                     if candidate == fn_id:
                         return cls_name
         return None
 
+    def _module_namespace(raw_path: str) -> str:
+        """Resolve relative module paths into the same file namespace used by nodes."""
+        if raw_path.startswith("."):
+            return _file_namespace(path.parent / raw_path, root=root, scope=scope)
+        return Path(raw_path).stem
+
+    def _python_module_namespace(module_name: str) -> str:
+        if root is None or not module_name:
+            return module_name
+
+        candidate = root / f"{module_name.replace('.', '/')}.py"
+        if candidate.exists():
+            return _file_namespace(candidate, root=root, scope=scope)
+        package_init = root / module_name.replace(".", "/") / "__init__.py"
+        if package_init.exists():
+            return _file_namespace(package_init, root=root, scope=scope)
+        return module_name
+
     try:
-        _walk(root)
+        _walk(tree_root)
     except Exception as exc:
         return Extraction(nodes=[], edges=[], error=str(exc))
 

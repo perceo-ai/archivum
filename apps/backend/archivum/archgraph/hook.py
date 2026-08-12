@@ -10,13 +10,16 @@ from __future__ import annotations
 import argparse
 import asyncio
 import os
+import subprocess
 import sys
 from pathlib import Path
 
 import aiosqlite
 
+from archivum.archgraph.extractors.base import _make_id
 from archivum.archgraph.ingest import IngestReport, ingest_repo
 from archivum.archgraph.mapper import knowledge_to_candidate_object, knowledge_to_candidate_relationship
+from archivum.archgraph.repo import snapshot_repo
 from archivum.db import sqlite
 from archivum.knowledge.repository import KnowledgeRepository, init_knowledge_schema
 
@@ -25,9 +28,46 @@ from archivum.knowledge.repository import KnowledgeRepository, init_knowledge_sc
 # Async pipeline runner
 # ---------------------------------------------------------------------------
 
+def _last_indexed_sha_path(cache_dir: Path, scope: str) -> Path:
+    return cache_dir / f"last-indexed-sha.{_make_id(scope)}"
+
+
+def _read_last_indexed_sha(cache_dir: Path, scope: str) -> str | None:
+    path = _last_indexed_sha_path(cache_dir, scope)
+    if not path.exists():
+        return None
+    value = path.read_text().strip()
+    return value or None
+
+
+def _write_last_indexed_sha(cache_dir: Path, scope: str, sha: str) -> None:
+    if sha == "working-tree":
+        return
+    path = _last_indexed_sha_path(cache_dir, scope)
+    path.write_text(f"{sha}\n")
+
+
+def _previous_head_sha(repo: Path) -> str | None:
+    try:
+        result = subprocess.run(
+            ["git", "-C", str(repo), "rev-parse", "HEAD^"],
+            capture_output=True,
+            text=True,
+        )
+    except (FileNotFoundError, subprocess.SubprocessError):
+        return None
+    if result.returncode != 0:
+        return None
+    return result.stdout.strip() or None
+
+
 async def _run_ingest(repo: Path, scope: str, cache_dir: Path, update: bool) -> IngestReport:
     """Open canonical knowledge storage and run the ingest pipeline."""
     cache_dir.mkdir(parents=True, exist_ok=True)
+    current_sha = snapshot_repo(repo).commit_sha
+    since_sha = None
+    if update:
+        since_sha = _read_last_indexed_sha(cache_dir, scope) or _previous_head_sha(repo)
     async with sqlite.get_db() as knowledge_conn:
         await init_knowledge_schema(knowledge_conn)
         async with aiosqlite.connect(cache_dir / "index.db") as lexical_conn:
@@ -38,7 +78,9 @@ async def _run_ingest(repo: Path, scope: str, cache_dir: Path, update: bool) -> 
                 knowledge=KnowledgeRepository(knowledge_conn),
                 lexical_conn=lexical_conn,
                 update=update,
+                since_sha=since_sha,
             )
+    _write_last_indexed_sha(cache_dir, scope, current_sha)
     return report
 
 
@@ -49,6 +91,10 @@ async def _run_ingest_and_export(
     from archivum.archgraph.export import export_graph
 
     cache_dir.mkdir(parents=True, exist_ok=True)
+    current_sha = snapshot_repo(repo).commit_sha
+    since_sha = None
+    if update:
+        since_sha = _read_last_indexed_sha(cache_dir, scope) or _previous_head_sha(repo)
     async with sqlite.get_db() as knowledge_conn:
         await init_knowledge_schema(knowledge_conn)
         knowledge = KnowledgeRepository(knowledge_conn)
@@ -60,6 +106,7 @@ async def _run_ingest_and_export(
                 knowledge=knowledge,
                 lexical_conn=lexical_conn,
                 update=update,
+                since_sha=since_sha,
             )
         objects = await knowledge.list_objects(scope=scope)
         relationships = await knowledge.list_relationships(scope=scope)
@@ -70,6 +117,7 @@ async def _run_ingest_and_export(
         ],
         export_dir,
     )
+    _write_last_indexed_sha(cache_dir, scope, current_sha)
     return report, json_path
 
 

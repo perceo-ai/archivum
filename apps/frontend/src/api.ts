@@ -368,6 +368,54 @@ export type MemorySuggestion = {
   status: 'pending' | 'accepted' | 'rejected';
 };
 
+export type CreateSuggestionInput = {
+  target_id?: string;
+  page_slug?: string;
+  suggestion_type: string;
+  proposed_markdown?: string;
+  proposed_objects?: unknown[];
+  citations?: Citation[];
+};
+
+export async function listSuggestions(): Promise<MemorySuggestion[]> {
+  const res = await apiFetch('/api/suggestions');
+  return res.json();
+}
+
+export async function listPageSuggestions(slug: string): Promise<MemorySuggestion[]> {
+  const res = await apiFetch(`/api/suggestions?page_slug=${encodeURIComponent(slug)}`);
+  return res.json();
+}
+
+export async function createSuggestion(input: CreateSuggestionInput): Promise<MemorySuggestion> {
+  const res = await apiFetch('/api/suggestions', {
+    method: 'POST',
+    body: JSON.stringify({
+      target_id: input.target_id,
+      page_slug: input.page_slug,
+      suggestion_type: input.suggestion_type,
+      proposed_markdown: input.proposed_markdown ?? '',
+      proposed_objects: input.proposed_objects ?? [],
+      citations: input.citations ?? [],
+    }),
+  });
+  return res.json();
+}
+
+export async function acceptSuggestion(suggestionId: string): Promise<MemorySuggestion> {
+  const res = await apiFetch(`/api/suggestions/${encodeURIComponent(suggestionId)}/accept`, {
+    method: 'POST',
+  });
+  return res.json();
+}
+
+export async function rejectSuggestion(suggestionId: string): Promise<MemorySuggestion> {
+  const res = await apiFetch(`/api/suggestions/${encodeURIComponent(suggestionId)}/reject`, {
+    method: 'POST',
+  });
+  return res.json();
+}
+
 export async function getContextPackage(
   input: ContextPackageRequest = {},
 ): Promise<ContextPackage> {

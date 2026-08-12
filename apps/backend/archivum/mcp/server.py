@@ -9,8 +9,6 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
-
-import anthropic
 from mcp.server.fastmcp import FastMCP
 from mcp.server.auth.middleware.auth_context import get_access_token
 from mcp.server.auth.provider import AccessToken
@@ -25,11 +23,10 @@ from archivum.ingest.agent import slugify
 from archivum.knowledge.repository import KnowledgeRepository
 from archivum.life_os.service import ensure_daily_note, register_project
 from archivum.linting import analyze_wiki_pages
-from archivum.llm.openrouter_client import openrouter_chat_completion
-from archivum.llm.openai_compat_client import openai_compat_chat_completion
 from archivum.logging_config import setup_logging
 from archivum.observability import new_trace_id, set_trace_id
 from archivum import page_write_queue
+from archivum.api.query import synthesize_query_answer
 from archivum.retrieval.context import ContextRequest, build_context_package as build_package
 from archivum.retrieval.hybrid import hybrid_retrieve
 
@@ -411,65 +408,23 @@ async def query(question: str, wiki_id: str = "default") -> dict[str, Any]:
         return {"error": "missing_api_key", "detail": "OPENROUTER_API_KEY not configured"}
     if settings.llm_synthesis_provider == "openai_compat" and not settings.openai_compat_api_key:
         return {"error": "missing_api_key", "detail": "OPENAI_COMPAT_API_KEY not configured"}
-
-    hits = await qdrant.search_raw(question, wiki_id=wiki_id, limit=6, settings=settings)
-    by_slug: dict[str, dict[str, Any]] = {}
-    for h in hits:
-        s = h.get("slug")
-        if not s:
-            continue
-        if s not in by_slug or float(h.get("score", 0)) > float(by_slug[s].get("score", 0)):
-            by_slug[s] = h
-
-    contexts = list(by_slug.values())
-    slugs = [c.get("slug") for c in contexts if c.get("slug")]
-
-    citations = []
-    citation_rows = await sqlite.get_pages(slugs[:8], wiki_id)
-    for row in citation_rows:
-        citations.append({"slug": row["slug"], "title": row["title"]})
-
-    ctx_lines = []
-    for i, c in enumerate(contexts, start=1):
-        ctx_lines.append(f"[{i}] {c.get('title','')} ({c.get('slug','')})\n{(c.get('excerpt') or '')[:1200]}")
-
-    prompt = (
-        "Answer using ONLY the provided context snippets. If insufficient, say so.\n\n"
-        f"Question:\n{question}\n\nContext:\n" + "\n\n".join(ctx_lines)
-    )
-
-    if settings.llm_synthesis_provider == "anthropic":
-        client = anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key)
-        resp = await client.messages.create(
-            model=settings.llm_synthesis_model,
-            max_tokens=1024,
-            messages=[{"role": "user", "content": prompt}],
-        )
-        answer = (resp.content[0].text if resp.content else "").strip()
-    elif settings.llm_synthesis_provider == "openrouter":
-        answer = await openrouter_chat_completion(
-            settings=settings,
-            model=settings.llm_synthesis_model,
-            max_tokens=1024,
-            temperature=0.2,
-            messages=[{"role": "user", "content": prompt}],
-        )
-    elif settings.llm_synthesis_provider in {"openai_compat", "ollama"}:
-        answer = await openai_compat_chat_completion(
-            settings=settings,
-            provider=settings.llm_synthesis_provider,
-            model=settings.llm_synthesis_model,
-            max_tokens=1024,
-            temperature=0.2,
-            messages=[{"role": "user", "content": prompt}],
-        )
-    else:
+    try:
+        result = await synthesize_query_answer(question.strip(), wiki_id, settings)
+    except ValueError as exc:
         return {
             "error": "unsupported_llm_synthesis_provider",
-            "detail": f"Unsupported llm_synthesis_provider: {settings.llm_synthesis_provider}",
+            "detail": str(exc),
         }
-    logger.info("MCP query done", extra={"wiki_id": wiki_id, "citations": len(citations), "answer_chars": len(answer or "")})
-    return {"answer": answer, "citations": citations}
+    logger.info(
+        "MCP query done",
+        extra={
+            "wiki_id": wiki_id,
+            "citations": len(result.get("citations", [])),
+            "answer_chars": len(result.get("answer") or ""),
+            "insufficient_evidence": result.get("insufficient_evidence"),
+        },
+    )
+    return result
 
 
 @mcp.tool()

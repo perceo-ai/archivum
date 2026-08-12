@@ -225,6 +225,20 @@ class KnowledgeRepository:
             await self._conn.rollback()
             raise
 
+    async def delete_object_preserving_relationships(self, object_id: str) -> None:
+        """Delete one object and object citations without touching incident relationships."""
+        await self._conn.execute("BEGIN")
+        try:
+            await self._conn.execute(
+                "DELETE FROM knowledge_citations WHERE knowledge_type='object' AND knowledge_id=?",
+                (object_id,),
+            )
+            await self._conn.execute("DELETE FROM knowledge_objects WHERE id=?", (object_id,))
+            await self._conn.commit()
+        except Exception:
+            await self._conn.rollback()
+            raise
+
     async def delete_records_with_only_citations_in(
         self, *, scope: str, chunk_ids: set[str]
     ) -> tuple[int, int]:
@@ -234,22 +248,6 @@ class KnowledgeRepository:
 
         placeholders = ", ".join("?" for _ in chunk_ids)
         deleted_chunks = sorted(chunk_ids)
-
-        async with self._conn.execute(
-            f"""
-            SELECT c.knowledge_id
-            FROM knowledge_citations AS c
-            JOIN knowledge_objects AS o ON o.id = c.knowledge_id
-            WHERE c.knowledge_type='object' AND o.scope=?
-            GROUP BY c.knowledge_id
-            HAVING SUM(CASE WHEN c.chunk_id NOT IN ({placeholders}) THEN 1 ELSE 0 END)=0
-            """,
-            [scope, *deleted_chunks],
-        ) as cursor:
-            object_ids = [row[0] for row in await cursor.fetchall()]
-
-        for object_id in object_ids:
-            await self.delete_object(object_id)
 
         async with self._conn.execute(
             f"""
@@ -266,6 +264,22 @@ class KnowledgeRepository:
 
         for relationship_id in relationship_ids:
             await self.delete_relationship(relationship_id)
+
+        async with self._conn.execute(
+            f"""
+            SELECT c.knowledge_id
+            FROM knowledge_citations AS c
+            JOIN knowledge_objects AS o ON o.id = c.knowledge_id
+            WHERE c.knowledge_type='object' AND o.scope=?
+            GROUP BY c.knowledge_id
+            HAVING SUM(CASE WHEN c.chunk_id NOT IN ({placeholders}) THEN 1 ELSE 0 END)=0
+            """,
+            [scope, *deleted_chunks],
+        ) as cursor:
+            object_ids = [row[0] for row in await cursor.fetchall()]
+
+        for object_id in object_ids:
+            await self.delete_object_preserving_relationships(object_id)
 
         return len(object_ids), len(relationship_ids)
 

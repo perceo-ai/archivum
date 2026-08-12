@@ -8,7 +8,7 @@ from pathlib import Path
 
 from archivum.archgraph.models import CodeEdge, CodeNode, Extraction, ExtractionMethod
 
-EXTRACTOR_VERSION: str = "v1"
+EXTRACTOR_VERSION: str = "v2"
 
 
 def content_hash(path: Path) -> str:
@@ -16,17 +16,22 @@ def content_hash(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
-def _cache_path(path: Path, cache_dir: Path) -> Path:
+def _cache_path(path: Path, cache_dir: Path, *, namespace: str | None = None) -> Path:
     """Compute cache entry path using current EXTRACTOR_VERSION."""
     import archivum.archgraph.cache as _self
 
-    h = content_hash(path)
+    hasher = hashlib.sha256()
+    hasher.update(path.read_bytes())
+    if namespace is not None:
+        hasher.update(b"\0")
+        hasher.update(namespace.encode("utf-8"))
+    h = hasher.hexdigest()
     return cache_dir / "ast" / _self.EXTRACTOR_VERSION / f"{h}.json"
 
 
-def load_cached(path: Path, cache_dir: Path) -> Extraction | None:
+def load_cached(path: Path, cache_dir: Path, *, namespace: str | None = None) -> Extraction | None:
     """Return cached Extraction if available, else None."""
-    entry = _cache_path(path, cache_dir)
+    entry = _cache_path(path, cache_dir, namespace=namespace)
     if not entry.exists():
         return None
     data = json.loads(entry.read_text())
@@ -55,9 +60,15 @@ def load_cached(path: Path, cache_dir: Path) -> Extraction | None:
     return Extraction(nodes=nodes, edges=edges, error=data.get("error"))
 
 
-def save_cached(path: Path, ext: Extraction, cache_dir: Path) -> None:
+def save_cached(
+    path: Path,
+    ext: Extraction,
+    cache_dir: Path,
+    *,
+    namespace: str | None = None,
+) -> None:
     """Serialize Extraction to cache atomically."""
-    entry = _cache_path(path, cache_dir)
+    entry = _cache_path(path, cache_dir, namespace=namespace)
     entry.parent.mkdir(parents=True, exist_ok=True)
     data = {
         "nodes": [

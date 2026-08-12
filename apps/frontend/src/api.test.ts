@@ -22,6 +22,10 @@ import {
   createLifeTask,
   getLlmSettings,
   updateLlmSettings,
+  listSuggestions,
+  listPageSuggestions,
+  acceptSuggestion,
+  rejectSuggestion,
 } from './api';
 import type { Page, SearchResult, GraphNode, GraphEdge, LifeProject, LifeTask } from './types';
 
@@ -400,6 +404,75 @@ describe('getBacklinks', () => {
     await expect(getBacklinks('target-page')).resolves.toEqual(pages);
 
     expect(fetchMock).toHaveBeenCalledWith('/api/pages/target-page/backlinks', expect.objectContaining({
+      credentials: 'include',
+    }));
+  });
+});
+
+describe('suggestions api', () => {
+  const suggestion = {
+    id: 'suggestion:one',
+    target_id: 'page:default:target-page',
+    suggestion_type: 'append_section',
+    proposed_markdown: '## Suggested',
+    proposed_objects: [],
+    citations: [],
+    status: 'pending' as const,
+  };
+
+  it('lists wiki suggestions', async () => {
+    fetchMock.mockResolvedValueOnce(new Response(
+      JSON.stringify([suggestion]),
+      { status: 200, headers: { 'Content-Type': 'application/json' } },
+    ));
+
+    await expect(listSuggestions()).resolves.toEqual([suggestion]);
+
+    expect(fetchMock).toHaveBeenCalledWith('/api/suggestions', expect.objectContaining({
+      credentials: 'include',
+    }));
+  });
+
+  it('lists page suggestions with encoded page slug', async () => {
+    fetchMock.mockResolvedValueOnce(new Response(
+      JSON.stringify([suggestion]),
+      { status: 200, headers: { 'Content-Type': 'application/json' } },
+    ));
+
+    await expect(listPageSuggestions('folder/target page')).resolves.toEqual([suggestion]);
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/suggestions?page_slug=folder%2Ftarget%20page',
+      expect.objectContaining({ credentials: 'include' }),
+    );
+  });
+
+  it('accepts suggestions with CSRF protection', async () => {
+    vi.stubGlobal('document', { cookie: 'csrf_token=test-csrf-token' });
+    fetchMock.mockResolvedValueOnce(new Response(
+      JSON.stringify({ ...suggestion, status: 'accepted' }),
+      { status: 200, headers: { 'Content-Type': 'application/json' } },
+    ));
+
+    await expect(acceptSuggestion('suggestion:one')).resolves.toEqual({ ...suggestion, status: 'accepted' });
+
+    expect(fetchMock).toHaveBeenCalledWith('/api/suggestions/suggestion%3Aone/accept', expect.objectContaining({
+      method: 'POST',
+      credentials: 'include',
+      headers: expect.objectContaining({ 'X-CSRF-Token': 'test-csrf-token' }),
+    }));
+  });
+
+  it('rejects suggestions', async () => {
+    fetchMock.mockResolvedValueOnce(new Response(
+      JSON.stringify({ ...suggestion, status: 'rejected' }),
+      { status: 200, headers: { 'Content-Type': 'application/json' } },
+    ));
+
+    await expect(rejectSuggestion('suggestion:one')).resolves.toEqual({ ...suggestion, status: 'rejected' });
+
+    expect(fetchMock).toHaveBeenCalledWith('/api/suggestions/suggestion%3Aone/reject', expect.objectContaining({
+      method: 'POST',
       credentials: 'include',
     }));
   });

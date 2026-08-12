@@ -99,7 +99,7 @@ async def hybrid_retrieve(
     )
     metadata = _page_metadata(vector_rows, keyword_rows, wiki_id)
     seed_limit = max(1, channel_limit - _GRAPH_NEIGHBOR_RESERVE)
-    seed_ids = [SELF_ID, *metadata][:seed_limit]
+    seed_ids = list(metadata)[:seed_limit]
     graph_nodes = await _graph_nodes(query, wiki_id, seed_ids, channel_limit)
 
     fused = fuse_ranked_hits(
@@ -151,6 +151,8 @@ async def _graph_nodes(
                     max_nodes=limit,
                 ),
             )
+        if package.seeds == [SELF_ID] and SELF_ID not in seed_ids:
+            return []
         # Canonical nodes can still carry useful provenance even when their
         # citations are absent; callers separately enforce evidence sufficiency.
         return package.nodes

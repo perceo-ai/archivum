@@ -2,7 +2,17 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { Hash, Plus, X } from 'lucide-react';
 import { useAppDispatch } from '../store';
-import { createShareLink, deletePage, getPage, listPages, updatePage } from '../api';
+import {
+  acceptSuggestion,
+  createShareLink,
+  deletePage,
+  getPage,
+  listPageSuggestions,
+  listPages,
+  rejectSuggestion,
+  updatePage,
+} from '../api';
+import type { MemorySuggestion } from '../api';
 import type { Page } from '../types';
 import Editor, { type EditorHandle } from '../components/Editor/Editor';
 import { Button } from '../components/ui/Button';
@@ -30,6 +40,7 @@ export default function WikiPage() {
   const [shareUrl, setShareUrl] = useState<string | null>(null);
   const [shareLoading, setShareLoading] = useState(false);
   const [shareDialogOpen, setShareDialogOpen] = useState(false);
+  const [suggestions, setSuggestions] = useState<MemorySuggestion[]>([]);
   const editorRef = useRef<EditorHandle | null>(null);
   const metaSaveTimer = useRef<ReturnType<typeof setTimeout>>();
 
@@ -42,14 +53,15 @@ export default function WikiPage() {
     dispatch({ type: 'SET_CURRENT_SLUG', slug });
     setLoading(true);
     setError(null);
-    getPage(slug)
-      .then((p) => {
+    Promise.all([getPage(slug), listPageSuggestions(slug).catch(() => [])])
+      .then(([p, pageSuggestions]) => {
         setPage(p);
         setTitleDraft(p.title ?? '');
         setTagsDraft(p.tags ?? []);
         setTagInput('');
         setAddingTag(false);
         setContentDraft(null);
+        setSuggestions(pageSuggestions);
         dispatch({ type: 'UPSERT_PAGE', page: p });
         setLoading(false);
       })
@@ -171,13 +183,37 @@ export default function WikiPage() {
     }
   }
 
+  async function handleAcceptSuggestion(suggestion: MemorySuggestion) {
+    try {
+      const updated = await acceptSuggestion(suggestion.id);
+      setSuggestions((current) =>
+        current.map((item) => (item.id === updated.id ? updated : item)),
+      );
+      push({ kind: 'success', title: 'Suggestion accepted' });
+    } catch (e) {
+      push({ kind: 'error', title: 'Accept failed', description: (e as Error).message });
+    }
+  }
+
+  async function handleRejectSuggestion(suggestion: MemorySuggestion) {
+    try {
+      const updated = await rejectSuggestion(suggestion.id);
+      setSuggestions((current) =>
+        current.map((item) => (item.id === updated.id ? updated : item)),
+      );
+      push({ kind: 'success', title: 'Suggestion rejected' });
+    } catch (e) {
+      push({ kind: 'error', title: 'Reject failed', description: (e as Error).message });
+    }
+  }
+
   return (
     <div className="page-frame !max-w-none bg-transparent">
       <div className="page-header shrink-0 px-4 pt-2 md:px-8">
         <div className="flex w-full items-start gap-3">
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-              <span className="rounded-[5px] bg-white/[0.04] px-2 py-1 font-mono text-[11px] text-zinc-400">
+              <span className="font-mono text-[11px] text-muted-foreground">
                 {slugStr}
               </span>
               {page?.authored_by === 'agent' && <Badge variant="info">AI-authored</Badge>}
@@ -189,21 +225,21 @@ export default function WikiPage() {
                 scheduleMetaSave({ title: e.target.value });
               }}
               placeholder={loading ? 'Loading…' : 'Untitled'}
-              className="mt-3 h-auto min-h-14 border-0 bg-transparent px-0 py-0 text-[34px] font-bold leading-tight tracking-normal text-white shadow-none placeholder:text-zinc-600 focus-visible:ring-0 md:text-[42px]"
+              className="mt-3 h-auto min-h-14 border-0 bg-transparent px-0 py-0 text-[34px] font-bold leading-tight tracking-normal text-foreground shadow-none placeholder:text-muted-foreground/60 focus-visible:ring-0 md:text-[42px]"
               aria-label="Page title"
             />
             <div className="mt-4 flex min-h-8 flex-wrap items-center gap-1.5">
               {parsedTags.map((tag) => (
                 <span
                   key={tag}
-                  className="group inline-flex h-7 items-center gap-1 rounded-[5px] bg-white/[0.055] px-2 text-xs font-medium text-zinc-300 transition-colors hover:bg-white/[0.085]"
+                  className="group inline-flex h-7 items-center gap-1 rounded-[5px] px-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-foreground/[0.05] hover:text-foreground"
                 >
-                  <Hash className="h-3 w-3 text-zinc-500" />
+                  <Hash className="h-3 w-3" />
                   {tag}
                   <button
                     type="button"
                     onClick={() => handleRemoveTag(tag)}
-                    className="ml-0.5 rounded-[4px] p-0.5 text-zinc-500 opacity-0 transition-opacity hover:bg-white/10 hover:text-zinc-100 group-hover:opacity-100"
+                    className="ml-0.5 rounded-[4px] p-0.5 opacity-0 transition-opacity hover:bg-foreground/10 hover:text-foreground group-hover:opacity-100"
                     aria-label={`Remove ${tag} tag`}
                   >
                     <X className="h-3 w-3" />
@@ -227,7 +263,7 @@ export default function WikiPage() {
                     }
                   }}
                   placeholder="Tag"
-                  className="h-7 w-28 rounded-[5px] border border-white/10 bg-white/[0.04] px-2 text-xs text-zinc-100 outline-none placeholder:text-zinc-600 focus:border-white/20"
+                  className="h-7 w-28 rounded-[5px] border border-transparent bg-transparent px-1.5 text-xs text-foreground outline-none placeholder:text-muted-foreground focus:border-foreground/15"
                   aria-label="New tag"
                 />
               ) : (
@@ -236,7 +272,7 @@ export default function WikiPage() {
                   variant="ghost"
                   size="sm"
                   onClick={() => setAddingTag(true)}
-                  className="h-7 gap-1 rounded-[5px] px-2 text-xs text-zinc-500 hover:bg-white/[0.055] hover:text-zinc-200"
+                  className="h-7 gap-1 rounded-[5px] px-1.5 text-xs text-muted-foreground hover:bg-foreground/[0.05] hover:text-foreground"
                 >
                   <Plus className="h-3.5 w-3.5" />
                   Tag
@@ -274,6 +310,9 @@ export default function WikiPage() {
             initialContent={page.content}
             onSave={(s) => dispatch({ type: 'SET_SAVE_STATUS', status: s })}
             onChange={(c) => setContentDraft(c)}
+            pendingSuggestions={suggestions}
+            onAcceptSuggestion={handleAcceptSuggestion}
+            onRejectSuggestion={handleRejectSuggestion}
           />
         )}
       </div>

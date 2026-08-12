@@ -91,6 +91,42 @@ async def test_graph_nodes_keeps_citationless_canonical_nodes(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_graph_nodes_drops_default_self_fallback_for_unrelated_queries(monkeypatch):
+    self_node = ContextNode(
+        id="person:self",
+        label="Me",
+        node_type="person",
+        scope="person:self",
+        citations=[_citation("Me")],
+    )
+
+    class Connection:
+        async def __aenter__(self):
+            return object()
+
+        async def __aexit__(self, *args):
+            return False
+
+    async def fake_context_package(repo, request):
+        return ContextPackage(
+            query=request.query,
+            seeds=["person:self"],
+            nodes=[self_node],
+            edges=[],
+            citations=self_node.citations,
+            insufficient_evidence=False,
+            reason=None,
+        )
+
+    monkeypatch.setattr(hybrid.sqlite, "get_db", lambda: Connection())
+    monkeypatch.setattr(hybrid, "build_context_package", fake_context_package)
+
+    nodes = await hybrid._graph_nodes("unrelated", "default", [], limit=10)
+
+    assert nodes == []
+
+
+@pytest.mark.asyncio
 async def test_hybrid_retrieve_reserves_graph_neighbor_capacity_and_enriches_hits(
     monkeypatch,
 ):

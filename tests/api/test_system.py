@@ -3,13 +3,74 @@
 from __future__ import annotations
 
 import unittest
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
 from fastapi.testclient import TestClient
 
 from archivum.auth import create_access_token
 from archivum.config import get_settings
+from archivum.knowledge.models import Citation, KnowledgeObject
 from archivum.main import create_app
+
+
+class FakeDatabase:
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, exc_type, exc, traceback):
+        return False
+
+    def execute(self, sql, params=()):
+        rows = [
+            {"id": obj.id}
+            for obj in FakeKnowledgeRepository.objects
+            if obj.kind == "page" and obj.scope == params[0] and obj.id.startswith("page:default:")
+        ]
+        return FakeCursor(rows)
+
+
+class FakeCursor:
+    def __init__(self, rows):
+        self._rows = rows
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, exc_type, exc, traceback):
+        return False
+
+    async def fetchall(self):
+        return self._rows
+
+
+def _projection_report():
+    return SimpleNamespace(
+        objects=3,
+        relationships=2,
+        qdrant_indexed=2,
+        kuzu_nodes=3,
+        kuzu_edges=2,
+    )
+
+
+class FakeKnowledgeRepository:
+    objects: list[KnowledgeObject] = []
+    deleted: list[str] = []
+
+    def __init__(self, conn):
+        pass
+
+    async def list_objects(self, kind=None, scope=None, limit=100):
+        return [
+            obj
+            for obj in self.objects
+            if (kind is None or obj.kind == kind)
+            and (scope is None or obj.scope == scope)
+        ][:limit]
+
+    async def delete_object(self, object_id: str):
+        self.deleted.append(object_id)
 
 
 def _make_client(app, token: str, *, bearer: bool = False) -> TestClient:
@@ -104,6 +165,8 @@ class TestLlmSettings(unittest.TestCase):
 
 class TestRebuildIndexes(unittest.TestCase):
     def setUp(self):
+        FakeKnowledgeRepository.objects = []
+        FakeKnowledgeRepository.deleted = []
         self.settings = get_settings()
         self.token = create_access_token("owner", "owner", "default", self.settings)
         with (
@@ -132,6 +195,14 @@ class TestRebuildIndexes(unittest.TestCase):
             patch("archivum.api.system.qdrant.upsert_page", new=AsyncMock()),
             patch("archivum.api.system.graph.upsert_page", new=AsyncMock()),
             patch("archivum.api.system.graph.add_reference", new=AsyncMock()),
+            patch("archivum.api.system.sqlite.get_db", FakeDatabase),
+            patch("archivum.api.system.KnowledgeRepository", FakeKnowledgeRepository),
+            patch("archivum.api.system.init_knowledge_schema", new=AsyncMock()),
+            patch("archivum.api.system.sync_page_to_knowledge", new=AsyncMock()) as sync_page,
+            patch(
+                "archivum.api.system.rebuild_knowledge_projections",
+                new=AsyncMock(return_value=_projection_report()),
+            ),
             patch(
                 "archivum.api.system.sqlite.get_page",
                 new=AsyncMock(return_value={"slug": "page-two", "title": "Page Two"}),
@@ -140,6 +211,7 @@ class TestRebuildIndexes(unittest.TestCase):
             response = self.client.post("/api/rebuild-indexes")
 
         self.assertEqual(response.status_code, 200)
+        self.assertEqual(sync_page.await_count, 2)
 
     def test_rebuild_returns_page_count(self):
         """POST /api/rebuild-indexes response includes page count."""
@@ -151,6 +223,14 @@ class TestRebuildIndexes(unittest.TestCase):
             patch("archivum.api.system.qdrant.upsert_page", new=AsyncMock()),
             patch("archivum.api.system.graph.upsert_page", new=AsyncMock()),
             patch("archivum.api.system.graph.add_reference", new=AsyncMock()),
+            patch("archivum.api.system.sqlite.get_db", FakeDatabase),
+            patch("archivum.api.system.KnowledgeRepository", FakeKnowledgeRepository),
+            patch("archivum.api.system.init_knowledge_schema", new=AsyncMock()),
+            patch("archivum.api.system.sync_page_to_knowledge", new=AsyncMock()),
+            patch(
+                "archivum.api.system.rebuild_knowledge_projections",
+                new=AsyncMock(return_value=_projection_report()),
+            ),
             patch("archivum.api.system.sqlite.get_page", new=AsyncMock(return_value=None)),
         ):
             response = self.client.post("/api/rebuild-indexes")
@@ -158,6 +238,9 @@ class TestRebuildIndexes(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         data = response.json()
         self.assertEqual(data["pages"], 2)
+        self.assertEqual(data["canonical_objects"], 3)
+        self.assertEqual(data["canonical_relationships"], 2)
+        self.assertEqual(data["qdrant_indexed"], 2)
         self.assertIn("detail", data)
 
     def test_rebuild_slugifies_display_text_wikilinks(self):
@@ -183,12 +266,85 @@ class TestRebuildIndexes(unittest.TestCase):
             patch("archivum.api.system.qdrant.upsert_page", new=AsyncMock()),
             patch("archivum.api.system.graph.upsert_page", new=AsyncMock()),
             patch("archivum.api.system.graph.add_reference", new=AsyncMock()) as add_reference,
+            patch("archivum.api.system.sqlite.get_db", FakeDatabase),
+            patch("archivum.api.system.KnowledgeRepository", FakeKnowledgeRepository),
+            patch("archivum.api.system.init_knowledge_schema", new=AsyncMock()),
+            patch("archivum.api.system.sync_page_to_knowledge", new=AsyncMock()),
+            patch(
+                "archivum.api.system.rebuild_knowledge_projections",
+                new=AsyncMock(return_value=_projection_report()),
+            ),
             patch("archivum.api.system.sqlite.get_page", new=AsyncMock(side_effect=get_page)),
         ):
             response = self.client.post("/api/rebuild-indexes")
 
         self.assertEqual(response.status_code, 200)
         add_reference.assert_awaited_once_with("source-page", "target-page", "default")
+
+    def test_rebuild_removes_stale_canonical_pages_before_projection(self):
+        """POST /api/rebuild-indexes deletes canonical pages absent from SQLite."""
+        fake_pages = [{"slug": "current-page", "title": "Current Page", "content": ""}]
+        stale = KnowledgeObject(
+            id="page:default:stale-page",
+            kind="page",
+            label="Stale Page",
+            scope="wiki:default",
+            confidence=1.0,
+            extraction_method="USER_AUTHORED",
+            citations=[
+                Citation(
+                    source_id="page:default:stale-page",
+                    chunk_id="page:default:stale-page",
+                    span_start=None,
+                    span_end=None,
+                    quote="Stale Page",
+                )
+            ],
+            properties={"slug": "stale-page", "wiki_id": "default"},
+        )
+        current = stale.model_copy(
+            update={
+                "id": "page:default:current-page",
+                "label": "Current Page",
+                "properties": {"slug": "current-page", "wiki_id": "default"},
+            }
+        )
+        stale_pages = [
+            stale.model_copy(
+                update={
+                    "id": f"page:default:stale-page-{index}",
+                    "label": f"Stale Page {index}",
+                    "properties": {"slug": f"stale-page-{index}", "wiki_id": "default"},
+                }
+            )
+            for index in range(1005)
+        ]
+        FakeKnowledgeRepository.objects = [*stale_pages, current]
+        FakeKnowledgeRepository.deleted = []
+
+        with (
+            patch("archivum.api.system.sqlite.list_pages", new=AsyncMock(return_value=fake_pages)),
+            patch("archivum.api.system.qdrant.init_collection", new=AsyncMock()),
+            patch("archivum.api.system.graph.init_graph", new=AsyncMock()),
+            patch("archivum.api.system.qdrant.upsert_page", new=AsyncMock()),
+            patch("archivum.api.system.graph.upsert_page", new=AsyncMock()),
+            patch("archivum.api.system.graph.add_reference", new=AsyncMock()),
+            patch("archivum.api.system.sqlite.get_db", FakeDatabase),
+            patch("archivum.api.system.KnowledgeRepository", FakeKnowledgeRepository),
+            patch("archivum.api.system.init_knowledge_schema", new=AsyncMock()),
+            patch("archivum.api.system.sync_page_to_knowledge", new=AsyncMock()),
+            patch(
+                "archivum.api.system.rebuild_knowledge_projections",
+                new=AsyncMock(return_value=_projection_report()),
+            ),
+            patch("archivum.api.system.sqlite.get_page", new=AsyncMock(return_value=None)),
+        ):
+            response = self.client.post("/api/rebuild-indexes")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(len(FakeKnowledgeRepository.deleted), 1005)
+        self.assertIn("page:default:stale-page-1004", FakeKnowledgeRepository.deleted)
+        FakeKnowledgeRepository.objects = []
 
 
 class TestLintWiki(unittest.TestCase):

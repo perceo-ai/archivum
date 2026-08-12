@@ -112,6 +112,29 @@ async def test_query_returns_missing_key_for_openrouter(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_query_uses_shared_cited_synthesis_path(monkeypatch):
+    async def fail_raw_search(*args, **kwargs):
+        raise AssertionError("MCP query should not bypass cited query synthesis")
+
+    expected = {
+        "answer": "Alpha is supported [1]",
+        "citations": [{"slug": "alpha", "title": "Alpha"}],
+        "insufficient_evidence": False,
+        "reason": None,
+    }
+    monkeypatch.setattr(server.settings, "llm_synthesis_provider", "ollama")
+    monkeypatch.setattr(server.qdrant, "search_raw", fail_raw_search)
+    monkeypatch.setattr(server, "synthesize_query_answer", AsyncMock(return_value=expected))
+
+    result = await server.query("What changed?", wiki_id="default")
+
+    assert result == expected
+    server.synthesize_query_answer.assert_awaited_once_with(
+        "What changed?", "default", server.settings
+    )
+
+
+@pytest.mark.asyncio
 async def test_write_page_queues_backend_job_instead_of_direct_indexing(monkeypatch):
     monkeypatch.setattr(server.sqlite, "enqueue_page_write_job", AsyncMock(return_value=17))
     monkeypatch.setattr(

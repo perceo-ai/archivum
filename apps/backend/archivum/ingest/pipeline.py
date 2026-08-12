@@ -13,6 +13,8 @@ from archivum.db import sqlite, qdrant_client as qdrant, graph
 from archivum.ingest.parsers import ParsedDoc, UnsupportedFileTypeError, parse_source
 from archivum.ingest.agent import ExtractionResult, WikiPage, get_agent, slugify
 from archivum.ingest.events import publish
+from archivum.knowledge.models import Citation, KnowledgeObject, KnowledgeRelationship
+from archivum.knowledge.personal_root import SELF_ID, ensure_personal_root, link_to_self
 from archivum.knowledge.repository import KnowledgeRepository
 from archivum.observability import new_trace_id, set_trace_id, span
 from archivum.pages_to_knowledge import sync_page_to_knowledge
@@ -204,12 +206,22 @@ async def ingest(
                 await graph.upsert_page(final_slug, page.title, wiki_id)
 
             async with sqlite.get_db() as conn:
+                repo = KnowledgeRepository(conn)
                 await sync_page_to_knowledge(
-                    KnowledgeRepository(conn),
+                    repo,
                     slug=final_slug,
                     title=page.title,
                     markdown=page.content,
                     wiki_id=wiki_id,
+                )
+                await _sync_extracted_result_to_knowledge(
+                    repo,
+                    result=ExtractionResult(pages=[page], entities=[], relationships=[]),
+                    slug_map={page.slug: final_slug},
+                    doc=doc,
+                    wiki_id=wiki_id,
+                    source_type=source_type,
+                    display_source=display_source,
                 )
 
             logger.info(
@@ -259,6 +271,21 @@ async def ingest(
                 if from_name and to_name:
                     await graph.add_entity_relation(from_name, to_name, wiki_id)
         logger.info("Upserted entities + relationships", extra={**sp_graph})
+
+        async with sqlite.get_db() as conn:
+            await _sync_extracted_result_to_knowledge(
+                KnowledgeRepository(conn),
+                result=ExtractionResult(
+                    pages=[],
+                    entities=result.entities,
+                    relationships=result.relationships,
+                ),
+                slug_map=slug_map,
+                doc=doc,
+                wiki_id=wiki_id,
+                source_type=source_type,
+                display_source=display_source,
+            )
 
         # ── Step 5: Wire wikilinks as REFERENCES edges ────────────────────
         with span("graph.wikilinks_and_mentions") as sp_links:
@@ -349,3 +376,133 @@ async def ingest_batch(
         result = await ingest(source, wiki_id, _cb, settings, source_name=source_name)
         results.append(result)
     return results
+
+
+def _source_id(wiki_id: str, display_source: str) -> str:
+    return f"source:{wiki_id}:{slugify(display_source) or 'source'}"
+
+
+def _entity_id(wiki_id: str, name: str) -> str:
+    return f"entity:{wiki_id}:{slugify(name) or 'entity'}"
+
+
+def _source_citation(source_id: str, doc: ParsedDoc, quote: str | None = None) -> Citation:
+    evidence = quote if quote is not None else doc.text[:500]
+    start = doc.text.find(evidence) if evidence else -1
+    return Citation(
+        source_id=source_id,
+        chunk_id=f"{source_id}:chunk:0",
+        span_start=start if start >= 0 else None,
+        span_end=start + len(evidence) if start >= 0 else None,
+        quote=evidence or None,
+    )
+
+
+async def _sync_extracted_result_to_knowledge(
+    repo: KnowledgeRepository,
+    *,
+    result: ExtractionResult,
+    slug_map: dict[str, str],
+    doc: ParsedDoc,
+    wiki_id: str,
+    source_type: str,
+    display_source: str,
+) -> None:
+    """Persist ingest-produced records with source-backed extraction provenance."""
+    scope = f"wiki:{wiki_id}"
+    source_id = _source_id(wiki_id, display_source)
+    source_label = str(doc.metadata.get("title") or display_source)
+    source_citation = _source_citation(source_id, doc)
+    await repo.upsert_object(
+        KnowledgeObject(
+            id=source_id,
+            kind="source",
+            label=source_label,
+            scope=scope,
+            confidence=1.0,
+            extraction_method="EXTRACTED",
+            citations=[source_citation],
+            properties={
+                "source_type": source_type,
+                "origin_uri": display_source,
+                "parser_source": doc.source,
+                "metadata": doc.metadata,
+            },
+        )
+    )
+    await ensure_personal_root(repo, wiki_id=wiki_id)
+    await link_to_self(repo, source_id, "saved_source", citation=source_citation)
+
+    for page in result.pages:
+        final_slug = slug_map.get(page.slug, page.slug)
+        page_id = f"page:{wiki_id}:{final_slug}"
+        page_citation = _source_citation(source_id, doc, page.title)
+        await repo.upsert_object(
+            KnowledgeObject(
+                id=page_id,
+                kind="page",
+                label=page.title,
+                scope=scope,
+                confidence=0.8,
+                extraction_method="EXTRACTED",
+                citations=[page_citation],
+                properties={
+                    "slug": final_slug,
+                    "wiki_id": wiki_id,
+                    "markdown": page.content,
+                    "source_type": source_type,
+                    "origin_uri": display_source,
+                },
+            )
+        )
+        await repo.delete_relationships(
+            src_id=SELF_ID,
+            dst_id=page_id,
+            rel_types={"authored_thought", "owns_project"},
+        )
+        await link_to_self(repo, page_id, "saved_source", citation=page_citation, confidence=0.8)
+
+    for entity in result.entities:
+        name = str(entity.get("name", "")).strip()
+        if not name:
+            continue
+        entity_citation = _source_citation(source_id, doc, name)
+        await repo.upsert_object(
+            KnowledgeObject(
+                id=_entity_id(wiki_id, name),
+                kind="entity",
+                label=name,
+                scope=scope,
+                confidence=0.7,
+                extraction_method="EXTRACTED",
+                citations=[entity_citation],
+                properties={
+                    "entity_type": str(entity.get("type") or "concept"),
+                    "source_type": source_type,
+                    "origin_uri": display_source,
+                },
+            )
+        )
+
+    for rel in result.relationships:
+        from_name = str(rel.get("from", "")).strip()
+        to_name = str(rel.get("to", "")).strip()
+        if not from_name or not to_name:
+            continue
+        rel_type = slugify(str(rel.get("type") or "related_to")).replace("-", "_") or "related_to"
+        src_id = _entity_id(wiki_id, from_name)
+        dst_id = _entity_id(wiki_id, to_name)
+        rel_citation = _source_citation(source_id, doc, f"{from_name} {to_name}")
+        await repo.upsert_relationship(
+            KnowledgeRelationship(
+                id=f"rel:{src_id}:{rel_type}:{dst_id}",
+                src_id=src_id,
+                dst_id=dst_id,
+                rel_type=rel_type,
+                scope=scope,
+                confidence=0.6,
+                extraction_method="EXTRACTED",
+                citations=[rel_citation],
+                properties={"source_type": source_type, "origin_uri": display_source},
+            )
+        )

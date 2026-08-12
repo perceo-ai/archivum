@@ -36,7 +36,7 @@ async def _events(response):
 
 
 @pytest.mark.asyncio
-async def test_query_appends_a_valid_citation_when_synthesis_omits_one():
+async def test_query_returns_insufficient_evidence_when_synthesis_omits_citation():
     async def uncited_tokens(**kwargs):
         yield "Alpha is relevant."
 
@@ -55,7 +55,7 @@ async def test_query_appends_a_valid_citation_when_synthesis_omits_one():
 
     payloads = [json.loads(event["data"]) for event in events if event["data"] != "[DONE]"]
     assert payloads[0]["citations"][0]["citation"]["source_id"] == "source:alpha"
-    assert payloads[1] == {"type": "token", "token": "Alpha is relevant. [1]"}
+    assert payloads[1]["token"].startswith("Insufficient evidence")
 
 
 @pytest.mark.asyncio
@@ -124,3 +124,39 @@ async def test_query_scopes_hybrid_hits_through_a_context_package(monkeypatch):
     request = build.await_args.args[1]
     assert request.scope == "wiki:default"
     assert request.seed_ids == ["entity:alpha", "entity:beta"]
+
+
+@pytest.mark.asyncio
+async def test_query_scope_filter_does_not_fallback_to_unscoped_hits(monkeypatch):
+    hit = _hit()
+    package = ContextPackage(
+        query="Unrelated",
+        seeds=["person:self"],
+        nodes=[
+            ContextNode(
+                id="person:self",
+                label="Me",
+                node_type="person",
+                scope="person:self",
+                citations=[Citation(source_id="person:self", chunk_id="person:self", span_start=None, span_end=None, quote="Me")],
+            )
+        ],
+        edges=[],
+        citations=[],
+        insufficient_evidence=True,
+        reason="No cited knowledge objects matched the requested context.",
+    )
+
+    class FakeDatabase:
+        async def __aenter__(self):
+            return object()
+
+        async def __aexit__(self, exc_type, exc, traceback):
+            return False
+
+    monkeypatch.setattr(query_api.sqlite, "get_db", FakeDatabase)
+    monkeypatch.setattr(query_api, "build_context_package", AsyncMock(return_value=package))
+
+    scoped = await query_api._scope_hits_to_context_package("Unrelated", "default", [hit])
+
+    assert scoped == []
