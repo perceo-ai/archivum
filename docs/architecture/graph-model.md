@@ -8,7 +8,20 @@ Archivum stores the graph projection in embedded Kuzu. The graph powers graph AP
 
 The canonical graph starts at `person:self`, the owner profile. Page-authored content links the owner to projects and thoughts, and extracted entities and relationships extend the graph to people, code, sources, and decisions.
 
-## Node Types
+## Canonical Knowledge Graph
+
+Canonical objects are stored as knowledge rows before they are projected into graph tables:
+
+| Record | Key | Properties |
+|---|---|---|
+| `KnowledgeNode` | `id` | `kind`, `label`, `scope`, `confidence`, `extraction_method`, `citations`, `properties` |
+| `KnowledgeRelationship` | `id` | `src_id`, `dst_id`, `rel_type`, `scope`, `confidence`, `extraction_method`, `citations`, `properties` |
+
+`KnowledgeNode.kind` covers the owner profile, page-authored content, projects, thoughts, sources, extracted entities, people, code, and decisions as applicable. Relationships retain their citations and provenance metadata when projected into Kuzu.
+
+## Legacy Compatibility Projection
+
+The following `Page` and `Entity` tables and edges are the legacy compatibility projection used by existing graph APIs and wikilink behavior. They are derived from canonical knowledge and should not be read as the complete canonical object model.
 
 | Node | Key | Properties |
 |---|---|---|
@@ -25,10 +38,10 @@ The canonical graph starts at `person:self`, the owner profile. Page-authored co
 
 ## Rebuild
 
-Use rebuild when content changes outside the normal write path or when ingest order left missing `REFERENCES` edges:
+Use the legacy rebuild command when content changes outside the normal write path or when ingest order left missing `REFERENCES` edges:
 
 ```bash
 node packages/archivum-cli/src/index.js wiki rebuild-indexes
 ```
 
-Rebuild reinitializes the derived Qdrant, Kuzu, FTS, and code lexical projections from canonical knowledge and editable markdown content.
+This command reinitializes the legacy page-based Qdrant and Kuzu projections from SQLite page content and metadata. It does not rebuild canonical knowledge projections, FTS, or the code lexical index.
