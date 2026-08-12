@@ -356,13 +356,32 @@ function shouldUseCustomPointerPlacement(view: EditorView, event: MouseEvent, ta
   return view.state.doc.lineAt(precisePosition).number !== targetLine.number;
 }
 
-function placeCursorFromPointer(view: EditorView, event: MouseEvent) {
-  const position = getLinePositionAtCoords(view, event, event.target as HTMLElement | null);
-  view.dispatch({
-    selection: { anchor: position },
-    effects: EditorView.scrollIntoView(position, { y: 'nearest' }),
-  });
-  view.focus();
+function notionMouseSelectionStyle(view: EditorView, event: MouseEvent) {
+  const target = event.target as HTMLElement | null;
+  if (target?.closest('.cm-block-handle, .cm-task-toggle, .cm-wikilink-existing, .cm-wikilink-missing')) {
+    return null;
+  }
+  if (
+    !target?.closest('.cm-line, .cm-content, .cm-scroller') ||
+    !shouldUseCustomPointerPlacement(view, event, target)
+  ) {
+    return null;
+  }
+
+  const anchor = getLinePositionAtCoords(view, event, target);
+  return {
+    get(curEvent: MouseEvent, extend: boolean, multiple: boolean) {
+      const head = getLinePositionAtCoords(view, curEvent, curEvent.target as HTMLElement | null);
+      const range = anchor === head ? EditorSelection.cursor(head) : EditorSelection.range(anchor, head);
+
+      if (extend) return view.state.selection.replaceRange(view.state.selection.main.extend(head));
+      if (multiple) return view.state.selection.addRange(range);
+      return EditorSelection.create([range]);
+    },
+    update() {
+      return true;
+    },
+  };
 }
 
 const markdownBlockPlugin = ViewPlugin.fromClass(
@@ -386,17 +405,7 @@ const markdownBlockPlugin = ViewPlugin.fromClass(
         const target = event.target as HTMLElement | null;
         if (target?.closest('.cm-block-handle')) return true;
         const toggle = target?.closest('.cm-task-toggle') as HTMLElement | null;
-        if (!toggle?.dataset.line) {
-          if (
-            target?.closest('.cm-line, .cm-content, .cm-scroller') &&
-            shouldUseCustomPointerPlacement(view, event, target)
-          ) {
-            event.preventDefault();
-            placeCursorFromPointer(view, event);
-            return true;
-          }
-          return false;
-        }
+        if (!toggle?.dataset.line) return false;
         const line = view.state.doc.line(Number(toggle.dataset.line));
         const replacement = toggleTaskLine(line.text);
         if (replacement === line.text) return false;
@@ -410,16 +419,8 @@ const markdownBlockPlugin = ViewPlugin.fromClass(
       },
       click(event, view) {
         const target = event.target as HTMLElement | null;
-        if (target?.closest('.cm-block-handle, .cm-task-toggle, .cm-wikilink-existing, .cm-wikilink-missing')) {
-          return false;
-        }
-        if (
-          target?.closest('.cm-line, .cm-content, .cm-scroller') &&
-          shouldUseCustomPointerPlacement(view, event, target)
-        ) {
-          event.preventDefault();
-          placeCursorFromPointer(view, event);
-          return true;
+        if (target?.closest('.cm-wikilink-existing, .cm-wikilink-missing')) {
+          view.focus();
         }
         return false;
       },
@@ -528,6 +529,7 @@ function moveCurrentBlock(view: EditorView, offset: -1 | 1) {
 
 export function markdownBlockExtension(): Extension {
   return [
+    Prec.high(EditorView.mouseSelectionStyle.of(notionMouseSelectionStyle)),
     Prec.high(keymap.of([
       { key: 'ArrowUp', run: (view) => moveCursorVertically(view, false) },
       { key: 'ArrowDown', run: (view) => moveCursorVertically(view, true) },
