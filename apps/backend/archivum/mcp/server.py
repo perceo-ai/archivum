@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -17,6 +18,7 @@ from archivum.config import Settings, get_settings
 from archivum.db import graph, qdrant_client as qdrant, sqlite
 from archivum.ingest.pipeline import ingest
 from archivum.ingest.agent import slugify
+from archivum.knowledge.repository import KnowledgeRepository
 from archivum.life_os.service import ensure_daily_note, register_project
 from archivum.linting import analyze_wiki_pages
 from archivum.llm.openrouter_client import openrouter_chat_completion
@@ -24,6 +26,8 @@ from archivum.llm.openai_compat_client import openai_compat_chat_completion
 from archivum.logging_config import setup_logging
 from archivum.observability import new_trace_id, set_trace_id
 from archivum import page_write_queue
+from archivum.retrieval.context import ContextRequest, build_context_package as build_package
+from archivum.retrieval.hybrid import hybrid_retrieve
 
 logger = logging.getLogger(__name__)
 
@@ -200,6 +204,78 @@ async def graph_neighbors(node_id: str, wiki_id: str = "default") -> dict[str, A
     data = await graph.get_neighbors(node_id, wiki_id)
     edges = [{"from": e["from"], "to": e["to"], "label": e.get("type", "")} for e in data.get("edges", [])]
     return {"center": data.get("center"), "nodes": data.get("nodes", []), "edges": edges}
+
+
+@mcp.tool()
+async def build_context_package(
+    query: str,
+    scope: str | None = None,
+    depth: int = 2,
+    max_nodes: int = 10,
+    relations: list[str] | None = None,
+) -> dict[str, Any]:
+    """Build a bounded cited graph context without returning page bodies."""
+    _require_key()
+    set_trace_id(new_trace_id("mcp-context"))
+    request = ContextRequest(
+        query=query,
+        scope=scope or "wiki:default",
+        depth=max(depth, 0),
+        max_nodes=min(max(max_nodes, 1), 50),
+        relations=relations,
+    )
+    async with sqlite.get_db() as connection:
+        package = await build_package(KnowledgeRepository(connection), request)
+    return package.model_dump()
+
+
+@mcp.tool()
+async def retrieve_memory(
+    query: str, wiki_id: str = "default", limit: int = 10
+) -> dict[str, Any]:
+    """Return compact hybrid memory evidence without returning page bodies."""
+    _require_key()
+    set_trace_id(new_trace_id("mcp-retrieve"))
+    hits = await hybrid_retrieve(
+        query.strip(), wiki_id, limit=min(max(limit, 1), 50), settings=settings
+    )
+    citations = _unique_retrieval_citations(hit.citation for hit in hits)
+    return {
+        "query": query.strip(),
+        "wiki_id": wiki_id,
+        "hits": [
+            {
+                "id": hit.id,
+                "label": hit.label,
+                "score": hit.score,
+                "source": hit.source,
+                "citation": hit.citation.model_dump(),
+                "extraction_method": "INFERRED" if hit.source == "graph" else "EXTRACTED",
+                "confidence": hit.score,
+            }
+            for hit in hits
+        ],
+        "citations": [citation.model_dump() for citation in citations],
+        "insufficient_evidence": not bool(citations),
+        "reason": "No cited knowledge matched the retrieval query." if not citations else None,
+    }
+
+
+def _unique_retrieval_citations(citations: Iterable[Any]) -> list[Any]:
+    unique: list[Any] = []
+    seen: set[tuple[str, str, int | None, int | None, str | None]] = set()
+    for citation in citations:
+        key = (
+            citation.source_id,
+            citation.chunk_id,
+            citation.span_start,
+            citation.span_end,
+            citation.quote,
+        )
+        if key not in seen:
+            seen.add(key)
+            unique.append(citation)
+    return unique
 
 
 @mcp.tool()

@@ -1,10 +1,13 @@
+from contextlib import asynccontextmanager
 from unittest.mock import AsyncMock, patch
 
 import pytest
 
 from archivum.config import Settings
 from archivum.db import sqlite
+from archivum.knowledge.models import Citation, ContextPackage, ContextNode
 from archivum.mcp import server
+from archivum.retrieval.hybrid import HybridHit
 
 
 @pytest.fixture
@@ -140,3 +143,84 @@ async def test_write_page_queues_backend_job_instead_of_direct_indexing(monkeypa
     upsert_page.assert_not_awaited()
     upsert_graph.assert_not_awaited()
     assert result["slug"] == "queued-page"
+
+
+@pytest.mark.asyncio
+async def test_retrieve_memory_returns_compact_cited_provenance(monkeypatch):
+    hit = HybridHit(
+        id="entity:alpha",
+        label="Alpha",
+        score=0.9,
+        source="graph",
+        citation=Citation(
+            source_id="page:default:alpha",
+            chunk_id="page:default:alpha:chunk:0",
+            span_start=0,
+            span_end=5,
+            quote="Alpha evidence",
+        ),
+    )
+    monkeypatch.setattr(server, "hybrid_retrieve", AsyncMock(return_value=[hit]))
+
+    result = await server.retrieve_memory("Alpha")
+
+    assert result["hits"] == [
+        {
+            "id": "entity:alpha",
+            "label": "Alpha",
+            "score": 0.9,
+            "source": "graph",
+            "citation": hit.citation.model_dump(),
+            "extraction_method": "INFERRED",
+            "confidence": 0.9,
+        }
+    ]
+    assert result["citations"] == [hit.citation.model_dump()]
+    assert "content" not in result["hits"][0]
+
+
+@pytest.mark.asyncio
+async def test_build_context_package_returns_canonical_context_without_page_bodies(monkeypatch):
+    package = ContextPackage(
+        query="Alpha",
+        seeds=["entity:alpha"],
+        nodes=[
+            ContextNode(
+                id="entity:alpha",
+                label="Alpha",
+                node_type="entity",
+                scope="wiki:default",
+                extraction_method="USER_AUTHORED",
+                confidence=1.0,
+                citations=[
+                    Citation(
+                        source_id="page:default:alpha",
+                        chunk_id="page:default:alpha:chunk:0",
+                        span_start=0,
+                        span_end=5,
+                        quote="Alpha evidence",
+                    )
+                ],
+            )
+        ],
+        edges=[],
+        citations=[],
+        insufficient_evidence=False,
+        reason=None,
+    )
+
+    @asynccontextmanager
+    async def fake_db():
+        yield object()
+
+    monkeypatch.setattr(server.sqlite, "get_db", fake_db)
+    monkeypatch.setattr(server, "build_package", AsyncMock(return_value=package))
+
+    result = await server.build_context_package("Alpha")
+
+    assert result["nodes"][0]["id"] == "entity:alpha"
+    assert result["nodes"][0]["label"] == "Alpha"
+    assert result["nodes"][0]["extraction_method"] == "USER_AUTHORED"
+    assert result["nodes"][0]["confidence"] == 1.0
+    assert result["nodes"][0]["citations"]
+    assert "content" not in result["nodes"][0]
