@@ -10,6 +10,7 @@ import pytest
 
 from archivum.archgraph.ingest import changed_files, ingest_repo, prune_dangling
 from archivum.archgraph.mapper import CandidateEntity, Provenance
+from archivum.knowledge.repository import KnowledgeRepository, init_knowledge_schema
 
 
 class FakeValidationLayer:
@@ -49,6 +50,24 @@ def shared_cache_dir(tmp_path):
     d = tmp_path / "shared_cache"
     d.mkdir()
     return d
+
+
+@pytest.mark.asyncio
+async def test_archgraph_ingest_writes_to_knowledge_repository(git_repo, cache_dir):
+    async with aiosqlite.connect(":memory:") as conn:
+        await init_knowledge_schema(conn)
+        knowledge = KnowledgeRepository(conn)
+        report = await ingest_repo(
+            git_repo,
+            scope="repo:test",
+            cache_dir=cache_dir,
+            knowledge=knowledge,
+            lexical_conn=conn,
+        )
+
+        assert report.nodes > 0
+        objects = await knowledge.list_objects(scope="repo:test")
+        assert any(obj.kind in {"symbol", "type", "file"} for obj in objects)
 
 
 async def test_full_ingest_lands_in_l1(git_repo, cache_dir, tmp_path, fake_validation):
