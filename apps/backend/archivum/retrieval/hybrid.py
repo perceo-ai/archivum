@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from archivum.config import Settings
 from archivum.db import qdrant_client as qdrant
 from archivum.db import sqlite
-from archivum.knowledge.models import Citation, ContextNode
+from archivum.knowledge.models import Citation, ContextNode, ExtractionMethod
 from archivum.knowledge.personal_root import SELF_ID
 from archivum.knowledge.repository import KnowledgeRepository
 from archivum.retrieval.context import ContextRequest, build_context_package
@@ -28,6 +28,8 @@ class HybridHit:
     source: str
     citation: Citation
     raw_score: float = 0.0
+    extraction_method: ExtractionMethod | None = None
+    confidence: float | None = None
 
 
 def fuse_ranked_hits(
@@ -186,6 +188,8 @@ def _enrich_hit(
                 quote=excerpt or None,
             ),
             raw_score=float(page.get("score", 0.0)),
+            extraction_method=node.extraction_method if node is not None else None,
+            confidence=node.confidence if node is not None else None,
         )
     if node is not None and node.citations:
         return HybridHit(
@@ -195,6 +199,8 @@ def _enrich_hit(
             source=hit.source,
             citation=node.citations[0],
             raw_score=hit.raw_score,
+            extraction_method=node.extraction_method,
+            confidence=node.confidence,
         )
     return hit
 

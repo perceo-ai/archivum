@@ -60,12 +60,16 @@ async def test_hybrid_retrieve_reserves_graph_neighbor_capacity_and_enriches_hit
                     id="page:isolated:page-0",
                     label="Page 0",
                     node_type="page",
+                    extraction_method="USER_AUTHORED",
+                    confidence=0.7,
                     citations=[_citation("page-0")],
                 ),
                 ContextNode(
                     id="entity:neighbor",
                     label="Neighbor",
                     node_type="entity",
+                    extraction_method="INFERRED",
+                    confidence=0.6,
                     citations=[_citation("neighbor evidence")],
                 ),
             ],
@@ -89,5 +93,9 @@ async def test_hybrid_retrieve_reserves_graph_neighbor_capacity_and_enriches_hit
     neighbor = next(hit for hit in hits if hit.id == "entity:neighbor")
     assert neighbor.source == "graph"
     assert neighbor.citation.quote == "neighbor evidence"
+    assert neighbor.extraction_method == "INFERRED"
+    assert neighbor.confidence == 0.6
     page = next(hit for hit in hits if hit.id == "page:isolated:page-0")
     assert page.citation.quote == "excerpt"
+    assert page.extraction_method == "USER_AUTHORED"
+    assert page.confidence == 0.7

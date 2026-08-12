@@ -3,14 +3,15 @@
 from __future__ import annotations
 
 from collections.abc import Iterable
+from typing import Literal
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
 
 from archivum.auth import CurrentUser, get_current_user
 from archivum.config import Settings, get_settings
 from archivum.db import sqlite
-from archivum.knowledge.models import Citation, ContextPackage
+from archivum.knowledge.models import Citation, ContextPackage, ExtractionMethod
 from archivum.knowledge.repository import KnowledgeRepository
 from archivum.retrieval.context import ContextRequest, build_context_package
 from archivum.retrieval.hybrid import hybrid_retrieve
@@ -50,8 +51,9 @@ class RetrievalHitResponse(BaseModel):
     score: float
     source: str
     citation: Citation
-    extraction_method: str
-    confidence: float
+    extraction_method: ExtractionMethod | Literal["DERIVED"]
+    confidence: float | None
+    provenance: Literal["canonical", "derived"]
 
 
 class RetrieveResponse(BaseModel):
@@ -82,6 +84,11 @@ async def retrieve(
 ) -> RetrieveResponse:
     """Return compact, cited hybrid evidence for an authenticated wiki."""
     query = body.query.strip()
+    if not query:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={"detail": "Query cannot be empty", "code": "empty_query"},
+        )
     hits = await hybrid_retrieve(
         query, current_user.wiki_id, limit=body.limit, settings=settings
     )
@@ -95,8 +102,7 @@ async def retrieve(
                 score=hit.score,
                 source=hit.source,
                 citation=hit.citation,
-                extraction_method=_extraction_method(hit.source),
-                confidence=hit.score,
+                **_provenance_payload(hit),
             )
             for hit in hits
         ],
@@ -108,8 +114,18 @@ async def retrieve(
     )
 
 
-def _extraction_method(source: str) -> str:
-    return "INFERRED" if source == "graph" else "EXTRACTED"
+def _provenance_payload(hit) -> dict[str, ExtractionMethod | str | float | None]:
+    if hit.extraction_method is not None and hit.confidence is not None:
+        return {
+            "extraction_method": hit.extraction_method,
+            "confidence": hit.confidence,
+            "provenance": "canonical",
+        }
+    return {
+        "extraction_method": "DERIVED",
+        "confidence": None,
+        "provenance": "derived",
+    }
 
 
 def _unique_citations(citations: Iterable[Citation]) -> list[Citation]:

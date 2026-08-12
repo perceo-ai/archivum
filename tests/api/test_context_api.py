@@ -2,6 +2,7 @@ from contextlib import asynccontextmanager
 from unittest.mock import AsyncMock
 
 import pytest
+from fastapi import HTTPException
 from fastapi.testclient import TestClient
 
 from archivum.api import context as context_api
@@ -79,6 +80,8 @@ async def test_retrieve_returns_compact_cited_hybrid_hits(monkeypatch):
             span_end=5,
             quote="Alpha evidence",
         ),
+        extraction_method="USER_AUTHORED",
+        confidence=0.65,
     )
     monkeypatch.setattr(context_api, "hybrid_retrieve", AsyncMock(return_value=[hit]))
 
@@ -91,5 +94,22 @@ async def test_retrieve_returns_compact_cited_hybrid_hits(monkeypatch):
     assert result.hits[0].id == "entity:alpha"
     assert result.hits[0].label == "Alpha"
     assert result.hits[0].citation == hit.citation
-    assert result.hits[0].extraction_method == "EXTRACTED"
-    assert result.hits[0].confidence == 0.8
+    assert result.hits[0].extraction_method == "USER_AUTHORED"
+    assert result.hits[0].confidence == 0.65
+    assert result.hits[0].provenance == "canonical"
+
+
+@pytest.mark.asyncio
+async def test_retrieve_rejects_whitespace_only_query(monkeypatch):
+    retrieve = AsyncMock()
+    monkeypatch.setattr(context_api, "hybrid_retrieve", retrieve)
+
+    with pytest.raises(HTTPException) as error:
+        await context_api.retrieve(
+            context_api.RetrieveRequest(query=" "),
+            CurrentUser(username="owner", role="owner", wiki_id="default"),
+            Settings(),
+        )
+
+    assert error.value.status_code == 400
+    retrieve.assert_not_awaited()

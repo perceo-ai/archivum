@@ -11,7 +11,7 @@ import pytest
 from archivum.api import query as query_api
 from archivum.auth import CurrentUser
 from archivum.config import Settings
-from archivum.knowledge.models import Citation
+from archivum.knowledge.models import Citation, ContextNode, ContextPackage
 from archivum.retrieval.hybrid import HybridHit
 
 
@@ -42,6 +42,7 @@ async def test_query_appends_a_valid_citation_when_synthesis_omits_one():
 
     with (
         patch("archivum.api.query.hybrid_retrieve", new=AsyncMock(return_value=[_hit()])),
+        patch("archivum.api.query._scope_hits_to_context_package", new=AsyncMock(return_value=[_hit()])),
         patch("archivum.api.query.sqlite.get_pages", new=AsyncMock(return_value=[])),
         patch("archivum.api.query.openai_compat_stream_tokens", uncited_tokens),
     ):
@@ -66,6 +67,7 @@ async def test_query_returns_insufficient_evidence_without_usable_context():
     uncited_hit = replace(hit, citation=hit.citation.model_copy(update={"quote": None}))
     with (
         patch("archivum.api.query.hybrid_retrieve", new=AsyncMock(return_value=[uncited_hit])),
+        patch("archivum.api.query._scope_hits_to_context_package", new=AsyncMock(return_value=[uncited_hit])),
         patch("archivum.api.query.sqlite.get_pages", new=AsyncMock(return_value=[])),
         patch("archivum.api.query.openai_compat_stream_tokens", should_not_run),
     ):
@@ -80,3 +82,45 @@ async def test_query_returns_insufficient_evidence_without_usable_context():
     assert payloads[0]["citations"] == []
     assert payloads[1]["token"].startswith("Insufficient evidence")
     assert events[-1]["data"] == "[DONE]"
+
+
+@pytest.mark.asyncio
+async def test_query_scopes_hybrid_hits_through_a_context_package(monkeypatch):
+    first_hit = _hit()
+    second_hit = replace(first_hit, id="entity:beta", label="Beta")
+    hits = [first_hit, second_hit]
+    package = ContextPackage(
+        query="Alpha",
+        seeds=["entity:alpha"],
+        nodes=[
+            ContextNode(
+                id="entity:alpha",
+                label="Alpha",
+                node_type="entity",
+                scope="wiki:default",
+                citations=[first_hit.citation],
+            )
+        ],
+        edges=[],
+        citations=[first_hit.citation],
+        insufficient_evidence=False,
+        reason=None,
+    )
+
+    class FakeDatabase:
+        async def __aenter__(self):
+            return object()
+
+        async def __aexit__(self, exc_type, exc, traceback):
+            return False
+
+    build = AsyncMock(return_value=package)
+    monkeypatch.setattr(query_api.sqlite, "get_db", FakeDatabase)
+    monkeypatch.setattr(query_api, "build_context_package", build)
+
+    scoped = await query_api._scope_hits_to_context_package("Alpha", "default", hits)
+
+    assert scoped == [first_hit]
+    request = build.await_args.args[1]
+    assert request.scope == "wiki:default"
+    assert request.seed_ids == ["entity:alpha", "entity:beta"]

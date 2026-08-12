@@ -14,9 +14,11 @@ from sse_starlette.sse import EventSourceResponse
 from archivum.auth import CurrentUser, get_current_user
 from archivum.config import Settings, get_settings
 from archivum.db import sqlite
+from archivum.knowledge.repository import KnowledgeRepository
 from archivum.llm.openrouter_client import openrouter_stream_tokens
 from archivum.llm.openai_compat_client import openai_compat_stream_tokens
 from archivum.retrieval.hybrid import hybrid_retrieve
+from archivum.retrieval.context import ContextRequest, build_context_package
 
 logger = logging.getLogger(__name__)
 
@@ -96,7 +98,10 @@ async def query(
     hits = await hybrid_retrieve(
         question, current_user.wiki_id, limit=_MAX_CONTEXTS, settings=settings
     )
-    evidence_hits = [hit for hit in hits if _has_usable_citation(hit)]
+    scoped_hits = await _scope_hits_to_context_package(
+        question, current_user.wiki_id, hits
+    )
+    evidence_hits = [hit for hit in scoped_hits if _has_usable_citation(hit)]
     contexts = [
         {
             "slug": _context_identifier(hit.id, current_user.wiki_id),
@@ -116,6 +121,7 @@ async def query(
         extra={
             "wiki_id": current_user.wiki_id,
             "hybrid_hits": len(hits),
+            "scoped_hits": len(scoped_hits),
             "contexts": len(contexts),
             "slugs": len(slugs),
         },
@@ -221,6 +227,37 @@ async def query(
 def _slug_from_page_id(page_id: str, wiki_id: str) -> str | None:
     prefix = f"page:{wiki_id}:"
     return page_id.removeprefix(prefix) if page_id.startswith(prefix) else None
+
+
+async def _scope_hits_to_context_package(question: str, wiki_id: str, hits: list):
+    """Restrict hybrid evidence to the matching bounded canonical subgraph.
+
+    Page/vector retrieval remains the textual evidence source for synthesis. The
+    context package establishes the canonical scope. If that derived index is
+    unavailable or contains none of the retrieved ids, preserve Task 7's cited
+    hybrid behavior rather than treating an index rebuild gap as no evidence.
+    """
+    if not hits:
+        return hits
+    try:
+        async with sqlite.get_db() as connection:
+            package = await build_context_package(
+                KnowledgeRepository(connection),
+                ContextRequest(
+                    query=question,
+                    scope=f"wiki:{wiki_id}",
+                    seed_ids=[hit.id for hit in hits],
+                    depth=1,
+                    max_nodes=_MAX_CONTEXTS,
+                ),
+            )
+    except Exception:
+        logger.warning("Query context package unavailable", exc_info=True)
+        return hits
+
+    scoped_ids = {node.id for node in package.nodes}
+    scoped_hits = [hit for hit in hits if hit.id in scoped_ids]
+    return scoped_hits or hits
 
 
 def _context_identifier(hit_id: str, wiki_id: str) -> str:

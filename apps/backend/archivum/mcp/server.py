@@ -236,12 +236,15 @@ async def retrieve_memory(
     """Return compact hybrid memory evidence without returning page bodies."""
     _require_key()
     set_trace_id(new_trace_id("mcp-retrieve"))
+    query = query.strip()
+    if not query:
+        return {"error": "empty_query", "detail": "Query cannot be empty"}
     hits = await hybrid_retrieve(
-        query.strip(), wiki_id, limit=min(max(limit, 1), 50), settings=settings
+        query, wiki_id, limit=min(max(limit, 1), 50), settings=settings
     )
     citations = _unique_retrieval_citations(hit.citation for hit in hits)
     return {
-        "query": query.strip(),
+        "query": query,
         "wiki_id": wiki_id,
         "hits": [
             {
@@ -250,8 +253,7 @@ async def retrieve_memory(
                 "score": hit.score,
                 "source": hit.source,
                 "citation": hit.citation.model_dump(),
-                "extraction_method": "INFERRED" if hit.source == "graph" else "EXTRACTED",
-                "confidence": hit.score,
+                **_retrieval_provenance_payload(hit),
             }
             for hit in hits
         ],
@@ -276,6 +278,20 @@ def _unique_retrieval_citations(citations: Iterable[Any]) -> list[Any]:
             seen.add(key)
             unique.append(citation)
     return unique
+
+
+def _retrieval_provenance_payload(hit: Any) -> dict[str, Any]:
+    if hit.extraction_method is not None and hit.confidence is not None:
+        return {
+            "extraction_method": hit.extraction_method,
+            "confidence": hit.confidence,
+            "provenance": "canonical",
+        }
+    return {
+        "extraction_method": "DERIVED",
+        "confidence": None,
+        "provenance": "derived",
+    }
 
 
 @mcp.tool()
