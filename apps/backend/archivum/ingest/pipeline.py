@@ -13,7 +13,9 @@ from archivum.db import sqlite, qdrant_client as qdrant, graph
 from archivum.ingest.parsers import ParsedDoc, UnsupportedFileTypeError, parse_source
 from archivum.ingest.agent import ExtractionResult, WikiPage, get_agent, slugify
 from archivum.ingest.events import publish
+from archivum.knowledge.repository import KnowledgeRepository
 from archivum.observability import new_trace_id, set_trace_id, span
+from archivum.pages_to_knowledge import sync_page_to_knowledge
 
 logger = logging.getLogger(__name__)
 
@@ -200,6 +202,15 @@ async def ingest(
             # Upsert page node in Kuzu
             with span("graph.upsert_page", slug=final_slug) as sp_g:
                 await graph.upsert_page(final_slug, page.title, wiki_id)
+
+            async with sqlite.get_db() as conn:
+                await sync_page_to_knowledge(
+                    KnowledgeRepository(conn),
+                    slug=final_slug,
+                    title=page.title,
+                    markdown=page.content,
+                    wiki_id=wiki_id,
+                )
 
             logger.info(
                 "Persisted page",
