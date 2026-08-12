@@ -94,17 +94,20 @@ const Editor = forwardRef<EditorHandle, EditorProps>(function Editor(
       '.cm-scroller': {
         fontFamily: "'Instrument Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
         backgroundColor: 'transparent',
+        cursor: 'text',
       },
       '.cm-content': {
         padding: '18px 32px 72px',
         width: '100%',
         caretColor: '#ffffff',
+        cursor: 'text',
       },
       '.cm-focused': {
         outline: 'none',
       },
       '.cm-line': {
         lineHeight: '1.7',
+        minHeight: '1.7em',
       },
       '.cm-activeLine': {
         backgroundColor: 'transparent',

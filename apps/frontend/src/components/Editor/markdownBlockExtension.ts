@@ -1,5 +1,5 @@
 import { type CompletionContext, type CompletionResult } from '@codemirror/autocomplete';
-import { RangeSetBuilder, type Extension } from '@codemirror/state';
+import { EditorSelection, Prec, RangeSetBuilder, type Extension } from '@codemirror/state';
 import {
   Decoration,
   type DecorationSet,
@@ -294,6 +294,77 @@ function buildBlockDecorations(view: EditorView): DecorationSet {
   return builder.finish();
 }
 
+function getLineFromDomTarget(view: EditorView, target: HTMLElement | null) {
+  const lineElement = target?.closest('.cm-line');
+  if (!lineElement) return null;
+
+  try {
+    return view.state.doc.lineAt(view.posAtDOM(lineElement, 0));
+  } catch {
+    return null;
+  }
+}
+
+function getNearestLineBlockAtCoords(view: EditorView, event: MouseEvent) {
+  const documentY = Math.max(0, Math.min(view.contentHeight, event.clientY - view.documentTop));
+  const visibleBlock = view.viewportLineBlocks.find((block) => documentY >= block.top && documentY <= block.bottom);
+  if (visibleBlock) return visibleBlock;
+
+  return view.viewportLineBlocks.reduce((nearest, block) => {
+    const nearestDistance = Math.min(Math.abs(documentY - nearest.top), Math.abs(documentY - nearest.bottom));
+    const blockDistance = Math.min(Math.abs(documentY - block.top), Math.abs(documentY - block.bottom));
+    return blockDistance < nearestDistance ? block : nearest;
+  }, view.lineBlockAtHeight(documentY));
+}
+
+function getLinePositionAtCoords(view: EditorView, event: MouseEvent, target: HTMLElement | null) {
+  const block = getNearestLineBlockAtCoords(view, event);
+  const line = getLineFromDomTarget(view, target) ?? view.state.doc.lineAt(block.from);
+
+  if (event.clientY < view.documentTop) return view.state.doc.line(1).from;
+  if (event.clientY > view.documentTop + view.contentHeight) return view.state.doc.line(view.state.doc.lines).to;
+
+  if (line.length === 0) return line.from;
+
+  const precisePosition = view.posAtCoords({ x: event.clientX, y: event.clientY });
+  if (precisePosition != null) {
+    const preciseLine = view.state.doc.lineAt(precisePosition);
+    if (preciseLine.number === line.number) return precisePosition;
+  }
+
+  const estimatedPosition = view.posAtCoords({ x: event.clientX, y: event.clientY }, false);
+  const estimatedLine = view.state.doc.lineAt(estimatedPosition);
+  if (estimatedLine.number === line.number) {
+    return Math.max(line.from, Math.min(line.to, estimatedPosition));
+  }
+
+  const leftEdge = view.coordsAtPos(line.from)?.left ?? view.contentDOM.getBoundingClientRect().left;
+  const rightEdge = view.coordsAtPos(line.to)?.right ?? leftEdge;
+  if (event.clientX <= leftEdge) return line.from;
+  if (event.clientX >= rightEdge) return line.to;
+  return line.from;
+}
+
+function shouldUseCustomPointerPlacement(view: EditorView, event: MouseEvent, target: HTMLElement | null) {
+  const targetLine = getLineFromDomTarget(view, target);
+  if (!targetLine) return true;
+  if (targetLine.length === 0) return true;
+
+  const precisePosition = view.posAtCoords({ x: event.clientX, y: event.clientY });
+  if (precisePosition == null) return true;
+
+  return view.state.doc.lineAt(precisePosition).number !== targetLine.number;
+}
+
+function placeCursorFromPointer(view: EditorView, event: MouseEvent) {
+  const position = getLinePositionAtCoords(view, event, event.target as HTMLElement | null);
+  view.dispatch({
+    selection: { anchor: position },
+    effects: EditorView.scrollIntoView(position, { y: 'nearest' }),
+  });
+  view.focus();
+}
+
 const markdownBlockPlugin = ViewPlugin.fromClass(
   class {
     decorations: DecorationSet;
@@ -315,7 +386,17 @@ const markdownBlockPlugin = ViewPlugin.fromClass(
         const target = event.target as HTMLElement | null;
         if (target?.closest('.cm-block-handle')) return true;
         const toggle = target?.closest('.cm-task-toggle') as HTMLElement | null;
-        if (!toggle?.dataset.line) return false;
+        if (!toggle?.dataset.line) {
+          if (
+            target?.closest('.cm-line, .cm-content, .cm-scroller') &&
+            shouldUseCustomPointerPlacement(view, event, target)
+          ) {
+            event.preventDefault();
+            placeCursorFromPointer(view, event);
+            return true;
+          }
+          return false;
+        }
         const line = view.state.doc.line(Number(toggle.dataset.line));
         const replacement = toggleTaskLine(line.text);
         if (replacement === line.text) return false;
@@ -332,10 +413,14 @@ const markdownBlockPlugin = ViewPlugin.fromClass(
         if (target?.closest('.cm-block-handle, .cm-task-toggle, .cm-wikilink-existing, .cm-wikilink-missing')) {
           return false;
         }
-        const position = view.posAtCoords({ x: event.clientX, y: event.clientY });
-        if (position == null) return false;
-        view.dispatch({ selection: { anchor: position } });
-        view.focus();
+        if (
+          target?.closest('.cm-line, .cm-content, .cm-scroller') &&
+          shouldUseCustomPointerPlacement(view, event, target)
+        ) {
+          event.preventDefault();
+          placeCursorFromPointer(view, event);
+          return true;
+        }
         return false;
       },
       dragover(event) {
@@ -363,6 +448,16 @@ const markdownBlockPlugin = ViewPlugin.fromClass(
     },
   },
 );
+
+function moveCursorVertically(view: EditorView, forward: boolean) {
+  const selection = view.state.selection.main;
+  const range = view.moveVertically(selection, forward);
+  view.dispatch({
+    selection: EditorSelection.single(range.anchor, range.head),
+    effects: EditorView.scrollIntoView(range.head, { y: 'nearest' }),
+  });
+  return true;
+}
 
 export function slashCommandCompletion(context: CompletionContext): CompletionResult | null {
   const before = context.matchBefore(/^\s*\/[^\n]*$/);
@@ -433,11 +528,13 @@ function moveCurrentBlock(view: EditorView, offset: -1 | 1) {
 
 export function markdownBlockExtension(): Extension {
   return [
-    keymap.of([
+    Prec.high(keymap.of([
+      { key: 'ArrowUp', run: (view) => moveCursorVertically(view, false) },
+      { key: 'ArrowDown', run: (view) => moveCursorVertically(view, true) },
       { key: 'Enter', run: handleSmartEnter },
       { key: 'Mod-Shift-ArrowUp', run: (view) => moveCurrentBlock(view, -1) },
       { key: 'Mod-Shift-ArrowDown', run: (view) => moveCurrentBlock(view, 1) },
-    ]),
+    ])),
     markdownBlockPlugin,
     EditorView.theme({
       '.cm-content': {
@@ -445,7 +542,7 @@ export function markdownBlockExtension(): Extension {
       },
       '.cm-line.cm-markdown-block': {
         position: 'relative',
-        padding: '2px 0 2px 40px',
+        padding: '3px 0 3px 40px',
         borderRadius: '5px',
         color: 'inherit',
       },
@@ -456,32 +553,32 @@ export function markdownBlockExtension(): Extension {
         backgroundColor: 'transparent',
       },
       '.cm-markdown-heading-1': {
-        marginTop: '20px',
-        marginBottom: '6px',
+        paddingTop: '22px',
+        paddingBottom: '7px',
         fontSize: '1.875rem',
         lineHeight: '1.2',
         fontWeight: '700',
         color: 'inherit',
       },
       '.cm-markdown-heading-2': {
-        marginTop: '18px',
-        marginBottom: '5px',
+        paddingTop: '18px',
+        paddingBottom: '6px',
         fontSize: '1.5rem',
         lineHeight: '1.25',
         fontWeight: '700',
         color: 'inherit',
       },
       '.cm-markdown-heading-3': {
-        marginTop: '14px',
-        marginBottom: '4px',
+        paddingTop: '14px',
+        paddingBottom: '5px',
         fontSize: '1.1875rem',
         lineHeight: '1.3',
         fontWeight: '600',
         color: 'inherit',
       },
       '.cm-markdown-heading-4, .cm-markdown-heading-5, .cm-markdown-heading-6': {
-        marginTop: '10px',
-        marginBottom: '3px',
+        paddingTop: '10px',
+        paddingBottom: '4px',
         fontSize: '1rem',
         lineHeight: '1.38',
         fontWeight: '600',
@@ -499,8 +596,8 @@ export function markdownBlockExtension(): Extension {
         color: 'hsl(var(--muted-foreground))',
       },
       '.cm-markdown-quote': {
-        marginTop: '4px',
-        marginBottom: '4px',
+        paddingTop: '6px',
+        paddingBottom: '6px',
         borderLeft: '3px solid hsl(var(--border) / 0.18)',
         color: 'hsl(var(--muted-foreground))',
         fontStyle: 'italic',
@@ -511,8 +608,8 @@ export function markdownBlockExtension(): Extension {
         fontSize: '13px',
       },
       '.cm-markdown-thematic-break': {
-        height: '18px',
-        margin: '8px 0',
+        minHeight: '24px',
+        paddingTop: '12px',
         borderTop: '1px solid hsl(var(--border) / 0.16)',
         color: 'transparent',
       },
