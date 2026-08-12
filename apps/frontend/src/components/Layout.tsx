@@ -88,11 +88,11 @@ export default function Layout({ children }: LayoutProps) {
       <aside className="rail-panel hidden w-[72px] shrink-0 flex-col items-center px-3 py-4 text-white md:flex">
         <button
           type="button"
-          className="soft-border mb-6 flex h-11 w-11 items-center justify-center rounded-[8px] border bg-white/[0.05] font-serif text-xl font-bold italic tracking-tight text-white transition-colors hover:bg-white/[0.08]"
+          className="soft-border mb-6 flex h-11 w-11 items-center justify-center overflow-hidden rounded-[8px] border bg-white/[0.05] transition-colors hover:bg-white/[0.08]"
           onClick={() => navigate(currentSlug ? `/wiki/${currentSlug}` : '/library')}
           title="Archivum"
         >
-          A
+          <img src="/perceo-logo.png" alt="Archivum" className="h-full w-full object-cover" />
         </button>
 
         <nav className="flex flex-col gap-2">
