@@ -36,6 +36,7 @@ export default function GraphView({ onNavigate }: GraphViewProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const networkRef = useRef<Network | null>(null);
   const nodesRef = useRef<DataSet<ScopedNode> | null>(null);
+  const requestSequenceRef = useRef(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [searchText, setSearchText] = useState('');
@@ -47,23 +48,34 @@ export default function GraphView({ onNavigate }: GraphViewProps) {
   const [drawerOpen, setDrawerOpen] = useState(false);
 
   async function loadGraph(seedId = activeSeed) {
+    const requestSequence = ++requestSequenceRef.current;
     setLoading(true);
     setError(null);
     try {
       const context = await getContextPackage({ seed_ids: [seedId], depth: 2, max_nodes: 24 });
+      if (requestSequence !== requestSequenceRef.current) return;
       setActiveSeed(seedId);
       setActiveScope(context.nodes.find((node) => node.id === SELF_ID)?.scope ?? context.nodes[0]?.scope ?? 'wiki:default');
       setNodeCount(context.nodes.length);
       setEdgeCount(context.edges.length);
-      renderGraph(context.nodes, context.edges.map((edge) => ({ from: edge.from_id, to: edge.to_id, label: edge.relation })));
+      renderGraph(
+        requestSequence,
+        context.nodes,
+        context.edges.map((edge) => ({ from: edge.from_id, to: edge.to_id, label: edge.relation })),
+      );
     } catch (err) {
-      setError((err as Error).message);
+      if (requestSequence === requestSequenceRef.current) setError((err as Error).message);
     } finally {
-      setLoading(false);
+      if (requestSequence === requestSequenceRef.current) setLoading(false);
     }
   }
 
-  function renderGraph(nodes: ContextNode[], edges: Array<{ from: string; to: string; label: string }>) {
+  function renderGraph(
+    requestSequence: number,
+    nodes: ContextNode[],
+    edges: Array<{ from: string; to: string; label: string }>,
+  ) {
+    if (requestSequence !== requestSequenceRef.current) return;
     if (!containerRef.current) return;
     const visNodes = new DataSet<ScopedNode>(nodes.map((node) => {
       const isSelf = node.id === SELF_ID;
@@ -94,7 +106,7 @@ export default function GraphView({ onNavigate }: GraphViewProps) {
     };
 
     void import('vis-network').then(({ Network }) => {
-      if (!containerRef.current) return;
+      if (requestSequence !== requestSequenceRef.current || !containerRef.current) return;
       const network = new Network(containerRef.current, { nodes: visNodes, edges: visEdges }, options);
       network.on('click', (params) => {
         const nodeId = params.nodes[0] ? String(params.nodes[0]) : null;
@@ -118,7 +130,11 @@ export default function GraphView({ onNavigate }: GraphViewProps) {
 
   useEffect(() => {
     void loadGraph(SELF_ID);
-    return () => { networkRef.current?.destroy(); networkRef.current = null; };
+    return () => {
+      requestSequenceRef.current += 1;
+      networkRef.current?.destroy();
+      networkRef.current = null;
+    };
     // Initial load must always start at the owner root.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
