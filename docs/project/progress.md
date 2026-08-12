@@ -2,6 +2,8 @@
 
 _Last updated: 2026-08-11_
 
+Archivum keeps markdown editable for humans while maintaining rebuildable semantic and graph indexes for search, citations, and agent context. Canonical knowledge is owner-centered at `person:self`; retrieval and MCP context preserve citations, confidence, and extraction method.
+
 ## Status Vocabulary
 
 - Verified: backed by a current test, command, or manual smoke result.
@@ -32,8 +34,8 @@ _Last updated: 2026-08-11_
 | Vault navigation | Partial | Folder/page APIs and file tree UI exist. Browser click-through still needs manual smoke. |
 | Wikilinks and backlinks | Partial | CodeMirror wikilink extension exists; 2026-08-11 API smoke verified page-created wikilinks produce backlink results. Browser editor click-through still needs manual smoke. |
 | Ingest files and URLs | Partial | Backend parser support is broad; markdown file ingest was smoked. URL and full format matrix still need release smoke. |
-| Search | Partial | Qdrant semantic search returned freshly ingested marker text. Hybrid behavior needs product-level confirmation. |
-| Query with citations | Verified | Query SSE returned citations including the source page and answered with the marker. |
+| Search | Partial | Qdrant semantic search returned freshly ingested marker text. Hybrid behavior needs product-level confirmation; canonical retrieval defaults to `person:self` when no seed is supplied. |
+| Query with citations | Verified | Query SSE returned citations including the source page and answered with the marker; canonical context carries citations, confidence, and extraction method. |
 | Graph | Partial | Kuzu graph API and frontend graph view exist. Needs browser smoke after Docker boot. |
 | Sharing/export | Partial | Share links, public pages, HTML export, and PDF export code exist. Needs manual release smoke. |
 | MCP server | Verified | Docker MCP SSE endpoint returned the session endpoint event; backend stdio smoke is covered by pytest. |

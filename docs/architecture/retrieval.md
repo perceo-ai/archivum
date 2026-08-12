@@ -1,14 +1,16 @@
 # Retrieval and Context Sizing
 
-Archivum answers questions by retrieving small snippets from Qdrant and only sending those snippets to the synthesis LLM.
+Markdown pages are the human editing surface. Canonical knowledge rows preserve the owner profile, page-authored content, projects, thoughts, extracted entities, relationships, citations, confidence, and extraction method. Qdrant, Kuzu, FTS, and code lexical indexes are rebuildable projections. Retrieval defaults to `person:self` when the caller does not provide another seed.
+
+Archivum answers questions with bounded, cited context assembled from canonical knowledge and its retrieval projections. The synthesis LLM receives evidence-backed excerpts rather than an unbounded copy of the vault.
 
 ## Query Flow
 
-1. Embed the user question.
-2. Search Qdrant for matching page chunks.
-3. Deduplicate hits by page slug.
-4. Fetch page titles from SQLite for citations.
-5. Build a prompt from excerpts, not full wiki contents.
+1. Select `person:self` as the default seed when the caller does not provide another seed.
+2. Search semantic, full-text, graph, and code lexical projections as appropriate for the request.
+3. Resolve matches to canonical knowledge rows and their relationships.
+4. Preserve citations, confidence, and extraction method on the returned context.
+5. Build a bounded prompt from cited excerpts, not full wiki contents.
 6. Ask the configured synthesis provider to answer using only the provided context.
 
 Primary code:
@@ -18,6 +20,8 @@ Primary code:
 | REST query route | `apps/backend/archivum/api/query.py` |
 | MCP query tool | `apps/backend/archivum/mcp/server.py` |
 | Qdrant adapter | `apps/backend/archivum/db/qdrant_client.py` |
+| Canonical context | `apps/backend/archivum/retrieval/context.py` |
+| Hybrid retrieval | `apps/backend/archivum/retrieval/hybrid.py` |
 | Provider clients | `apps/backend/archivum/llm` |
 
 ## Why Context Stays Small

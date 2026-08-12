@@ -1,16 +1,18 @@
 # Ingest Pipeline
 
-Archivum ingests files and URLs into canonical markdown pages, then updates metadata, search, and graph indexes.
+Archivum ingests files and URLs into editable canonical markdown pages, then projects their content and provenance into canonical knowledge rows and rebuildable search and graph indexes.
+
+Markdown pages are the human editing surface. Canonical knowledge rows preserve the owner profile, page-authored content, projects, thoughts, extracted entities, relationships, citations, confidence, and extraction method. Qdrant, Kuzu, FTS, and code lexical indexes are rebuildable projections.
 
 ## Flow
 
 1. Parse the source into clean text and metadata.
 2. Send text to the configured extraction LLM.
 3. Receive wiki pages, entities, and relationships as structured JSON.
-4. Write markdown pages to the wiki directory.
-5. Upsert page metadata and ingest logs in SQLite.
-6. Chunk and embed content into Qdrant.
-7. Upsert page/entity nodes and edges in Kuzu.
+4. Write editable markdown pages to the wiki directory.
+5. Project page-authored content and extracted knowledge into canonical rows with citations, confidence, and extraction method.
+6. Update operational metadata and FTS in SQLite.
+7. Project semantic vectors into Qdrant, graph nodes and edges into Kuzu, and code entities into the rebuildable code lexical index.
 
 Primary files:
 
