@@ -18,6 +18,8 @@ const NODE_COLORS: Record<string, string> = {
   entity: '#78909c',
 };
 
+const INITIAL_GRAPH_SCALE = 1.15;
+
 export default function GraphView({ onNavigate }: GraphViewProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const networkRef = useRef<Network | null>(null);
@@ -144,6 +146,11 @@ export default function GraphView({ onNavigate }: GraphViewProps) {
 
       network.on('stabilizationIterationsDone', () => {
         network.setOptions({ physics: { enabled: false } });
+        network.moveTo({
+          position: { x: 0, y: 0 },
+          scale: INITIAL_GRAPH_SCALE,
+          animation: { duration: 350, easingFunction: 'easeInOutQuad' },
+        });
       });
 
       networkRef.current = network;
@@ -245,7 +252,7 @@ export default function GraphView({ onNavigate }: GraphViewProps) {
       </div>
 
       {/* Graph container */}
-      <div className="flex-1 relative">
+      <div className="relative min-h-0 flex-1">
         {loading && (
           <div className="absolute inset-0 flex items-center justify-center">
             <div className="space-y-2 w-48">

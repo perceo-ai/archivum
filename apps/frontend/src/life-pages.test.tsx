@@ -7,6 +7,7 @@ import DailyPage from './pages/DailyPage';
 import WorkflowsPage from './pages/WorkflowsPage';
 import ToolsPage from './pages/ToolsPage';
 import SettingsPage from './pages/SettingsPage';
+import { DEFAULT_FOLDER_PATHS, buildTree } from './components/FileTree';
 
 describe('Life OS pages', () => {
   it('renders the daily note workflow', () => {
@@ -85,6 +86,17 @@ describe('Life OS pages', () => {
     expect(html).not.toContain('cleaner tools workspace');
   });
 
+  it('gives the knowledge graph a viewport-height workspace', () => {
+    const html = renderToString(
+      <StaticRouter location="/tools/graph">
+        <ToolsPage />
+      </StaticRouter>,
+    );
+
+    expect(html).toContain('page-frame h-full min-h-0 bg-transparent');
+    expect(html).toContain('relative min-h-0 flex-1');
+  });
+
   it('renders LLM provider settings', () => {
     const html = renderToString(
       <StaticRouter location="/tools/settings">
@@ -94,5 +106,26 @@ describe('Life OS pages', () => {
 
     expect(html).toContain('LLM Provider');
     expect(html).toContain('Loading LLM settings');
+  });
+
+  it('organizes root pages under Inbox instead of leaving loose root clutter', () => {
+    const tree = buildTree(
+      [
+        { slug: 'loose-note', title: 'Loose Note', authored_by: 'user' },
+        { slug: 'projects/archivum', title: 'Archivum', authored_by: 'agent' },
+      ],
+      [],
+    );
+
+    expect(tree.pages).toEqual([]);
+    expect(tree.folders.map((folder) => folder.path).slice(0, DEFAULT_FOLDER_PATHS.length)).toEqual(
+      [...DEFAULT_FOLDER_PATHS],
+    );
+    expect(tree.folders.find((folder) => folder.path === 'inbox')?.pages.map((page) => page.slug)).toEqual([
+      'loose-note',
+    ]);
+    expect(tree.folders.find((folder) => folder.path === 'projects')?.pages.map((page) => page.slug)).toEqual([
+      'projects/archivum',
+    ]);
   });
 });

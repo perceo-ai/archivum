@@ -9,6 +9,7 @@ import { oneDark } from '@codemirror/theme-one-dark';
 import { useAppState } from '../../store';
 import { updatePage } from '../../api';
 import { wikilinkExtension } from './wikilinkExtension';
+import { markdownBlockExtension } from './markdownBlockExtension';
 
 export interface EditorProps {
   slug: string;
@@ -82,13 +83,17 @@ const Editor = forwardRef<EditorHandle, EditorProps>(function Editor(
     const baseTheme = EditorView.theme({
       '&': {
         height: '100%',
-        backgroundColor: '#1e1e2e',
-        fontSize: '14px',
+        backgroundColor: '#171616',
+        fontSize: '15px',
+      },
+      '.cm-scroller': {
+        fontFamily: "'Instrument Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
       },
       '.cm-content': {
-        padding: '16px 24px',
-        maxWidth: '800px',
+        padding: '28px 32px 64px',
+        maxWidth: '860px',
         margin: '0 auto',
+        caretColor: '#ffffff',
       },
       '.cm-focused': {
         outline: 'none',
@@ -106,7 +111,7 @@ const Editor = forwardRef<EditorHandle, EditorProps>(function Editor(
         backgroundColor: '#4B91F140 !important',
       },
       '.cm-gutters': {
-        backgroundColor: '#1e1e2e',
+        backgroundColor: '#171616',
         border: 'none',
         color: '#3a3a4a',
       },
@@ -123,6 +128,7 @@ const Editor = forwardRef<EditorHandle, EditorProps>(function Editor(
         }),
         oneDark,
         baseTheme,
+        markdownBlockExtension(),
         updateListener,
         ...wikilinks,
         EditorView.lineWrapping,
@@ -155,7 +161,7 @@ const Editor = forwardRef<EditorHandle, EditorProps>(function Editor(
     <div
       ref={containerRef}
       className="h-full w-full overflow-auto"
-      style={{ backgroundColor: '#1e1e2e' }}
+      style={{ backgroundColor: '#171616' }}
     />
   );
 });

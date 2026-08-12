@@ -50,7 +50,7 @@ export default function ToolsPage() {
   const current = ITEMS.find((item) => location.pathname.endsWith(`/${item.slug}`)) ?? ITEMS[0];
 
   return (
-    <div className="page-frame bg-transparent">
+    <div className="page-frame h-full min-h-0 bg-transparent">
       <div className="page-header">
         <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
           Tools

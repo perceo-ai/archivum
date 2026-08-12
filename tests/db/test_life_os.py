@@ -42,3 +42,12 @@ async def test_create_project_and_task(temp_settings):
     assert task["project_key"] == "phoenix"
     assert [p["key"] for p in projects] == ["phoenix"]
     assert [t["title"] for t in tasks] == ["Validate MCP server"]
+
+
+@pytest.mark.asyncio
+async def test_list_folders_creates_default_organization(temp_settings):
+    await sqlite.init_db(temp_settings)
+
+    folders = await sqlite.list_folders("default")
+
+    assert [folder["path"] for folder in folders] == sorted(sqlite.DEFAULT_ORGANIZATION_FOLDERS)

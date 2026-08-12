@@ -289,7 +289,7 @@ export default function FileTree() {
               <FolderPlus className="h-4 w-4" />
             </Button>
             <Button
-              onClick={() => beginAction({ kind: 'new-page' })}
+              onClick={() => beginAction({ kind: 'new-page' }, '', INBOX_FOLDER)}
               variant="ghost"
               size="icon"
               title="New page"
@@ -393,13 +393,13 @@ export default function FileTree() {
   );
 }
 
-type TreePage = {
+export type TreePage = {
   slug: string;
   title: string;
   authored_by: 'user' | 'agent';
 };
 
-type TreeNode = {
+export type TreeNode = {
   name: string;
   path: string;
   explicit: boolean;
@@ -407,7 +407,23 @@ type TreeNode = {
   pages: TreePage[];
 };
 
-function buildTree(pages: TreePage[], folders: Folder[]): TreeNode {
+export const DEFAULT_FOLDER_PATHS = [
+  'inbox',
+  'notes',
+  'sources',
+  'daily',
+  'projects',
+  'areas',
+  'people',
+  'archive',
+] as const;
+
+const DEFAULT_FOLDER_ORDER = new Map<string, number>(
+  DEFAULT_FOLDER_PATHS.map((path, index) => [path, index]),
+);
+const INBOX_FOLDER = 'inbox';
+
+export function buildTree(pages: TreePage[], folders: Folder[]): TreeNode {
   const root: TreeNode = { name: '', path: '', explicit: true, folders: [], pages: [] };
   const folderIndex = new Map<string, TreeNode>();
   folderIndex.set('', root);
@@ -428,16 +444,22 @@ function buildTree(pages: TreePage[], folders: Folder[]): TreeNode {
     return node;
   }
 
+  for (const path of DEFAULT_FOLDER_PATHS) ensureFolder(path, true);
   for (const folder of folders) ensureFolder(folder.path, true);
   for (const p of pages) {
     const parts = p.slug.split('/');
     const folderPath = parts.slice(0, -1).join('/');
-    const folder = folderPath ? ensureFolder(folderPath) : root;
+    const folder = folderPath ? ensureFolder(folderPath) : ensureFolder(INBOX_FOLDER, true);
     folder.pages.push({ slug: p.slug, title: p.title, authored_by: p.authored_by });
   }
 
   function sortNode(node: TreeNode) {
-    node.folders.sort((a, b) => a.name.localeCompare(b.name));
+    node.folders.sort((a, b) => {
+      const rankA = DEFAULT_FOLDER_ORDER.get(a.path) ?? Number.MAX_SAFE_INTEGER;
+      const rankB = DEFAULT_FOLDER_ORDER.get(b.path) ?? Number.MAX_SAFE_INTEGER;
+      if (rankA !== rankB) return rankA - rankB;
+      return a.name.localeCompare(b.name);
+    });
     node.pages.sort((a, b) => a.title.localeCompare(b.title));
     node.folders.forEach(sortNode);
   }
