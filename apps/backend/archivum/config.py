@@ -113,6 +113,7 @@ class Settings(BaseSettings):
     rate_limit_api_window_seconds: int = 60
 
     # ── MCP ────────────────────────────────────────────────────────────────
+    mcp_host: str = "127.0.0.1"
     mcp_port: int = 8001
     mcp_api_key: str = ""
 

@@ -83,6 +83,7 @@ services:
       - DB_PATH=/data/archivum.db
       - KUZU_PATH=/data/kuzu
       - MCP_API_KEY=${MCP_API_KEY:-}
+      - MCP_HOST=0.0.0.0
       - MCP_PORT=8001
       - EMBED_PROVIDER=${EMBED_PROVIDER:-local}
       - EMBED_MODEL=${EMBED_MODEL:-BAAI/bge-small-en-v1.5}
@@ -100,7 +101,7 @@ services:
       - OPENAI_COMPAT_API_KEY=${OPENAI_COMPAT_API_KEY:-}
       - OPENAI_COMPAT_AZURE_API_VERSION=${OPENAI_COMPAT_AZURE_API_VERSION:-2024-02-15-preview}
     ports:
-      - "8001:8001"
+      - "127.0.0.1:${ARCHIVUM_MCP_PORT:-8001}:8001"
     volumes:
       - wiki_data:/data/wiki
       - raw_data:/data/raw

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import hmac
 import json
 import logging
 from collections.abc import Iterable
@@ -11,6 +12,9 @@ from typing import Any
 
 import anthropic
 from mcp.server.fastmcp import FastMCP
+from mcp.server.auth.middleware.auth_context import get_access_token
+from mcp.server.auth.provider import AccessToken
+from mcp.server.auth.settings import AuthSettings
 
 from archivum.capture.schema import Conversation, Turn
 from archivum.capture.store import CaptureStore
@@ -40,19 +44,65 @@ class ToolContext:
 settings = get_settings()
 setup_logging()
 set_trace_id(new_trace_id("mcp-startup"))
-mcp = FastMCP(
-    "Archivum",
-    json_response=True,
-    host="0.0.0.0",
-    port=settings.mcp_port,
-)
+
+
+class StaticBearerTokenVerifier:
+    """Validate MCP bearer tokens against the configured static API key."""
+
+    def __init__(self, api_key: str) -> None:
+        self._api_key = api_key
+
+    async def verify_token(self, token: str) -> AccessToken | None:
+        if not self._api_key or not hmac.compare_digest(token, self._api_key):
+            return None
+        return AccessToken(token=token, client_id="archivum-mcp", scopes=[])
+
+
+def create_mcp(app_settings: Settings, *, register_existing_tools: bool = True) -> FastMCP:
+    token_verifier = None
+    auth = None
+    if app_settings.mcp_api_key:
+        token_verifier = StaticBearerTokenVerifier(app_settings.mcp_api_key)
+        resource_url = f"http://localhost:{app_settings.mcp_port}"
+        auth = AuthSettings(
+            issuer_url=resource_url,
+            resource_server_url=resource_url,
+            required_scopes=[],
+        )
+
+    app = FastMCP(
+        "Archivum",
+        json_response=True,
+        host=app_settings.mcp_host,
+        port=app_settings.mcp_port,
+        auth=auth,
+        token_verifier=token_verifier,
+    )
+
+    existing_mcp = globals().get("mcp")
+    if register_existing_tools and isinstance(existing_mcp, FastMCP):
+        for tool in existing_mcp._tool_manager._tools.values():
+            app.add_tool(
+                tool.fn,
+                name=tool.name,
+                title=tool.title,
+                description=tool.description,
+                annotations=tool.annotations,
+                icons=tool.icons,
+                meta=tool.meta,
+            )
+    return app
+
+
+mcp = create_mcp(settings, register_existing_tools=False)
 
 
 def _require_key() -> None:
-    if settings.mcp_api_key:
-        # FastMCP doesn't automatically enforce headers for stdio. We keep this as
-        # a soft requirement in v1 (clients supply it via their own configuration).
+    if not settings.mcp_api_key:
         return
+    token = get_access_token()
+    if token is None or not hmac.compare_digest(token.token, settings.mcp_api_key):
+        raise PermissionError("MCP bearer authentication required")
 
 
 # ── Tools ─────────────────────────────────────────────────────────────────────
@@ -627,7 +677,7 @@ def main() -> None:
 
     # Default to SSE for container usage. Host is set when FastMCP is created;
     # port is configured via MCP_PORT.
-    logger.info("Starting MCP server (sse)", extra={"port": settings.mcp_port})
+    logger.info("Starting MCP server (sse)", extra={"host": settings.mcp_host, "port": settings.mcp_port})
     mcp.run(transport="sse", mount_path="/")
 
 
