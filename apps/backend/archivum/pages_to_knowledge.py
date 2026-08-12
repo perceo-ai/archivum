@@ -6,7 +6,7 @@ import re
 
 from archivum.ingest.agent import slugify
 from archivum.knowledge.models import Citation, KnowledgeObject, KnowledgeRelationship
-from archivum.knowledge.personal_root import ensure_personal_root, link_to_self
+from archivum.knowledge.personal_root import SELF_ID, ensure_personal_root, link_to_self
 from archivum.knowledge.repository import KnowledgeRepository
 from archivum.linting import WIKILINK_RE
 
@@ -51,6 +51,12 @@ async def sync_page_to_knowledge(
     )
 
     await ensure_personal_root(repo, wiki_id=wiki_id)
+    await repo.delete_relationships(
+        src_id=SELF_ID,
+        dst_id=page_id,
+        rel_types={"authored_thought", "owns_project"},
+    )
+    await repo.delete_relationships(src_id=page_id, rel_types={"references"})
     relationship_type = "owns_project" if _PROJECT_FRONTMATTER_RE.search(markdown) else "authored_thought"
     await link_to_self(
         repo,
@@ -78,3 +84,30 @@ async def sync_page_to_knowledge(
                 properties={},
             )
         )
+
+
+async def rename_page_in_knowledge(
+    repo: KnowledgeRepository,
+    *,
+    old_slug: str,
+    new_slug: str,
+    title: str,
+    markdown: str,
+    wiki_id: str,
+) -> None:
+    """Replace a renamed page's canonical ID and its incident relationships."""
+    await remove_page_from_knowledge(repo, slug=old_slug, wiki_id=wiki_id)
+    await sync_page_to_knowledge(
+        repo,
+        slug=new_slug,
+        title=title,
+        markdown=markdown,
+        wiki_id=wiki_id,
+    )
+
+
+async def remove_page_from_knowledge(
+    repo: KnowledgeRepository, *, slug: str, wiki_id: str
+) -> None:
+    """Remove a deleted page and every relationship that could expose it."""
+    await repo.delete_object(_page_id(wiki_id, slug))

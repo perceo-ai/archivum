@@ -17,7 +17,11 @@ from archivum.db import sqlite, qdrant_client as qdrant, graph
 from archivum.ingest.agent import slugify
 from archivum.knowledge.repository import KnowledgeRepository
 from archivum.linting import WIKILINK_RE
-from archivum.pages_to_knowledge import sync_page_to_knowledge
+from archivum.pages_to_knowledge import (
+    remove_page_from_knowledge,
+    rename_page_in_knowledge,
+    sync_page_to_knowledge,
+)
 from archivum.security.markdown import sanitize_markdown
 
 router = APIRouter(prefix="/api/pages", tags=["pages"])
@@ -211,6 +215,25 @@ async def _sync_page_knowledge(slug: str, title: str, content: str, wiki_id: str
         )
 
 
+async def _rename_page_knowledge(
+    old_slug: str, new_slug: str, title: str, content: str, wiki_id: str
+) -> None:
+    async with sqlite.get_db() as conn:
+        await rename_page_in_knowledge(
+            KnowledgeRepository(conn),
+            old_slug=old_slug,
+            new_slug=new_slug,
+            title=title,
+            markdown=content,
+            wiki_id=wiki_id,
+        )
+
+
+async def _remove_page_knowledge(slug: str, wiki_id: str) -> None:
+    async with sqlite.get_db() as conn:
+        await remove_page_from_knowledge(KnowledgeRepository(conn), slug=slug, wiki_id=wiki_id)
+
+
 async def move_page_to_slug(
     old_slug: str,
     new_slug: str,
@@ -256,6 +279,9 @@ async def move_page_to_slug(
         new_path.write_text(existing["content"], encoding="utf-8")
 
     await sqlite.update_page_slug(old_slug, new_slug, wiki_id)
+    await _rename_page_knowledge(
+        old_slug, new_slug, existing["title"], existing["content"], wiki_id
+    )
     await sqlite.update_share_targets({old_slug: new_slug}, wiki_id)
     await qdrant.delete_page(old_slug, wiki_id, settings)
     await qdrant.upsert_page(new_slug, existing["title"], existing["content"], wiki_id, settings)
@@ -492,6 +518,7 @@ async def delete_page(
 
     # SQLite
     await sqlite.delete_page(slug, current_user.wiki_id)
+    await _remove_page_knowledge(slug, current_user.wiki_id)
 
     # Qdrant
     await qdrant.delete_page(slug, current_user.wiki_id, settings)

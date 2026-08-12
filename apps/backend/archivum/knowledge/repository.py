@@ -133,6 +133,82 @@ class KnowledgeRepository:
             rows = await cursor.fetchall()
         return [await self._row_to_relationship(row) for row in rows]
 
+    async def delete_relationships(
+        self,
+        *,
+        src_id: str | None = None,
+        dst_id: str | None = None,
+        rel_types: set[str] | None = None,
+    ) -> None:
+        """Delete matching relationships and their citations."""
+        clauses: list[str] = []
+        params: list[str] = []
+        if src_id is not None:
+            clauses.append("src_id=?")
+            params.append(src_id)
+        if dst_id is not None:
+            clauses.append("dst_id=?")
+            params.append(dst_id)
+        if rel_types:
+            placeholders = ", ".join("?" for _ in rel_types)
+            clauses.append(f"rel_type IN ({placeholders})")
+            params.extend(sorted(rel_types))
+        if not clauses:
+            raise ValueError("At least one relationship filter is required")
+
+        where = " AND ".join(clauses)
+        await self._conn.execute("BEGIN")
+        try:
+            async with self._conn.execute(
+                f"SELECT id FROM knowledge_relationships WHERE {where}", params
+            ) as cursor:
+                relationship_ids = [row["id"] for row in await cursor.fetchall()]
+            if relationship_ids:
+                placeholders = ", ".join("?" for _ in relationship_ids)
+                await self._conn.execute(
+                    "DELETE FROM knowledge_citations "
+                    f"WHERE knowledge_type='relationship' AND knowledge_id IN ({placeholders})",
+                    relationship_ids,
+                )
+                await self._conn.execute(
+                    f"DELETE FROM knowledge_relationships WHERE id IN ({placeholders})",
+                    relationship_ids,
+                )
+            await self._conn.commit()
+        except Exception:
+            await self._conn.rollback()
+            raise
+
+    async def delete_object(self, object_id: str) -> None:
+        """Delete an object, all incident relationships, and their citations."""
+        await self._conn.execute("BEGIN")
+        try:
+            async with self._conn.execute(
+                "SELECT id FROM knowledge_relationships WHERE src_id=? OR dst_id=?",
+                (object_id, object_id),
+            ) as cursor:
+                relationship_ids = [row["id"] for row in await cursor.fetchall()]
+            if relationship_ids:
+                placeholders = ", ".join("?" for _ in relationship_ids)
+                await self._conn.execute(
+                    "DELETE FROM knowledge_citations "
+                    f"WHERE knowledge_type='relationship' AND knowledge_id IN ({placeholders})",
+                    relationship_ids,
+                )
+                await self._conn.execute(
+                    f"DELETE FROM knowledge_relationships WHERE id IN ({placeholders})",
+                    relationship_ids,
+                )
+            await self._conn.execute(
+                "DELETE FROM knowledge_citations WHERE knowledge_type='object' AND knowledge_id=?",
+                (object_id,),
+            )
+            await self._conn.execute("DELETE FROM knowledge_objects WHERE id=?", (object_id,))
+            await self._conn.commit()
+        except Exception:
+            await self._conn.rollback()
+            raise
+
     async def _replace_citations(
         self, knowledge_type: str, knowledge_id: str, citations: list[Citation]
     ) -> None:
