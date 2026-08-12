@@ -53,8 +53,10 @@ class ContextEdge(BaseModel):
     from_id: str
     to_id: str
     relation: str
+    scope: str
     extraction_method: ExtractionMethod = "EXTRACTED"
     confidence: float = 1.0
+    citations: list[Citation] = Field(min_length=1)
 
 
 class ContextPackage(BaseModel):
