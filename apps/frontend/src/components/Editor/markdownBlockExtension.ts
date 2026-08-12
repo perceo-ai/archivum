@@ -223,9 +223,10 @@ class BlockHandleWidget extends WidgetType {
     button.setAttribute('aria-label', 'Drag to move block');
     button.dataset.line = String(this.lineNumber);
     button.addEventListener('mousedown', (event) => {
-      event.preventDefault();
+      event.stopPropagation();
     });
     button.addEventListener('dragstart', (event) => {
+      event.stopPropagation();
       event.dataTransfer?.setData('application/x-archivum-line', String(this.lineNumber));
       event.dataTransfer?.setData('text/plain', String(this.lineNumber));
       if (event.dataTransfer) event.dataTransfer.effectAllowed = 'move';
@@ -403,7 +404,7 @@ const markdownBlockPlugin = ViewPlugin.fromClass(
     eventHandlers: {
       mousedown(event, view) {
         const target = event.target as HTMLElement | null;
-        if (target?.closest('.cm-block-handle')) return true;
+        if (target?.closest('.cm-block-handle')) return false;
         const toggle = target?.closest('.cm-task-toggle') as HTMLElement | null;
         if (!toggle?.dataset.line) return false;
         const line = view.state.doc.line(Number(toggle.dataset.line));
