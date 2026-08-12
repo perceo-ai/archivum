@@ -11,16 +11,18 @@ from archivum.db.graph import (
     add_mention,
     add_reference,
     clear_knowledge_projection,
+    clear_legacy_projection,
     upsert_entity,
     upsert_knowledge_node,
     upsert_page,
 )
-from archivum.db.qdrant_client import index_page
+from archivum.db.qdrant_client import clear_projection_index, index_page
 from archivum.knowledge.models import Citation, KnowledgeObject
 from archivum.knowledge.repository import KnowledgeRepository
 
 
 _QDRANT_KINDS = frozenset({"page", "source", "claim"})
+_OBJECT_REBUILD_LIMIT = 100_000
 logger = logging.getLogger(__name__)
 
 
@@ -64,11 +66,18 @@ async def rebuild_knowledge_projections(
     repo: KnowledgeRepository, wiki_id: str
 ) -> ProjectionReport:
     """Project canonical knowledge into rebuildable graph and semantic indexes."""
-    objects = await repo.list_objects(limit=100_000)
+    objects = await repo.list_objects(limit=_OBJECT_REBUILD_LIMIT)
+    if len(objects) == _OBJECT_REBUILD_LIMIT:
+        raise RuntimeError(
+            "Knowledge projection rebuild reached its object limit; "
+            "paginate canonical objects before retrying."
+        )
     relationships = await repo.list_relationships()
     objects_by_id = {object_.id: object_ for object_ in objects}
 
-    graph_available = await _project_kuzu(clear_knowledge_projection, wiki_id)
+    await clear_projection_index(wiki_id)
+    await _project_kuzu(clear_knowledge_projection, wiki_id)
+    await _project_kuzu(clear_legacy_projection, wiki_id)
     kuzu_nodes = 0
     for object_ in objects:
         node_projected = await _project_kuzu(
@@ -127,7 +136,7 @@ async def rebuild_knowledge_projections(
     return ProjectionReport(
         objects=len(objects),
         relationships=len(relationships),
-        kuzu_nodes=kuzu_nodes if graph_available else 0,
-        kuzu_edges=kuzu_edges if graph_available else 0,
+        kuzu_nodes=kuzu_nodes,
+        kuzu_edges=kuzu_edges,
         qdrant_indexed=qdrant_indexed,
     )

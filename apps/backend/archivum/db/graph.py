@@ -170,25 +170,22 @@ async def add_knowledge_relationship(
     """Project a canonical relationship with its provenance metadata."""
     def _do():
         conn = _get_conn()
-        try:
-            conn.execute(
-                "MATCH (a:KnowledgeNode {id: $src_id}), (b:KnowledgeNode {id: $dst_id}) "
-                "MERGE (a)-[r:KNOWLEDGE_RELATIONSHIP {id: $id}]->(b) "
-                "SET r.rel_type = $rel_type, r.scope = $scope, r.confidence = $confidence, "
-                "r.extraction_method = $extraction_method, r.citations = $citations",
-                {
-                    "src_id": src_id,
-                    "dst_id": dst_id,
-                    "id": relationship_id,
-                    "rel_type": rel_type,
-                    "scope": scope,
-                    "confidence": confidence,
-                    "extraction_method": extraction_method,
-                    "citations": json.dumps(citations),
-                },
-            )
-        except Exception as exc:
-            logger.debug("add_knowledge_relationship warning: %s", exc)
+        conn.execute(
+            "MATCH (a:KnowledgeNode {id: $src_id}), (b:KnowledgeNode {id: $dst_id}) "
+            "MERGE (a)-[r:KNOWLEDGE_RELATIONSHIP {id: $id}]->(b) "
+            "SET r.rel_type = $rel_type, r.scope = $scope, r.confidence = $confidence, "
+            "r.extraction_method = $extraction_method, r.citations = $citations",
+            {
+                "src_id": src_id,
+                "dst_id": dst_id,
+                "id": relationship_id,
+                "rel_type": rel_type,
+                "scope": scope,
+                "confidence": confidence,
+                "extraction_method": extraction_method,
+                "citations": json.dumps(citations),
+            },
+        )
     await _run(_do)
 
 
@@ -196,13 +193,25 @@ async def clear_knowledge_projection(wiki_id: str = "default") -> None:
     """Remove a wiki's generic canonical projection before rebuilding it."""
     def _do():
         conn = _get_conn()
-        try:
-            conn.execute(
-                "MATCH (n:KnowledgeNode {wiki_id: $wiki_id}) DETACH DELETE n",
-                {"wiki_id": wiki_id},
-            )
-        except Exception as exc:
-            logger.debug("clear_knowledge_projection warning: %s", exc)
+        conn.execute(
+            "MATCH (n:KnowledgeNode {wiki_id: $wiki_id}) DETACH DELETE n",
+            {"wiki_id": wiki_id},
+        )
+    await _run(_do)
+
+
+async def clear_legacy_projection(wiki_id: str = "default") -> None:
+    """Remove a wiki's legacy Page and Entity projection before rebuilding it."""
+    def _do():
+        conn = _get_conn()
+        conn.execute(
+            "MATCH (p:Page {wiki_id: $wiki_id}) DETACH DELETE p",
+            {"wiki_id": wiki_id},
+        )
+        conn.execute(
+            "MATCH (e:Entity {wiki_id: $wiki_id}) DETACH DELETE e",
+            {"wiki_id": wiki_id},
+        )
     await _run(_do)
 
 

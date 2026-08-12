@@ -370,6 +370,7 @@ async def upsert_page(
     content: str,
     wiki_id: str = "default",
     settings: Settings | None = None,
+    projection: bool = False,
 ) -> int:
     """Chunk *content*, embed all chunks, upsert to Qdrant. Returns chunk count."""
     s = settings or get_settings()
@@ -402,6 +403,7 @@ async def upsert_page(
                 "chunk_index": i,
                 "wiki_id": wiki_id,
                 "text": chunk,
+                "knowledge_projection": projection,
             },
         )
         for i, (chunk, vec) in enumerate(zip(chunks, vectors))
@@ -419,7 +421,29 @@ async def index_page(
     wiki_id: str = "default",
 ) -> int:
     """Index one natural-language knowledge object using the page chunk schema."""
-    return await upsert_page(slug, title, markdown, wiki_id)
+    return await upsert_page(slug, title, markdown, wiki_id, projection=True)
+
+
+async def clear_projection_index(
+    wiki_id: str = "default", settings: Settings | None = None
+) -> None:
+    """Delete canonical-knowledge projection vectors for one wiki."""
+    s = settings or get_settings()
+    client = await get_client(s)
+    from qdrant_client.models import FilterSelector
+
+    await client.delete(
+        collection_name=s.qdrant_collection,
+        points_selector=FilterSelector(
+            filter=Filter(
+                must=[
+                    FieldCondition(key="wiki_id", match=MatchValue(value=wiki_id)),
+                    FieldCondition(key="knowledge_projection", match=MatchValue(value=True)),
+                ]
+            )
+        ),
+    )
+    logger.debug("Deleted canonical projection vectors", extra={"wiki_id": wiki_id})
 
 
 async def search(
