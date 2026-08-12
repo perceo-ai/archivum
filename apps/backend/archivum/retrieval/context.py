@@ -52,7 +52,7 @@ async def build_context_package(
     objects = _filter_source_type(all_objects, request.source_type)
     objects_by_id = {obj.id: obj for obj in objects}
     seeds = _select_seeds(objects, request)
-    if not seeds:
+    if not seeds and request.source_type is None:
         root = next((obj for obj in all_objects if obj.id == SELF_ID), None)
         if root is not None:
             objects_by_id[root.id] = root
@@ -73,13 +73,16 @@ async def _build_code_context_package(
         seed_id for seed_id in request.seed_ids or [] if seed_id in objects_by_id
     ]
     subgraph = await _retrieve_code_subgraph(repo, objects, relationships, request)
+    if subgraph is None:
+        return _build_canonical_code_fallback(objects_by_id, relationships, request)
+
     seeds = _bounded_unique([*explicit_seeds, *subgraph.seeds], request.max_nodes)
     node_ids = _bounded_unique(
         [*explicit_seeds, *(node["id"] for node in subgraph.nodes)],
         request.max_nodes,
     )
 
-    if not node_ids:
+    if not node_ids and request.source_type is None:
         root = objects_by_id.get(SELF_ID)
         if root is not None:
             node_ids = [SELF_ID]
@@ -104,10 +107,10 @@ async def _retrieve_code_subgraph(
     objects: list[KnowledgeObject],
     relationships: list[KnowledgeRelationship],
     request: ContextRequest,
-) -> ScopedSubgraph:
+) -> ScopedSubgraph | None:
     connection = request.code_connection or repo._conn
     if not await _has_lexical_index(connection):
-        return ScopedSubgraph()
+        return None
 
     adjacency: dict[str, list[dict]] = {}
     node_meta = {
@@ -141,6 +144,18 @@ async def _retrieve_code_subgraph(
         scope=request.scope,
         relations=frozenset(request.relations) if request.relations is not None else None,
     )
+
+
+def _build_canonical_code_fallback(
+    objects_by_id: dict[str, KnowledgeObject],
+    relationships: list[KnowledgeRelationship],
+    request: ContextRequest,
+) -> ContextPackage:
+    seeds = _select_seeds(list(objects_by_id.values()), request)
+    if not seeds and request.source_type is None and SELF_ID in objects_by_id:
+        seeds = [SELF_ID]
+    node_ids, edges = _expand(objects_by_id, relationships, seeds, request)
+    return _package_from_records(request.query, seeds, objects_by_id, node_ids, edges)
 
 
 async def _has_lexical_index(connection: aiosqlite.Connection) -> bool:

@@ -189,6 +189,26 @@ async def test_context_package_filters_non_code_source_type_and_declares_no_evid
 
 
 @pytest.mark.asyncio
+async def test_source_type_filter_does_not_restore_excluded_personal_root():
+    async with aiosqlite.connect(":memory:") as conn:
+        await init_knowledge_schema(conn)
+        repo = KnowledgeRepository(conn)
+        await ensure_personal_root(repo, display_name="Me", wiki_id="default")
+        await repo.upsert_object(
+            _object("entity:note", "Note", source_type="document")
+        )
+
+        package = await build_context_package(
+            repo,
+            ContextRequest(query="", scope="wiki:default", source_type="document"),
+        )
+
+        assert package.seeds == []
+        assert package.nodes == []
+        assert package.insufficient_evidence is True
+
+
+@pytest.mark.asyncio
 async def test_context_package_routes_code_requests_through_lexical_retrieval():
     async with aiosqlite.connect(":memory:") as conn:
         await init_knowledge_schema(conn)
@@ -217,6 +237,33 @@ async def test_context_package_routes_code_requests_through_lexical_retrieval():
                 source_type="code",
                 code_connection=conn,
             ),
+        )
+
+        assert package.seeds == ["symbol:runner"]
+        assert [node.id for node in package.nodes] == ["symbol:runner", "symbol:helper"]
+        assert package.edges[0].relation == "calls"
+
+
+@pytest.mark.asyncio
+async def test_context_package_falls_back_to_canonical_code_context_without_lexical_index():
+    async with aiosqlite.connect(":memory:") as conn:
+        await init_knowledge_schema(conn)
+        repo = KnowledgeRepository(conn)
+        await repo.upsert_object(_object("symbol:runner", "runner", scope="repo:test"))
+        await repo.upsert_object(_object("symbol:helper", "helper", scope="repo:test"))
+        await repo.upsert_relationship(
+            _relationship(
+                "rel:runner:helper",
+                "symbol:runner",
+                "symbol:helper",
+                "calls",
+                scope="repo:test",
+            )
+        )
+
+        package = await build_context_package(
+            repo,
+            ContextRequest(query="runner", scope="repo:test", source_type="code"),
         )
 
         assert package.seeds == ["symbol:runner"]
