@@ -154,11 +154,15 @@ async def query(
         # Send citations first so UI can render sources panel early
         yield {"data": json.dumps({"type": "citations", "citations": citations})}
 
-        if not contexts:
-            yield {"data": json.dumps({"type": "token", "token": _INSUFFICIENT_EVIDENCE})}
-            return
-
         try:
+            if not contexts:
+                yield {
+                    "data": json.dumps(
+                        {"type": "token", "token": _INSUFFICIENT_EVIDENCE}
+                    )
+                }
+                return
+
             answer_parts: list[str] = []
             if settings.llm_synthesis_provider == "anthropic":
                 client = anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key)

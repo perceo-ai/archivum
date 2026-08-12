@@ -79,3 +79,4 @@ async def test_query_returns_insufficient_evidence_without_usable_context():
     payloads = [json.loads(event["data"]) for event in events if event["data"] != "[DONE]"]
     assert payloads[0]["citations"] == []
     assert payloads[1]["token"].startswith("Insufficient evidence")
+    assert events[-1]["data"] == "[DONE]"
