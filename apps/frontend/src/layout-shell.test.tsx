@@ -33,9 +33,24 @@ describe('app shell layout', () => {
     );
 
     expect(html).toContain('perceo-shell');
+    expect(html).not.toContain('grid-lines');
     expect(html).toContain('vault-sidebar');
     expect(html).not.toContain('max-w-6xl');
     expect(html).not.toContain('rounded-[32px]');
+  });
+
+  it('keeps the library shell grid off wiki editing pages only', () => {
+    const html = renderToString(
+      <StaticRouter location="/library">
+        <AppProvider>
+          <Layout>
+            <div>Body</div>
+          </Layout>
+        </AppProvider>
+      </StaticRouter>,
+    );
+
+    expect(html).toContain('grid-lines');
   });
 
   it('uses Perceo site color and typography tokens', () => {

@@ -611,9 +611,9 @@ export function markdownBlockExtension(): Extension {
         fontSize: '13px',
       },
       '.cm-markdown-thematic-break': {
-        minHeight: '24px',
-        paddingTop: '12px',
-        borderTop: '1px solid hsl(var(--border) / 0.16)',
+        minHeight: '18px',
+        paddingTop: '9px',
+        borderTop: '0',
         color: 'transparent',
       },
       '.cm-markdown-marker': {

@@ -84,7 +84,7 @@ export default function Layout({ children }: LayoutProps) {
   }, [dispatch]);
 
   return (
-    <div className="perceo-shell grid-lines flex h-screen overflow-hidden">
+    <div className={cn('perceo-shell flex h-screen overflow-hidden', !isEditingPage && 'grid-lines')}>
       <aside className="rail-panel hidden w-[72px] shrink-0 flex-col items-center px-3 py-4 text-white md:flex">
         <button
           type="button"
@@ -137,8 +137,10 @@ export default function Layout({ children }: LayoutProps) {
       <div className="relative flex min-w-0 flex-1 flex-col overflow-hidden">
         <header
           className={cn(
-            'subtle-divider flex shrink-0 items-center gap-2 border-b bg-[#161616]/70 px-3 backdrop-blur md:px-5',
-            isEditingPage ? 'h-11' : 'h-14',
+            'flex shrink-0 items-center gap-2 px-3 md:px-5',
+            isEditingPage
+              ? 'h-11 bg-[#161616]'
+              : 'subtle-divider h-14 border-b bg-[#161616]/70 backdrop-blur',
           )}
         >
           <Button
