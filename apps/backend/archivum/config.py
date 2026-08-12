@@ -102,6 +102,18 @@ class Settings(BaseSettings):
     # ── Background workers ────────────────────────────────────────────────
     page_write_worker_enabled: bool = False
 
+    # ── Memory distillation ───────────────────────────────────────────────
+    # Distillation is deterministic and LLM-free. Atoms at or above the
+    # threshold are written to canonical memory; weaker atoms go to review.
+    memory_atom_confidence_threshold: float = 0.7
+    # How many distinct sessions a statement must recur in before it is
+    # promoted into the L3 owner persona.
+    memory_persona_min_sessions: int = 2
+    # Minimum successful tool calls before a session counts as a procedure.
+    memory_skill_min_tool_calls: int = 3
+    # Write editable markdown views for distilled memory assets.
+    memory_page_views_enabled: bool = True
+
     # ── CORS ───────────────────────────────────────────────────────────────
     cors_origins: list[str] = ["http://localhost:3000", "http://127.0.0.1:3000"]
 

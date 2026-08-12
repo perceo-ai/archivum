@@ -1,9 +1,11 @@
 import { useLocation, useNavigate } from 'react-router-dom';
 import { cn } from '../lib/cn';
+import GraphAuditPanel from '../components/GraphAuditPanel';
 import GraphView from '../components/GraphView';
 import IngestPanel from '../components/IngestPanel';
 import QueryPanel from '../components/QueryPanel';
 import LintPage from './LintPage';
+import MemoryPage from './MemoryPage';
 import SettingsPage from './SettingsPage';
 
 const ITEMS = [
@@ -13,6 +15,22 @@ const ITEMS = [
     title: 'Knowledge Graph',
     description: 'Explore entities, pages, and backlinks as a connected map.',
     render: (navigate: (slug: string) => void) => <GraphView onNavigate={navigate} />,
+  },
+  {
+    slug: 'audit',
+    label: 'Audit',
+    title: 'Graph Audit',
+    description:
+      'Read the graph honestly: clusters, provenance, unreachable records, and surprising links.',
+    render: () => <GraphAuditPanel />,
+  },
+  {
+    slug: 'memory',
+    label: 'Memory',
+    title: 'Memory Assets',
+    description:
+      'Govern distilled memory and choose which assets each agent inherits by default.',
+    render: () => <MemoryPage />,
   },
   {
     slug: 'ingest',

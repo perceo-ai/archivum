@@ -20,8 +20,17 @@ from archivum.config import Settings, get_settings
 from archivum.db import graph, qdrant_client as qdrant, sqlite
 from archivum.ingest.pipeline import ingest
 from archivum.ingest.agent import slugify
+from archivum.knowledge import graph_audit
 from archivum.knowledge.repository import KnowledgeRepository
 from archivum.life_os.service import ensure_daily_note, register_project
+from archivum.memory.catalog import sync_catalog
+from archivum.memory.loadouts import resolve_loadout
+from archivum.memory.registry import MemoryAssetRegistry
+from archivum.memory.service import (
+    DistillationError,
+    distill_conversation,
+    load_conversation,
+)
 from archivum.linting import analyze_wiki_pages
 from archivum.logging_config import setup_logging
 from archivum.observability import new_trace_id, set_trace_id
@@ -348,6 +357,158 @@ def _retrieval_evidence_citations(hit: Any) -> tuple[Any, ...]:
     if hit.provenance == "canonical":
         return hit.citations
     return (hit.citation,)
+
+
+@mcp.tool()
+async def list_memory_assets(
+    asset_type: str | None = None,
+    status: str | None = "active",
+    wiki_id: str = "default",
+    limit: int = 50,
+) -> dict[str, Any]:
+    """List governed memory assets (chat, skill, scenario, persona, wiki, code)."""
+    _require_key()
+    set_trace_id(new_trace_id("mcp-memory-assets"))
+    async with sqlite.get_db() as connection:
+        assets = await MemoryAssetRegistry(connection).list_assets(
+            wiki_id=wiki_id,
+            asset_type=asset_type,
+            status=status,
+            limit=min(max(limit, 1), 200),
+        )
+    return {
+        "wiki_id": wiki_id,
+        "assets": [
+            {
+                "id": asset.id,
+                "asset_type": asset.asset_type,
+                "layer": asset.layer,
+                "name": asset.name,
+                "status": asset.status,
+                "visibility": asset.visibility,
+                "version": asset.version,
+                "summary": asset.summary,
+                "page_slug": asset.page_slug,
+            }
+            for asset in assets
+        ],
+    }
+
+
+@mcp.tool()
+async def catalog_memory_assets(wiki_id: str = "default") -> dict[str, Any]:
+    """Register existing wiki pages, sources, and code graphs as memory assets."""
+    _require_key()
+    set_trace_id(new_trace_id("mcp-memory-catalog"))
+    async with sqlite.get_db() as connection:
+        report = await sync_catalog(connection, wiki_id=wiki_id)
+    return {
+        "wiki_assets": report.wiki_assets,
+        "source_assets": report.source_assets,
+        "codegraph_assets": report.codegraph_assets,
+        "asset_ids": report.asset_ids,
+    }
+
+
+@mcp.tool()
+async def load_agent_memory(
+    agent_key: str, query: str = "", wiki_id: str = "default", limit: int = 12
+) -> dict[str, Any]:
+    """Return the memory assets this agent is equipped with, cited.
+
+    Only assets the owner activated and bound to `agent_key` are returned, so
+    the next agent inherits the last agent's experience without loading the
+    whole store into context.
+    """
+    _require_key()
+    set_trace_id(new_trace_id("mcp-loadout"))
+    async with sqlite.get_db() as connection:
+        package = await resolve_loadout(
+            MemoryAssetRegistry(connection),
+            agent_key=agent_key,
+            wiki_id=wiki_id,
+            query=query,
+            limit=min(max(limit, 1), 50),
+        )
+    return package.model_dump()
+
+
+@mcp.tool()
+async def distill_source(
+    source_id: str,
+    wiki_id: str = "default",
+    scenario_key: str | None = None,
+) -> dict[str, Any]:
+    """Distil a captured conversation into cited atoms, scenario, and persona.
+
+    Deterministic and LLM-free. Atoms below the confidence threshold are queued
+    for human review instead of being written to canonical memory.
+    """
+    _require_key()
+    set_trace_id(new_trace_id("mcp-distill"))
+    try:
+        loaded = await load_conversation(source_id, settings=settings)
+    except DistillationError as exc:
+        return {"error": "source_not_distillable", "detail": str(exc)}
+
+    async def _write_page(slug: str, title: str, markdown: str, tags: list[str]) -> None:
+        await sqlite.upsert_page(slug, title, markdown, tags, "agent", wiki_id)
+
+    async with sqlite.get_db() as connection:
+        report = await distill_conversation(
+            connection,
+            loaded,
+            wiki_id=wiki_id,
+            threshold=settings.memory_atom_confidence_threshold,
+            scenario_key=scenario_key,
+            persona_min_sessions=settings.memory_persona_min_sessions,
+            skill_min_tool_calls=settings.memory_skill_min_tool_calls,
+            page_writer=_write_page if settings.memory_page_views_enabled else None,
+        )
+    return {
+        "source_id": report.source_id,
+        "session_id": report.session_id,
+        "atoms_total": report.atoms_total,
+        "atoms_accepted": report.atoms_accepted,
+        "atoms_pending_review": report.atoms_pending_review,
+        "asset_ids": report.asset_ids,
+        "scenario_id": report.scenario_id,
+        "persona_updated": report.persona_updated,
+        "skill_id": report.skill_id,
+        "skill_reason": report.skill_reason,
+        "pages_written": report.pages_written,
+    }
+
+
+@mcp.tool()
+async def graph_audit_report(
+    wiki_id: str = "default", surprise_limit: int = 10
+) -> dict[str, Any]:
+    """Audit the canonical graph: clusters, provenance, gaps, surprising links."""
+    _require_key()
+    set_trace_id(new_trace_id("mcp-graph-audit"))
+    async with sqlite.get_db() as connection:
+        report = await graph_audit.audit_knowledge_graph(
+            KnowledgeRepository(connection),
+            scope=f"wiki:{wiki_id}",
+            surprise_limit=min(max(surprise_limit, 1), 50),
+        )
+    return graph_audit.report_to_dict(report)
+
+
+@mcp.tool()
+async def graph_shortest_path(
+    source: str, target: str, wiki_id: str = "default"
+) -> dict[str, Any]:
+    """Shortest relationship path between two canonical records."""
+    _require_key()
+    set_trace_id(new_trace_id("mcp-graph-path"))
+    async with sqlite.get_db() as connection:
+        nodes, edges = await graph_audit.load_graph(
+            KnowledgeRepository(connection), scope=f"wiki:{wiki_id}"
+        )
+    path = graph_audit.shortest_path(nodes, edges, source=source, target=target)
+    return graph_audit.path_to_dict(path)
 
 
 @mcp.tool()

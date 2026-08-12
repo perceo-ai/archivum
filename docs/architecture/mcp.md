@@ -59,6 +59,17 @@ HTTP/SSE:
 | `lint_wiki(wiki_id)` | Report broken wikilinks, orphan pages, and contradictory claims |
 | `query(question, wiki_id)` | Retrieve cited context and synthesize an answer |
 | `dispatch_command(command, wiki_id)` | Text wrapper for ingest/search/query/pages/open/write/lint/graph actions |
+| `capture_conversation(session_id, interface, turns, scope)` | Record a user-visible AI session as an immutable source |
+| `build_context_package(query, scope, depth, max_nodes, relations)` | Bounded cited subgraph without page bodies |
+| `retrieve_memory(query, wiki_id, limit)` | Compact hybrid evidence with citations |
+| `distill_source(source_id, wiki_id, scenario_key)` | Promote a captured session into cited atoms, scenario, persona, and skill memory |
+| `catalog_memory_assets(wiki_id)` | Register existing pages, sources, and code graphs as governed assets |
+| `list_memory_assets(asset_type, status, wiki_id, limit)` | List governed memory assets |
+| `load_agent_memory(agent_key, query, wiki_id, limit)` | Return only the memory assets this agent is equipped with, cited |
+| `graph_audit_report(wiki_id, surprise_limit)` | Clusters, provenance breakdown, gaps, and surprising links |
+| `graph_shortest_path(source, target, wiki_id)` | Shortest relationship path between two canonical records |
+
+`distill_source`, `graph_audit_report`, and `graph_shortest_path` are deterministic and make no LLM call. See [memory assets](./memory-assets.md) and [graph model](./graph-model.md).
 
 Life OS tools are early product surfaces. Keep public positioning centered on the wiki, ingest, search, graph, sharing, export, and agent access.
 

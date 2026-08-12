@@ -13,7 +13,8 @@ This folder contains current docs for Archivum. Public-facing product docs shoul
 - [Infrastructure and storage](./architecture/infra.md)
 - [Ingest pipeline](./architecture/ingest.md)
 - [Retrieval and context sizing](./architecture/retrieval.md)
-- [Graph model](./architecture/graph-model.md)
+- [Graph model and graph audit](./architecture/graph-model.md)
+- [Memory assets, distillation, and agent loadouts](./architecture/memory-assets.md)
 - [MCP server tools](./architecture/mcp.md)
 
 ## Pruned Docs
