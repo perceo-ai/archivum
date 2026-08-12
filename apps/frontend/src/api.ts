@@ -416,6 +416,280 @@ export async function rejectSuggestion(suggestionId: string): Promise<MemorySugg
   return res.json();
 }
 
+// ── Memory assets, loadouts, and distillation ───────────────────────────────
+
+export type MemoryAssetType =
+  | 'wiki'
+  | 'chat'
+  | 'skill'
+  | 'codegraph'
+  | 'source'
+  | 'scenario'
+  | 'persona';
+
+export type MemoryLayer = 'L0' | 'L1' | 'L2' | 'L3';
+
+export type MemoryAsset = {
+  id: string;
+  wiki_id: string;
+  asset_type: MemoryAssetType;
+  layer: MemoryLayer;
+  name: string;
+  owner: string;
+  scope: string;
+  status: 'draft' | 'active' | 'archived';
+  visibility: 'private' | 'shared' | 'public';
+  version: number;
+  page_slug: string | null;
+  summary: string;
+  body: string;
+  tags: string[];
+  metadata: Record<string, unknown>;
+  citations: Citation[];
+  created_at: string;
+  updated_at: string;
+};
+
+export type MemoryAssetVersion = {
+  asset_id: string;
+  version: number;
+  name: string;
+  summary: string;
+  body: string;
+  status: string;
+  change_note: string;
+  created_at: string;
+};
+
+export type AgentProfile = {
+  agent_key: string;
+  wiki_id: string;
+  name: string;
+  description: string;
+};
+
+export type AssetBinding = {
+  agent_key: string;
+  asset_id: string;
+  mode: 'always' | 'on_demand';
+  priority: number;
+};
+
+export type LoadoutEntry = {
+  asset: MemoryAsset;
+  mode: 'always' | 'on_demand';
+  priority: number;
+  reason: string;
+};
+
+export type LoadoutPackage = {
+  agent_key: string;
+  query: string;
+  entries: LoadoutEntry[];
+  citations: Citation[];
+  insufficient_evidence: boolean;
+  reason: string | null;
+};
+
+export type DistillReport = {
+  source_id: string;
+  session_id: string;
+  scope: string;
+  atoms_total: number;
+  atoms_accepted: number;
+  atoms_pending_review: number;
+  asset_ids: string[];
+  scenario_id: string | null;
+  persona_updated: boolean;
+  skill_id: string | null;
+  skill_reason: string | null;
+  pages_written: string[];
+};
+
+export async function listMemoryAssets(
+  filters: { asset_type?: string; layer?: string; status?: string } = {},
+): Promise<MemoryAsset[]> {
+  const params = new URLSearchParams();
+  if (filters.asset_type) params.set('asset_type', filters.asset_type);
+  if (filters.layer) params.set('layer', filters.layer);
+  if (filters.status) params.set('status', filters.status);
+  const suffix = params.toString() ? `?${params.toString()}` : '';
+  const res = await apiFetch(`/api/memory/assets${suffix}`);
+  return res.json();
+}
+
+export async function getMemoryAsset(assetId: string): Promise<MemoryAsset> {
+  const res = await apiFetch(`/api/memory/assets/${encodeURIComponent(assetId)}`);
+  return res.json();
+}
+
+export async function listMemoryAssetVersions(assetId: string): Promise<MemoryAssetVersion[]> {
+  const res = await apiFetch(`/api/memory/assets/${encodeURIComponent(assetId)}/versions`);
+  return res.json();
+}
+
+export async function setMemoryAssetStatus(
+  assetId: string,
+  status: 'draft' | 'active' | 'archived',
+): Promise<MemoryAsset> {
+  const res = await apiFetch(`/api/memory/assets/${encodeURIComponent(assetId)}/status`, {
+    method: 'POST',
+    body: JSON.stringify({ status }),
+  });
+  return res.json();
+}
+
+export async function setMemoryAssetVisibility(
+  assetId: string,
+  visibility: 'private' | 'shared' | 'public',
+): Promise<MemoryAsset> {
+  const res = await apiFetch(`/api/memory/assets/${encodeURIComponent(assetId)}/visibility`, {
+    method: 'POST',
+    body: JSON.stringify({ visibility }),
+  });
+  return res.json();
+}
+
+export async function listMemoryAgents(): Promise<AgentProfile[]> {
+  const res = await apiFetch('/api/memory/agents');
+  return res.json();
+}
+
+export async function upsertMemoryAgent(input: {
+  agent_key: string;
+  name: string;
+  description?: string;
+}): Promise<AgentProfile> {
+  const res = await apiFetch('/api/memory/agents', {
+    method: 'POST',
+    body: JSON.stringify({ ...input, description: input.description ?? '' }),
+  });
+  return res.json();
+}
+
+export async function listAgentBindings(agentKey: string): Promise<AssetBinding[]> {
+  const res = await apiFetch(`/api/memory/agents/${encodeURIComponent(agentKey)}/bindings`);
+  return res.json();
+}
+
+export async function bindMemoryAsset(
+  agentKey: string,
+  input: { asset_id: string; mode?: 'always' | 'on_demand'; priority?: number },
+): Promise<AssetBinding> {
+  const res = await apiFetch(`/api/memory/agents/${encodeURIComponent(agentKey)}/bindings`, {
+    method: 'POST',
+    body: JSON.stringify({
+      asset_id: input.asset_id,
+      mode: input.mode ?? 'always',
+      priority: input.priority ?? 100,
+    }),
+  });
+  return res.json();
+}
+
+export async function unbindMemoryAsset(
+  agentKey: string,
+  assetId: string,
+): Promise<{ removed: boolean }> {
+  const res = await apiFetch(
+    `/api/memory/agents/${encodeURIComponent(agentKey)}/bindings/${encodeURIComponent(assetId)}`,
+    { method: 'DELETE' },
+  );
+  return res.json();
+}
+
+export async function getAgentLoadout(
+  agentKey: string,
+  query = '',
+): Promise<LoadoutPackage> {
+  const suffix = query ? `?query=${encodeURIComponent(query)}` : '';
+  const res = await apiFetch(
+    `/api/memory/agents/${encodeURIComponent(agentKey)}/loadout${suffix}`,
+  );
+  return res.json();
+}
+
+export type CatalogReport = {
+  wiki_assets: number;
+  source_assets: number;
+  codegraph_assets: number;
+  asset_ids: string[];
+};
+
+export async function catalogMemoryAssets(): Promise<CatalogReport> {
+  const res = await apiFetch('/api/memory/catalog', { method: 'POST' });
+  return res.json();
+}
+
+export async function distillSource(input: {
+  source_id: string;
+  scenario_key?: string;
+  threshold?: number;
+  write_pages?: boolean;
+}): Promise<DistillReport> {
+  const res = await apiFetch('/api/memory/distill', {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+  return res.json();
+}
+
+// ── Graph audit ─────────────────────────────────────────────────────────────
+
+export type GraphCommunity = {
+  id: string;
+  label: string;
+  size: number;
+  member_ids: string[];
+};
+
+export type SurprisingLink = {
+  src_id: string;
+  dst_id: string;
+  src_label: string;
+  dst_label: string;
+  rel_type: string;
+  score: number;
+  neighbor_overlap: number;
+  cross_community: boolean;
+  reason: string;
+};
+
+export type GraphReport = {
+  scope: string | null;
+  node_count: number;
+  edge_count: number;
+  by_kind: Record<string, number>;
+  by_extraction_method: Record<string, number>;
+  self_cited_ids: string[];
+  low_confidence_ids: string[];
+  orphan_ids: string[];
+  communities: GraphCommunity[];
+  surprising_links: SurprisingLink[];
+  narrative: string[];
+};
+
+export type GraphPathResult = {
+  source: string;
+  target: string;
+  found: boolean;
+  length: number;
+  steps: { from_id: string; to_id: string; relation: string }[];
+  reason: string | null;
+};
+
+export async function getGraphAudit(surpriseLimit = 10): Promise<GraphReport> {
+  const res = await apiFetch(`/api/graph/audit?surprise_limit=${surpriseLimit}`);
+  return res.json();
+}
+
+export async function getGraphPath(source: string, target: string): Promise<GraphPathResult> {
+  const res = await apiFetch(
+    `/api/graph/path?source=${encodeURIComponent(source)}&target=${encodeURIComponent(target)}`,
+  );
+  return res.json();
+}
+
 export async function getContextPackage(
   input: ContextPackageRequest = {},
 ): Promise<ContextPackage> {

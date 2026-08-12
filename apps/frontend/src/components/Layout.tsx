@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { BookOpen, Blocks, PanelRight, Search, Sparkles, Wrench, X } from 'lucide-react';
+import { BookOpen, Blocks, PanelRight, Search, Wrench, X } from 'lucide-react';
 import { type ActiveView, useAppDispatch, useAppState } from '../store';
 import { cn } from '../lib/cn';
 import FileTree from './FileTree';
@@ -37,6 +37,7 @@ export default function Layout({ children }: LayoutProps) {
     : location.pathname.startsWith('/tools/')
       ? 'tools'
       : 'library';
+  const isEditingPage = location.pathname.startsWith('/wiki/');
 
   function isActive(item: NavItem) {
     return currentSection === item.view;
@@ -83,15 +84,15 @@ export default function Layout({ children }: LayoutProps) {
   }, [dispatch]);
 
   return (
-    <div className="perceo-shell grid-lines flex h-screen overflow-hidden">
+    <div className={cn('perceo-shell flex h-screen overflow-hidden', !isEditingPage && 'grid-lines')}>
       <aside className="rail-panel hidden w-[72px] shrink-0 flex-col items-center px-3 py-4 text-white md:flex">
         <button
           type="button"
-          className="soft-border mb-6 flex h-11 w-11 items-center justify-center rounded-[8px] border bg-white/[0.05] font-serif text-xl font-bold italic tracking-tight text-white transition-colors hover:bg-white/[0.08]"
+          className="soft-border mb-6 flex h-11 w-11 items-center justify-center overflow-hidden rounded-[8px] border bg-white/[0.05] transition-colors hover:bg-white/[0.08]"
           onClick={() => navigate(currentSlug ? `/wiki/${currentSlug}` : '/library')}
           title="Archivum"
         >
-          A
+          <img src="/perceo-logo.png" alt="Archivum" className="h-full w-full object-cover" />
         </button>
 
         <nav className="flex flex-col gap-2">
@@ -134,45 +135,66 @@ export default function Layout({ children }: LayoutProps) {
       </aside>
 
       <div className="relative flex min-w-0 flex-1 flex-col overflow-hidden">
-        <header className="subtle-divider flex h-14 shrink-0 items-center gap-3 border-b bg-[#161616]/85 px-3 backdrop-blur md:px-5">
+        <header
+          className={cn(
+            'flex shrink-0 items-center gap-2 px-3 md:px-5',
+            isEditingPage
+              ? 'h-11 bg-[#161616]'
+              : 'subtle-divider h-14 border-b bg-[#161616]/70 backdrop-blur',
+          )}
+        >
           <Button
             onClick={() => dispatch({ type: 'TOGGLE_LEFT' })}
-            variant="secondary"
+            variant={isEditingPage ? 'ghost' : 'secondary'}
             size="sm"
             className="md:hidden"
           >
             Vault
           </Button>
 
-          <div className="min-w-0">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-zinc-500">
-              Archivum
-            </p>
-            <h1 className="truncate text-base font-semibold text-white">
-              {currentSection === 'library' ? 'Library' : currentSection === 'workflows' ? 'Workflows' : 'Tools'}
-            </h1>
-          </div>
+          {!isEditingPage && (
+            <div className="min-w-0 flex items-center gap-2 text-sm">
+              <button
+                type="button"
+                onClick={() => navigate(currentSlug ? `/wiki/${currentSlug}` : '/library')}
+                className="truncate text-muted-foreground transition-colors hover:text-foreground"
+              >
+                Archivum
+              </button>
+              <span className="text-muted-foreground/45">/</span>
+              <span className="truncate text-foreground/85">
+                {currentSection === 'library'
+                  ? 'Library'
+                  : currentSection === 'workflows'
+                    ? 'Workflows'
+                    : 'Tools'}
+              </span>
+            </div>
+          )}
 
           <button
             type="button"
             onClick={() => dispatch({ type: 'SET_QUICK_SEARCH_OPEN', open: true })}
-            className="soft-border ml-2 hidden min-w-[260px] items-center gap-3 rounded-[5px] border bg-white/[0.05] px-4 py-2 text-left text-sm text-zinc-400 transition-colors hover:bg-white/[0.08] hover:text-white md:flex"
+            className={cn(
+              'ml-2 hidden items-center gap-2 rounded-[5px] text-left text-sm text-zinc-400 transition-colors hover:bg-white/[0.07] hover:text-white md:flex',
+              isEditingPage ? 'px-2 py-1.5' : 'soft-border min-w-[260px] border bg-white/[0.05] px-4 py-2',
+            )}
           >
             <Search className="h-4 w-4" />
-            <span>Search notes</span>
-            <span className="soft-border ml-auto rounded-[5px] border bg-white/[0.05] px-2 py-1 text-[11px] font-semibold text-zinc-300">
-              /
-            </span>
+            {!isEditingPage && (
+              <>
+                <span>Search notes</span>
+                <span className="soft-border ml-auto rounded-[5px] border bg-white/[0.05] px-2 py-1 text-[11px] font-semibold text-zinc-300">
+                  /
+                </span>
+              </>
+            )}
           </button>
 
           <div className="ml-auto flex items-center gap-2">
-            <Button type="button" onClick={() => dispatch({ type: 'TOGGLE_LEFT' })} variant="ghost" size="sm">
+            <Button type="button" onClick={() => dispatch({ type: 'TOGGLE_LEFT' })} variant="ghost" size={isEditingPage ? 'icon' : 'sm'} title={leftOpen ? 'Hide vault' : 'Show vault'}>
               <BookOpen className="h-4 w-4" />
-              Vault
-            </Button>
-            <Button type="button" onClick={() => navigate('/workflows/daily')} variant="ghost" size="sm">
-              <Sparkles className="h-4 w-4" />
-              Resume
+              {!isEditingPage && 'Vault'}
             </Button>
             <Button
               type="button"
@@ -227,13 +249,20 @@ export default function Layout({ children }: LayoutProps) {
           </main>
 
           {rightOpen && (
-            <aside className="subtle-divider hidden w-[320px] shrink-0 border-l bg-[#171616]/70 xl:flex">
+            <aside
+              className={cn(
+                'hidden shrink-0 xl:flex',
+                isEditingPage
+                  ? 'w-[280px] bg-[#161616] pr-2'
+                  : 'subtle-divider w-[320px] border-l bg-[#171616]/70',
+              )}
+            >
               <RightSidebar />
             </aside>
           )}
         </div>
 
-        <StatusBar />
+        {!isEditingPage && <StatusBar />}
       </div>
       <QuickSearchModal
         open={quickSearchOpen}

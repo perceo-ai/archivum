@@ -526,6 +526,8 @@ function TreeFolder({
             className="h-7 w-7 opacity-0 group-hover:opacity-100"
             aria-label="Folder actions"
             onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
               const rect = e.currentTarget.getBoundingClientRect();
               onContext({ type: 'folder', path: node.path, x: rect.right, y: rect.bottom });
             }}

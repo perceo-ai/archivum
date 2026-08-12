@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { Hash, Plus, X } from 'lucide-react';
 import { useAppDispatch } from '../store';
@@ -21,6 +21,7 @@ import { Badge } from '../components/ui/Badge';
 import { Dialog } from '../components/ui/Dialog';
 import { useToast } from '../components/ui/Toast';
 import PageActions from '../components/PageActions';
+import { mergeFrontmatterProperties, parseFrontmatter } from './frontmatter';
 import { addTag, removeTag } from './wikiMetadata';
 
 export default function WikiPage() {
@@ -47,6 +48,12 @@ export default function WikiPage() {
   const parsedTags = useMemo(() => {
     return tagsDraft.map((t) => t.trim()).filter(Boolean);
   }, [tagsDraft]);
+  const editorContent = useMemo(() => (page ? parseFrontmatter(page.content).body : ''), [page]);
+  const prepareContentForSave = useCallback(
+    (content: string, title = titleDraft, tags = parsedTags) =>
+      page ? mergeFrontmatterProperties(page.content, content, title, tags) : content,
+    [page, parsedTags, titleDraft],
+  );
 
   useEffect(() => {
     if (!slug) return;
@@ -88,6 +95,13 @@ export default function WikiPage() {
         const updated = await updatePage(slugStr, {
           title: next.title ?? titleDraft,
           tags: next.tags ?? parsedTags,
+          content: page
+            ? prepareContentForSave(
+                contentDraft ?? editorRef.current?.getContent() ?? editorContent,
+                next.title ?? titleDraft,
+                next.tags ?? parsedTags,
+              )
+            : undefined,
         });
         setPage(updated);
         dispatch({ type: 'UPSERT_PAGE', page: updated });
@@ -118,7 +132,8 @@ export default function WikiPage() {
   async function handleSaveNow() {
     dispatch({ type: 'SET_SAVE_STATUS', status: 'saving' });
     try {
-      const content = contentDraft ?? editorRef.current?.getContent() ?? page?.content ?? '';
+      const editorBody = contentDraft ?? editorRef.current?.getContent() ?? editorContent;
+      const content = prepareContentForSave(editorBody);
       const updated = await updatePage(slugStr, { title: titleDraft, tags: parsedTags, content });
       setPage(updated);
       setContentDraft(null);
@@ -208,16 +223,10 @@ export default function WikiPage() {
   }
 
   return (
-    <div className="page-frame !max-w-none bg-transparent">
-      <div className="page-header shrink-0 px-4 pt-2 md:px-8">
-        <div className="flex w-full items-start gap-3">
+    <div className="wiki-document-surface flex h-full min-h-0 w-full flex-col bg-transparent">
+      <div className="wiki-document-gutter group/document shrink-0 pb-2 pt-7">
+        <div className="flex w-full items-start gap-4">
           <div className="min-w-0 flex-1">
-            <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-              <span className="font-mono text-[11px] text-muted-foreground">
-                {slugStr}
-              </span>
-              {page?.authored_by === 'agent' && <Badge variant="info">AI-authored</Badge>}
-            </div>
             <Input
               value={titleDraft}
               onChange={(e) => {
@@ -225,10 +234,11 @@ export default function WikiPage() {
                 scheduleMetaSave({ title: e.target.value });
               }}
               placeholder={loading ? 'Loading…' : 'Untitled'}
-              className="mt-3 h-auto min-h-14 border-0 bg-transparent px-0 py-0 text-[34px] font-bold leading-tight tracking-normal text-foreground shadow-none placeholder:text-muted-foreground/60 focus-visible:ring-0 md:text-[42px]"
+              className="h-auto min-h-14 border-0 bg-transparent px-0 py-0 text-[38px] font-bold leading-tight tracking-normal text-foreground shadow-none placeholder:text-muted-foreground/45 focus-visible:ring-0 md:text-[46px]"
               aria-label="Page title"
             />
-            <div className="mt-4 flex min-h-8 flex-wrap items-center gap-1.5">
+            <div className="mt-2 flex min-h-8 flex-wrap items-center gap-1.5">
+              {page?.authored_by === 'agent' && <Badge variant="info">AI-authored</Badge>}
               {parsedTags.map((tag) => (
                 <span
                   key={tag}
@@ -280,7 +290,7 @@ export default function WikiPage() {
               )}
             </div>
           </div>
-          <div className="flex shrink-0 items-center">
+          <div className="sticky top-3 flex shrink-0 items-center opacity-80 transition-opacity group-hover/document:opacity-100">
             <PageActions
               slug={slugStr}
               disabled={!page}
@@ -307,9 +317,10 @@ export default function WikiPage() {
           <Editor
             ref={editorRef}
             slug={page.slug}
-            initialContent={page.content}
+            initialContent={editorContent}
             onSave={(s) => dispatch({ type: 'SET_SAVE_STATUS', status: s })}
             onChange={(c) => setContentDraft(c)}
+            prepareContentForSave={prepareContentForSave}
             pendingSuggestions={suggestions}
             onAcceptSuggestion={handleAcceptSuggestion}
             onRejectSuggestion={handleRejectSuggestion}

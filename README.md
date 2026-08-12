@@ -107,6 +107,7 @@ MCP tools exposed to agents: `ingest_source`, `search_wiki`, `list_pages`, `get_
 4. **Search and Q&A run over your content.** Retrieval defaults to `person:self` when the caller does not provide another seed, returns cited context and ranked excerpts, and `query` synthesizes an answer with citations back to the source pages.
 5. **Caddy fronts the app.** It terminates TLS and routes the browser UI, REST API, and MCP endpoint. Set `ARCHIVUM_HOST` and point DNS at the host for automatic HTTPS.
 6. **Agents reach the same vault over MCP** via stdio or HTTP/SSE — reading, writing, searching, and querying the identical data the browser sees.
+7. **Captured sessions become governed memory.** Distillation turns a captured conversation into cited memory atoms, scenario memory, an owner profile, and — when real tool steps were recorded — a reusable skill. Anything below the confidence threshold goes to human review instead of being written silently, and an agent only receives the assets you bound to it. This path is deterministic and makes no LLM call. See [memory assets](docs/architecture/memory-assets.md).
 
 To refresh page vectors, page nodes, and wikilink reference edges in the legacy page-based Qdrant/Kuzu projections, run:
 
@@ -123,6 +124,9 @@ This command upserts those page records and reference edges. It does not remove 
 - ✅ Semantic search over the vault (Qdrant)
 - ✅ Question answering with citations back to source pages
 - ✅ Built-in MCP server (stdio + HTTP/SSE) for Claude Desktop, Claude Code, Cursor, and VS Code
+- ✅ Graph audit — clusters, shortest paths, surprising connections, and a plain-language provenance report
+- ✅ Governed memory assets — typed, versioned, reviewable memory that agents can be equipped with by name
+- ✅ Deterministic session distillation — captured conversations become cited memory with no LLM call
 - ✅ Docker Compose deployment with SQLite, Qdrant, Kuzu, Ollama, and Caddy
 - ✅ Pluggable LLM and embedding providers: Anthropic, OpenRouter, OpenAI-compatible, or local Ollama/fastembed
 - 🚧 Browser vault navigation — folder/page APIs and file-tree UI exist; click-through needs release smoke
@@ -157,7 +161,8 @@ docker compose down
 - [Ingest pipeline](docs/architecture/ingest.md)
 - [MCP server tools](docs/architecture/mcp.md)
 - [Retrieval and context sizing](docs/architecture/retrieval.md)
-- [Graph model](docs/architecture/graph-model.md)
+- [Graph model and graph audit](docs/architecture/graph-model.md)
+- [Memory assets, distillation, and agent loadouts](docs/architecture/memory-assets.md)
 - [Agent guide](docs/agent-guide.md)
 
 ## License

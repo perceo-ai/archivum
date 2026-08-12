@@ -33,7 +33,7 @@ export default function BacklinksPanel() {
   }, [currentSlug]);
 
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex h-full flex-col">
       <div className="flex-1 overflow-y-auto py-1">
         {loading && (
           <div className="space-y-2 py-2">
@@ -48,7 +48,7 @@ export default function BacklinksPanel() {
         )}
 
         {!loading && !error && backlinks.length === 0 && (
-          <div className="soft-border rounded-[8px] border border-dashed bg-white/[0.03] px-3 py-5 text-center text-xs text-muted-foreground">
+          <div className="px-1 py-2 text-xs leading-5 text-muted-foreground">
             {currentSlug ? 'No backlinks yet' : 'Open a page to see backlinks'}
           </div>
         )}
@@ -57,13 +57,13 @@ export default function BacklinksPanel() {
           <button
             key={page.slug}
             onClick={() => navigate(`/wiki/${page.slug}`)}
-            className="group w-full rounded-md px-2 py-2 text-left text-sm text-muted-foreground transition-colors hover:bg-muted/50 hover:text-foreground"
+            className="group w-full rounded-[5px] px-2 py-1.5 text-left text-sm text-muted-foreground transition-colors hover:bg-white/[0.05] hover:text-foreground"
           >
             <div className="flex items-center gap-2">
               <CornerDownRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground transition-colors group-hover:text-foreground" />
               <span className="flex-1 truncate">{page.title}</span>
             </div>
-            <p className="text-xs text-muted-foreground/70 mt-0.5 pl-5 truncate">
+            <p className="mt-0.5 truncate pl-5 text-xs text-muted-foreground/60">
               {page.slug}
             </p>
           </button>
@@ -71,8 +71,8 @@ export default function BacklinksPanel() {
       </div>
 
       {currentSlug && (
-        <div className="subtle-divider mt-2 border-t pt-2">
-          <p className="text-xs text-muted-foreground">
+        <div className="mt-2 px-1">
+          <p className="text-xs text-muted-foreground/70">
             {backlinks.length} {backlinks.length === 1 ? 'reference' : 'references'}
           </p>
         </div>

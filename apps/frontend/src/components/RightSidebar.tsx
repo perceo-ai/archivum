@@ -1,22 +1,20 @@
+import { Link2 } from 'lucide-react';
 import BacklinksPanel from './BacklinksPanel';
 import NotesInteractionPanel from './NotesInteractionPanel';
 
 export default function RightSidebar() {
   return (
-    <div className="flex h-full flex-col gap-5 overflow-y-auto px-4 py-4">
-      <section className="min-h-0">
-        <div className="mb-3 flex items-center justify-between">
-          <p className="text-sm font-semibold text-foreground">Linked from</p>
-          <span className="soft-border rounded-[5px] border bg-white/[0.05] px-2 py-1 text-[11px] font-semibold text-zinc-300">
-            Backlinks
-          </span>
-        </div>
-        <BacklinksPanel />
+    <div className="flex h-full flex-col overflow-y-auto px-3 py-3">
+      <section className="shrink-0 pb-3">
+        <NotesInteractionPanel />
       </section>
 
-      <section className="subtle-divider border-t pt-4">
-        <p className="mb-3 text-sm font-semibold text-foreground">Notes actions</p>
-        <NotesInteractionPanel />
+      <section className="min-h-0 flex-1 pt-1">
+        <div className="mb-2 flex items-center gap-2 px-1 text-xs font-medium text-muted-foreground">
+          <Link2 className="h-3.5 w-3.5" />
+          <span>Backlinks</span>
+        </div>
+        <BacklinksPanel />
       </section>
     </div>
   );

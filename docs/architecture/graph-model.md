@@ -19,6 +19,26 @@ Canonical objects are stored as knowledge rows before they are projected into gr
 
 `KnowledgeNode.kind` covers the owner profile, page-authored content, projects, thoughts, sources, extracted entities, people, code, and decisions as applicable. Relationships retain their citations and provenance metadata when projected into Kuzu.
 
+## Graph Audit
+
+The canonical graph can be inspected without an LLM. All four analyses are deterministic, so the same graph always produces the same answer.
+
+| Route | Answers |
+|---|---|
+| `GET /api/graph/audit` | Full report: cluster count, provenance breakdown, gaps, surprising links, plain-language narrative |
+| `GET /api/graph/communities` | Which records cluster together |
+| `GET /api/graph/surprising` | Which connections are least predictable from the rest of the graph |
+| `GET /api/graph/path` | Shortest relationship path between two records |
+
+Details:
+
+- **Communities** are found by greedy modularity maximisation: two communities are merged while the merge raises modularity, taking the best gain each round and breaking ties on sorted ids. Above `MAX_MODULARITY_NODES` the audit falls back to connected components.
+- **Surprise** scores each edge as `0.6 * (1 - neighbour overlap) + 0.4 * (crosses a cluster boundary)`. An edge between two records that share no other connections and sit in different clusters is the one a reader would not have predicted.
+- **Paths** are breadth-first over undirected relationships, with deterministic neighbour ordering.
+- **Provenance honesty**: because every canonical object must carry at least one citation, the audit reports records that cite *only themselves* — owner-root and page-title citations are self-referential by construction and should not read as corroboration. It also reports low-confidence records and records with no relationships at all.
+
+The owner root is always included in a scoped audit, even though `person:self` lives in its own scope, because it is the hub most of the graph hangs off.
+
 ## Legacy Compatibility Projection
 
 The following `Page` and `Entity` tables and edges are the legacy compatibility projection used by existing graph APIs and wikilink behavior. They are derived from canonical knowledge and should not be read as the complete canonical object model.

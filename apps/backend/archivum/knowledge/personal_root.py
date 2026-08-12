@@ -20,6 +20,11 @@ PERSONAL_RELATIONSHIP_TYPES = frozenset(
         "saved_source",
         "asked_question",
         "uses_code",
+        # Governed memory assets.
+        "owns_asset",
+        "remembers",
+        "learned_skill",
+        "describes_self",
     }
 )
 

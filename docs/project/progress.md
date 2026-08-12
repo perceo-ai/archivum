@@ -40,6 +40,12 @@ Archivum keeps markdown editable for humans while maintaining rebuildable semant
 | Graph | Partial | 2026-08-12 local current-code context smoke opened a bounded package seeded at `person:self` with 4 nodes and `authored_thought`/`owns_project` edges. Legacy graph API and browser graph view still need rebuilt Docker/browser smoke. |
 | Sharing/export | Partial | Share links, public pages, HTML export, and PDF export code exist. Needs manual release smoke. |
 | MCP server | Verified | Docker MCP SSE endpoint returned the session endpoint event; backend stdio smoke is covered by pytest. MCP SSE now enforces configured bearer auth and Docker publishes MCP on localhost by default. |
+| Memory assets | Verified | Typed, owned, versioned assets with status/visibility governance, version history, and canonical projection sharing the asset id. Backend, REST, MCP, and frontend covered by tests on 2026-08-12. |
+| Memory catalog | Verified | `POST /api/memory/catalog` registers existing markdown pages, ingested/captured sources, and per-repo code graphs as typed assets. Ids are derived, so re-running produces no version churn. |
+| Session distillation | Verified | Captured conversations distil into cited L1 atoms, L2 scenario memory, and an L3 persona. Sub-threshold atoms are routed to the existing review queue rather than written. Deterministic: no LLM call on this path. |
+| Skill memory | Verified | Skills are extracted only from sessions with real successful tool calls and no recorded failure; steps come from the recorded calls, and skills register as `draft` pending human activation. |
+| Agent loadouts | Verified | Agent profiles, `always`/`on_demand` bindings, and loadout resolution that returns only active bound assets with citations plus an explicit reason when empty. |
+| Graph audit | Verified | Communities (greedy modularity), shortest path (BFS), surprising links, and a plain-language provenance report over canonical knowledge; REST, MCP, and a Tools UI tab. Deterministic: no LLM call. |
 | Life OS workflows | Started | Daily/projects/tasks routes and UI exist. They are not the main public positioning. |
 
 ## Verification Log
@@ -79,6 +85,18 @@ Add new entries with the exact command and result.
 | 2026-08-12 | Remaining parity CLI tests | `npm test --workspace packages/archivum-cli`: 18 passed, 0 failed. |
 | 2026-08-12 | Code graph namespacing and cleanup | `cd apps/backend && uv run --group dev pytest ../../tests/archgraph ../../tests/knowledge/test_repository.py -q`: 70 passed. Code node IDs are now namespaced by repository scope and relative path; incremental ingest cleans canonical records for changed/deleted/renamed files, preserves lexical rows for unchanged files, and preserves untouched caller-owned inferred edges when callee files change. |
 | 2026-08-12 | Query/MCP insufficient evidence | `cd apps/backend && uv run --group dev pytest ../../tests/api/test_query.py ../../tests/retrieval/test_hybrid.py ../../tests/mcp_tests/test_server.py -q`: 22 passed. MCP query uses the shared REST cited synthesis path; REST query no longer falls back to out-of-scope hits or fabricates `[1]`. |
+
+| 2026-08-12 | Memory asset parity backend suite | `cd apps/backend && uv run --group dev pytest ../../tests -q`: 616 passed (up from 495), with the two pre-existing upstream `websockets`/`uvicorn` deprecation warnings. New coverage: `tests/memory/` (60), `tests/knowledge/test_graph_audit.py` (22), `tests/api/test_memory_api.py` (12), `tests/api/test_graph_audit_api.py` (7), `tests/mcp_tests/test_memory_tools.py` (8). |
+| 2026-08-12 | Memory asset parity frontend tests | `npm test --workspace apps/frontend`: 14 test files passed, 78 tests passed (up from 59), adding `src/memory-api.test.ts` and `src/memory-pages.test.tsx`. |
+| 2026-08-12 | Memory asset parity frontend build | `npm run build --workspace apps/frontend`: passed; Vite reported the existing warning that some chunks exceed 500 kB after minification. |
+| 2026-08-12 | Memory asset parity CLI tests | `npm test --workspace packages/archivum-cli`: 18 passed, 0 failed. |
+| 2026-08-12 | Docs staleness scan | `rg -n "scripts/[b]ootstrap\|[N]eo4j\|[y]ou@youremail\|[L]ast updated: 2026-06\|[f]eature complete" -g "*.md" -g "!node_modules/**" -g "!apps/backend/.venv/**"`: no matches. |
+
+## Known Gaps
+
+- Distillation runs on demand through `POST /api/memory/distill` or the `distill_source` MCP tool. There is no background worker that distils captured sessions automatically.
+- The Tools → Memory and Tools → Audit surfaces have backend and server-render coverage but still need browser click-through smoke.
+- Cataloguing existing pages, sources, and code graphs into the asset registry is an explicit action (`POST /api/memory/catalog`, the `catalog_memory_assets` MCP tool, or the Tools → Memory button). Nothing registers them automatically on write.
 
 ## What To Build Next
 
