@@ -91,6 +91,20 @@ test("backup validation reports missing manifest and tarballs before restore", (
   assert.ok(result.missing.includes("db_data.tar.gz"));
 });
 
+test("backup validation rejects corrupt tarballs before destructive restore", () => {
+  const backupDir = fs.mkdtempSync(path.join(os.tmpdir(), "archivum-backup-corrupt-"));
+  fs.writeFileSync(path.join(backupDir, "manifest.json"), "{}\n");
+  for (const mount of PRECIOUS_VOLUME_MOUNTS) {
+    fs.writeFileSync(path.join(backupDir, `${mount.volume}.tar.gz`), "not a tar archive");
+  }
+
+  const result = validateBackupDir(backupDir);
+
+  assert.equal(result.ok, false);
+  assert.deepEqual(result.missing, []);
+  assert.deepEqual(result.invalid.sort(), PRECIOUS_VOLUME_MOUNTS.map((mount) => `${mount.volume}.tar.gz`).sort());
+});
+
 test("formatPlanCommands prints shell-safe command lines for dry runs", () => {
   const plan = buildRestorePlan({
     root: "/srv/archivum",

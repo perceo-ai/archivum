@@ -158,7 +158,15 @@ export function validateBackupDir(backupDir) {
     ...PRECIOUS_VOLUME_MOUNTS.map((mount) => `${mount.volume}.tar.gz`),
   ];
   const missing = required.filter((relative) => !fs.existsSync(path.join(backupDir, relative)));
-  return { ok: missing.length === 0, missing };
+  const invalid = [];
+  for (const mount of PRECIOUS_VOLUME_MOUNTS) {
+    const relative = `${mount.volume}.tar.gz`;
+    const archive = path.join(backupDir, relative);
+    if (!fs.existsSync(archive)) continue;
+    const result = run("tar", ["-tzf", archive]);
+    if (result.status !== 0) invalid.push(relative);
+  }
+  return { ok: missing.length === 0 && invalid.length === 0, missing, invalid };
 }
 
 export function createBackup({ root, compose, backupDir, prefix = "backup" }) {
@@ -177,7 +185,8 @@ export function restoreBackup({ root, compose, backupDir }) {
   const resolvedBackupDir = path.resolve(root, backupDir);
   if (!fs.existsSync(resolvedBackupDir)) throw new Error(`Backup directory not found: ${resolvedBackupDir}`);
   const validation = validateBackupDir(resolvedBackupDir);
-  if (!validation.ok) throw new Error(`Backup is incomplete; missing: ${validation.missing.join(", ")}`);
+  if (validation.invalid.length > 0) throw new Error(`Backup has invalid archives: ${validation.invalid.join(", ")}`);
+  if (validation.missing.length > 0) throw new Error(`Backup is incomplete; missing: ${validation.missing.join(", ")}`);
   const projectName = discoverComposeProjectName(compose, root);
   const plan = buildRestorePlan({ root, backupDir: resolvedBackupDir, compose, projectName });
   runPlanCommands(plan.commands.slice(0, -1));
@@ -232,7 +241,8 @@ export async function recoveryCommand(args) {
     if (!backupDir) throw new Error("Usage: archivum recovery validate <backup-dir>");
     const resolvedBackupDir = path.resolve(root, backupDir);
     const validation = validateBackupDir(resolvedBackupDir);
-    if (!validation.ok) throw new Error(`Backup is incomplete; missing: ${validation.missing.join(", ")}`);
+    if (validation.invalid.length > 0) throw new Error(`Backup has invalid archives: ${validation.invalid.join(", ")}`);
+    if (validation.missing.length > 0) throw new Error(`Backup is incomplete; missing: ${validation.missing.join(", ")}`);
     console.log(`Archivum backup is valid: ${resolvedBackupDir}`);
     return;
   }

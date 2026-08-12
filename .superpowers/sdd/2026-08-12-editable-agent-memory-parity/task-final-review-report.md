@@ -80,3 +80,34 @@
 - REST context package access is now wiki-bound and repo-denying.
 - Repository-scoped context remains available below the REST API for internal archgraph/retrieval callers. Future REST repo context support needs an explicit user-to-repository authorization model before allowing `repo:*`.
 - The full backend suite did not complete cleanly in this worktree because of the concurrent MCP SSE auth test state described above.
+
+---
+
+# Final Review Report: Owner Root and Projection Isolation
+
+## Summary
+
+- Fixed the global `person:self` owner node so it keeps a stable global scope instead of being overwritten by whichever wiki was edited last.
+- Owner relationships now inherit the target object's scope, preserving wiki-specific `authored_thought` and `owns_project` edges from the global self node.
+- Scoped context package construction injects the global self node into wiki-scoped contexts without broadening relationship scope.
+- Canonical projection rebuild now projects only records for the requested `wiki:{wiki_id}` plus the global self node, and drops relationships whose endpoints are outside that filtered object set.
+- Added regression coverage for root stability across wikis and projection isolation from other wiki/repo scopes.
+
+## Tests
+
+- `cd apps/backend && uv run --group dev pytest ../../tests/knowledge/test_personal_root.py ../../tests/knowledge/test_markdown_projection.py ../../tests/knowledge/test_projections.py ../../tests/retrieval/test_context_package.py -q`
+  - `24 passed`.
+- Combined final-review critical fix slice:
+  - `cd apps/backend && uv run --group dev pytest ../../tests/api/test_context_api.py ../../tests/mcp_tests/test_sse_auth.py ../../tests/mcp_tests ../../tests/knowledge/test_personal_root.py ../../tests/knowledge/test_markdown_projection.py ../../tests/knowledge/test_projections.py ../../tests/retrieval/test_context_package.py ../../tests/retrieval/test_hybrid.py ../../tests/api/test_query.py ../../tests/test_pages_backlinks.py -q`
+  - `62 passed`, with two upstream `websockets`/`uvicorn` deprecation warnings.
+- Full backend suite after all Critical fixes:
+  - `cd apps/backend && uv run --group dev pytest ../../tests -q`
+  - `479 passed`, with the same two upstream `websockets`/`uvicorn` deprecation warnings.
+
+## Commit
+
+- Fix commit: `79f1bbd` (`fix(knowledge): isolate owner root and projections by scope`)
+
+## Residual Risk
+
+- Projection isolation is covered with mocked Qdrant/Kuzu writes. A real two-wiki Kuzu/Qdrant integration smoke remains useful before release.

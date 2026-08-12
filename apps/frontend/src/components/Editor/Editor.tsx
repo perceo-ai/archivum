@@ -1,5 +1,6 @@
 import { useEffect, useRef, useCallback, forwardRef, useImperativeHandle } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { autocompletion } from '@codemirror/autocomplete';
 import { EditorView, keymap } from '@codemirror/view';
 import { EditorState } from '@codemirror/state';
 import { markdown, markdownLanguage } from '@codemirror/lang-markdown';
@@ -9,8 +10,8 @@ import { oneDark } from '@codemirror/theme-one-dark';
 import { useAppState } from '../../store';
 import { updatePage, type MemorySuggestion } from '../../api';
 import { Button } from '../ui/Button';
-import { wikilinkExtension } from './wikilinkExtension';
-import { markdownBlockExtension } from './markdownBlockExtension';
+import { makeWikilinkCompletion, wikilinkExtension } from './wikilinkExtension';
+import { markdownBlockExtension, slashCommandCompletion } from './markdownBlockExtension';
 
 export interface EditorProps {
   slug: string;
@@ -87,16 +88,16 @@ const Editor = forwardRef<EditorHandle, EditorProps>(function Editor(
     const baseTheme = EditorView.theme({
       '&': {
         height: '100%',
-        backgroundColor: '#171616',
+        backgroundColor: 'transparent',
         fontSize: '15px',
       },
       '.cm-scroller': {
         fontFamily: "'Instrument Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
+        backgroundColor: 'transparent',
       },
       '.cm-content': {
-        padding: '28px 32px 64px',
-        maxWidth: '860px',
-        margin: '0 auto',
+        padding: '18px 32px 72px',
+        width: '100%',
         caretColor: '#ffffff',
       },
       '.cm-focused': {
@@ -115,7 +116,8 @@ const Editor = forwardRef<EditorHandle, EditorProps>(function Editor(
         backgroundColor: '#4B91F140 !important',
       },
       '.cm-gutters': {
-        backgroundColor: '#171616',
+        display: 'none',
+        backgroundColor: 'transparent',
         border: 'none',
         color: '#3a3a4a',
       },
@@ -132,6 +134,10 @@ const Editor = forwardRef<EditorHandle, EditorProps>(function Editor(
         }),
         oneDark,
         baseTheme,
+        autocompletion({
+          override: [slashCommandCompletion, makeWikilinkCompletion(pages)],
+          activateOnTyping: true,
+        }),
         markdownBlockExtension(),
         updateListener,
         ...wikilinks,
@@ -183,7 +189,7 @@ const Editor = forwardRef<EditorHandle, EditorProps>(function Editor(
           </div>
         </div>
       )}
-      <div ref={containerRef} className="min-h-0 flex-1 overflow-auto" style={{ backgroundColor: '#171616' }} />
+      <div ref={containerRef} className="min-h-0 flex-1 overflow-auto" style={{ backgroundColor: 'transparent' }} />
     </div>
   );
 });

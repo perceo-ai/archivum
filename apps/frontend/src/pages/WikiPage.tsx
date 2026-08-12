@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
+import { Hash, Plus, X } from 'lucide-react';
 import { useAppDispatch } from '../store';
 import { createShareLink, deletePage, getPage, listPages, updatePage } from '../api';
 import type { Page } from '../types';
@@ -10,6 +11,7 @@ import { Badge } from '../components/ui/Badge';
 import { Dialog } from '../components/ui/Dialog';
 import { useToast } from '../components/ui/Toast';
 import PageActions from '../components/PageActions';
+import { addTag, removeTag } from './wikiMetadata';
 
 export default function WikiPage() {
   const params = useParams();
@@ -20,7 +22,9 @@ export default function WikiPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [titleDraft, setTitleDraft] = useState('');
-  const [tagsDraft, setTagsDraft] = useState('');
+  const [tagsDraft, setTagsDraft] = useState<string[]>([]);
+  const [tagInput, setTagInput] = useState('');
+  const [addingTag, setAddingTag] = useState(false);
   const [contentDraft, setContentDraft] = useState<string | null>(null);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [shareUrl, setShareUrl] = useState<string | null>(null);
@@ -30,10 +34,7 @@ export default function WikiPage() {
   const metaSaveTimer = useRef<ReturnType<typeof setTimeout>>();
 
   const parsedTags = useMemo(() => {
-    return tagsDraft
-      .split(',')
-      .map((t) => t.trim())
-      .filter(Boolean);
+    return tagsDraft.map((t) => t.trim()).filter(Boolean);
   }, [tagsDraft]);
 
   useEffect(() => {
@@ -45,7 +46,9 @@ export default function WikiPage() {
       .then((p) => {
         setPage(p);
         setTitleDraft(p.title ?? '');
-        setTagsDraft((p.tags ?? []).join(', '));
+        setTagsDraft(p.tags ?? []);
+        setTagInput('');
+        setAddingTag(false);
         setContentDraft(null);
         dispatch({ type: 'UPSERT_PAGE', page: p });
         setLoading(false);
@@ -82,6 +85,22 @@ export default function WikiPage() {
         setError((e as Error).message);
       }
     }, 650);
+  }
+
+  function commitTags(nextTags: string[]) {
+    setTagsDraft(nextTags);
+    scheduleMetaSave({ tags: nextTags });
+  }
+
+  function handleAddTag() {
+    const nextTags = addTag(parsedTags, tagInput);
+    setTagInput('');
+    setAddingTag(false);
+    if (nextTags !== parsedTags) commitTags(nextTags);
+  }
+
+  function handleRemoveTag(tag: string) {
+    commitTags(removeTag(parsedTags, tag));
   }
 
   async function handleSaveNow() {
@@ -154,14 +173,13 @@ export default function WikiPage() {
 
   return (
     <div className="page-frame !max-w-none bg-transparent">
-      <div className="page-header shrink-0">
-        <div className="flex items-start gap-3">
+      <div className="page-header shrink-0 px-4 pt-2 md:px-8">
+        <div className="flex w-full items-start gap-3">
           <div className="min-w-0 flex-1">
-            <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
-              Library
-            </p>
             <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-              <span className="font-mono">{slugStr}</span>
+              <span className="rounded-[5px] bg-white/[0.04] px-2 py-1 font-mono text-[11px] text-zinc-400">
+                {slugStr}
+              </span>
               {page?.authored_by === 'agent' && <Badge variant="info">AI-authored</Badge>}
             </div>
             <Input
@@ -171,25 +189,59 @@ export default function WikiPage() {
                 scheduleMetaSave({ title: e.target.value });
               }}
               placeholder={loading ? 'Loading…' : 'Untitled'}
-              className="mt-3 h-12 border-0 bg-transparent px-0 text-3xl font-semibold tracking-tight shadow-none focus-visible:ring-0"
+              className="mt-3 h-auto min-h-14 border-0 bg-transparent px-0 py-0 text-[34px] font-bold leading-tight tracking-normal text-white shadow-none placeholder:text-zinc-600 focus-visible:ring-0 md:text-[42px]"
               aria-label="Page title"
             />
-            <div className="mt-3 flex flex-wrap items-center gap-2">
-              <Input
-                value={tagsDraft}
-                onChange={(e) => {
-                  setTagsDraft(e.target.value);
-                  scheduleMetaSave({ tags: e.target.value.split(',').map((t) => t.trim()).filter(Boolean) });
-                }}
-                placeholder="tags, comma separated"
-                className="h-9 max-w-md text-sm"
-                aria-label="Tags"
-              />
-              {parsedTags.slice(0, 4).map((t) => (
-                <Badge key={t} className="bg-accent/70 text-accent-foreground">
-                  {t}
-                </Badge>
+            <div className="mt-4 flex min-h-8 flex-wrap items-center gap-1.5">
+              {parsedTags.map((tag) => (
+                <span
+                  key={tag}
+                  className="group inline-flex h-7 items-center gap-1 rounded-[5px] bg-white/[0.055] px-2 text-xs font-medium text-zinc-300 transition-colors hover:bg-white/[0.085]"
+                >
+                  <Hash className="h-3 w-3 text-zinc-500" />
+                  {tag}
+                  <button
+                    type="button"
+                    onClick={() => handleRemoveTag(tag)}
+                    className="ml-0.5 rounded-[4px] p-0.5 text-zinc-500 opacity-0 transition-opacity hover:bg-white/10 hover:text-zinc-100 group-hover:opacity-100"
+                    aria-label={`Remove ${tag} tag`}
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                </span>
               ))}
+              {addingTag ? (
+                <input
+                  autoFocus
+                  value={tagInput}
+                  onChange={(e) => setTagInput(e.target.value)}
+                  onBlur={handleAddTag}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      handleAddTag();
+                    }
+                    if (e.key === 'Escape') {
+                      setTagInput('');
+                      setAddingTag(false);
+                    }
+                  }}
+                  placeholder="Tag"
+                  className="h-7 w-28 rounded-[5px] border border-white/10 bg-white/[0.04] px-2 text-xs text-zinc-100 outline-none placeholder:text-zinc-600 focus:border-white/20"
+                  aria-label="New tag"
+                />
+              ) : (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setAddingTag(true)}
+                  className="h-7 gap-1 rounded-[5px] px-2 text-xs text-zinc-500 hover:bg-white/[0.055] hover:text-zinc-200"
+                >
+                  <Plus className="h-3.5 w-3.5" />
+                  Tag
+                </Button>
+              )}
             </div>
           </div>
           <div className="flex shrink-0 items-center">
@@ -206,7 +258,7 @@ export default function WikiPage() {
         {error && <div className="mt-3 text-xs text-destructive">{error}</div>}
       </div>
 
-      <div className="workspace-pane flex min-h-0 flex-1 overflow-hidden">
+      <div className="flex min-h-0 flex-1 overflow-hidden bg-transparent">
         {loading && !page && (
           <div className="space-y-2 p-6">
             <div className="skeleton h-4 w-full" />

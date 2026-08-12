@@ -1,12 +1,24 @@
+import { type CompletionContext, type CompletionResult } from '@codemirror/autocomplete';
 import { RangeSetBuilder, type Extension } from '@codemirror/state';
 import {
   Decoration,
   type DecorationSet,
   EditorView,
+  keymap,
   ViewPlugin,
   type ViewUpdate,
   WidgetType,
 } from '@codemirror/view';
+import {
+  applySlashCommandToLine,
+  getEnterInsertionForLine,
+  matchSlashCommand,
+  moveMarkdownBlockByOffset,
+  moveMarkdownBlockInText,
+  SLASH_COMMANDS,
+  toggleTaskLine,
+  type SlashCommandId,
+} from './slashCommands';
 
 type MarkdownBlockKind =
   | 'blank'
@@ -34,6 +46,14 @@ type MarkdownMarker = {
 export type MarkdownLineBlock = {
   kind: MarkdownBlockKind;
   marker?: MarkdownMarker;
+};
+
+type InlineMarkdownKind = 'strong-marker' | 'emphasis-marker' | 'code-marker';
+
+export type InlineMarkdownMark = {
+  from: number;
+  to: number;
+  kind: InlineMarkdownKind;
 };
 
 const HEADING_RE = /^(#{1,6})\s+/;
@@ -118,19 +138,60 @@ export function classifyMarkdownLine(text: string): MarkdownLineBlock {
   return { kind: 'paragraph' };
 }
 
+export function findInlineMarkdownMarks(text: string): InlineMarkdownMark[] {
+  const marks: InlineMarkdownMark[] = [];
+  const occupied = new Set<number>();
+
+  function addPair(openFrom: number, openTo: number, closeFrom: number, closeTo: number, kind: InlineMarkdownKind) {
+    for (let index = openFrom; index < closeTo; index += 1) occupied.add(index);
+    marks.push({ from: openFrom, to: openTo, kind }, { from: closeFrom, to: closeTo, kind });
+  }
+
+  for (const match of text.matchAll(/`([^`\n]+)`/g)) {
+    const start = match.index ?? 0;
+    addPair(start, start + 1, start + match[0].length - 1, start + match[0].length, 'code-marker');
+  }
+
+  for (const match of text.matchAll(/\*\*([^*\n]+)\*\*/g)) {
+    const start = match.index ?? 0;
+    if (occupied.has(start)) continue;
+    addPair(start, start + 2, start + match[0].length - 2, start + match[0].length, 'strong-marker');
+  }
+
+  for (const match of text.matchAll(/(?<!\*)\*([^*\n]+)\*(?!\*)/g)) {
+    const start = match.index ?? 0;
+    if (occupied.has(start)) continue;
+    addPair(start, start + 1, start + match[0].length - 1, start + match[0].length, 'emphasis-marker');
+  }
+
+  return marks.sort((a, b) => a.from - b.from);
+}
+
 class MarkdownMarkerWidget extends WidgetType {
   constructor(
     readonly label: string,
-    readonly kind: MarkdownBlockKind,
+    readonly kind: MarkdownBlockKind | InlineMarkdownKind,
+    readonly lineNumber?: number,
   ) {
     super();
   }
 
   eq(other: MarkdownMarkerWidget) {
-    return this.label === other.label && this.kind === other.kind;
+    return this.label === other.label && this.kind === other.kind && this.lineNumber === other.lineNumber;
   }
 
   toDOM() {
+    if (this.kind === 'task-open' || this.kind === 'task-done') {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = `cm-markdown-marker cm-markdown-marker-${this.kind} cm-task-toggle`;
+      button.textContent = this.label;
+      button.title = 'Toggle task';
+      button.setAttribute('aria-label', 'Toggle task');
+      if (this.lineNumber != null) button.dataset.line = String(this.lineNumber);
+      return button;
+    }
+
     const span = document.createElement('span');
     span.className = `cm-markdown-marker cm-markdown-marker-${this.kind}`;
     span.textContent = this.label;
@@ -138,22 +199,43 @@ class MarkdownMarkerWidget extends WidgetType {
   }
 
   ignoreEvent() {
-    return true;
+    return this.kind !== 'task-open' && this.kind !== 'task-done';
   }
 }
 
-function selectedLines(view: EditorView) {
-  const lines = new Set<number>();
-  for (const range of view.state.selection.ranges) {
-    lines.add(view.state.doc.lineAt(range.from).number);
-    lines.add(view.state.doc.lineAt(range.to).number);
+class BlockHandleWidget extends WidgetType {
+  constructor(readonly lineNumber: number) {
+    super();
   }
-  return lines;
+
+  eq(other: BlockHandleWidget) {
+    return this.lineNumber === other.lineNumber;
+  }
+
+  toDOM() {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'cm-block-handle';
+    button.draggable = true;
+    button.textContent = '⋮⋮';
+    button.title = 'Drag to move block';
+    button.setAttribute('aria-label', 'Drag to move block');
+    button.dataset.line = String(this.lineNumber);
+    button.addEventListener('dragstart', (event) => {
+      event.dataTransfer?.setData('application/x-archivum-line', String(this.lineNumber));
+      event.dataTransfer?.setData('text/plain', String(this.lineNumber));
+      if (event.dataTransfer) event.dataTransfer.effectAllowed = 'move';
+    });
+    return button;
+  }
+
+  ignoreEvent() {
+    return false;
+  }
 }
 
 function buildBlockDecorations(view: EditorView): DecorationSet {
   const builder = new RangeSetBuilder<Decoration>();
-  const activeLines = selectedLines(view);
 
   for (const { from, to } of view.visibleRanges) {
     let position = from;
@@ -169,12 +251,32 @@ function buildBlockDecorations(view: EditorView): DecorationSet {
         }),
       );
 
-      if (block.marker && !activeLines.has(line.number)) {
+      builder.add(
+        line.from,
+        line.from,
+        Decoration.widget({
+          widget: new BlockHandleWidget(line.number),
+          side: -1,
+        }),
+      );
+
+      if (block.marker) {
         builder.add(
           line.from + block.marker.from,
           line.from + block.marker.to,
           Decoration.replace({
-            widget: new MarkdownMarkerWidget(block.marker.label, block.kind),
+            widget: new MarkdownMarkerWidget(block.marker.label, block.kind, line.number),
+            inclusive: false,
+          }),
+        );
+      }
+
+      for (const mark of findInlineMarkdownMarks(line.text)) {
+        builder.add(
+          line.from + mark.from,
+          line.from + mark.to,
+          Decoration.replace({
+            widget: new MarkdownMarkerWidget('', mark.kind),
             inclusive: false,
           }),
         );
@@ -204,11 +306,122 @@ const markdownBlockPlugin = ViewPlugin.fromClass(
   },
   {
     decorations: (plugin) => plugin.decorations,
+    eventHandlers: {
+      mousedown(event, view) {
+        const target = event.target as HTMLElement | null;
+        const toggle = target?.closest('.cm-task-toggle') as HTMLElement | null;
+        if (!toggle?.dataset.line) return false;
+        const line = view.state.doc.line(Number(toggle.dataset.line));
+        const replacement = toggleTaskLine(line.text);
+        if (replacement === line.text) return false;
+        event.preventDefault();
+        view.dispatch({
+          changes: { from: line.from, to: line.to, insert: replacement },
+          selection: { anchor: line.from + replacement.length },
+        });
+        view.focus();
+        return true;
+      },
+      dragover(event) {
+        if (!event.dataTransfer?.types.includes('application/x-archivum-line')) return false;
+        event.preventDefault();
+        event.dataTransfer.dropEffect = 'move';
+        return true;
+      },
+      drop(event, view) {
+        const source = Number(event.dataTransfer?.getData('application/x-archivum-line'));
+        if (!source) return false;
+        const position = view.posAtCoords({ x: event.clientX, y: event.clientY });
+        if (position == null) return false;
+        const target = view.state.doc.lineAt(position).number;
+        const nextDoc = moveMarkdownBlockInText(view.state.doc.toString(), source, target);
+        if (nextDoc === view.state.doc.toString()) return true;
+        event.preventDefault();
+        view.dispatch({
+          changes: { from: 0, to: view.state.doc.length, insert: nextDoc },
+          selection: { anchor: view.state.doc.line(Math.min(target, view.state.doc.lines)).from },
+        });
+        view.focus();
+        return true;
+      },
+    },
   },
 );
 
+export function slashCommandCompletion(context: CompletionContext): CompletionResult | null {
+  const before = context.matchBefore(/^\s*\/[^\n]*$/);
+  if (!before) return null;
+  const line = context.state.doc.lineAt(context.pos);
+  if (before.from !== line.from) return null;
+
+  const query = before.text.replace(/^\s*\//, '').split(/\s+/)[0] ?? '';
+  const options = SLASH_COMMANDS.map((command) => ({
+    command,
+    score: matchSlashCommand(command, query),
+  }))
+    .filter(({ score }) => score > 0)
+    .sort((a, b) => b.score - a.score || a.command.label.localeCompare(b.command.label))
+    .map(({ command, score }) => ({
+      label: command.label,
+      detail: command.detail,
+      boost: score,
+      type: 'keyword',
+      apply(view: EditorView) {
+        const currentLine = view.state.doc.lineAt(view.state.selection.main.head);
+        const replacement = applySlashCommandToLine(currentLine.text, command.id as SlashCommandId);
+        view.dispatch({
+          changes: { from: currentLine.from, to: currentLine.to, insert: replacement },
+          selection: { anchor: currentLine.from + replacement.length },
+        });
+      },
+    }));
+
+  return {
+    from: before.from,
+    options,
+    validFor: /^\s*\/[^\n]*$/,
+  };
+}
+
+function handleSmartEnter(view: EditorView) {
+  const selection = view.state.selection.main;
+  if (!selection.empty) return false;
+  const line = view.state.doc.lineAt(selection.head);
+  if (selection.head !== line.to) return false;
+  const next = getEnterInsertionForLine(line.text);
+  if (!next) return false;
+
+  const changes =
+    next.replaceLine == null
+      ? { from: selection.head, insert: next.insertion }
+      : { from: line.from, to: line.to, insert: `${next.replaceLine}${next.insertion}` };
+  const anchor =
+    next.replaceLine == null
+      ? selection.head + next.insertion.length
+      : line.from + next.replaceLine.length + next.insertion.length;
+
+  view.dispatch({ changes, selection: { anchor } });
+  return true;
+}
+
+function moveCurrentBlock(view: EditorView, offset: -1 | 1) {
+  const line = view.state.doc.lineAt(view.state.selection.main.head);
+  const moved = moveMarkdownBlockByOffset(view.state.doc.toString(), line.number, offset);
+  if (moved.text === view.state.doc.toString()) return true;
+  view.dispatch({
+    changes: { from: 0, to: view.state.doc.length, insert: moved.text },
+    selection: { anchor: Math.min(view.state.doc.line(moved.lineNumber).from, moved.text.length) },
+  });
+  return true;
+}
+
 export function markdownBlockExtension(): Extension {
   return [
+    keymap.of([
+      { key: 'Enter', run: handleSmartEnter },
+      { key: 'Mod-Shift-ArrowUp', run: (view) => moveCurrentBlock(view, -1) },
+      { key: 'Mod-Shift-ArrowDown', run: (view) => moveCurrentBlock(view, 1) },
+    ]),
     markdownBlockPlugin,
     EditorView.theme({
       '.cm-content': {
@@ -216,15 +429,15 @@ export function markdownBlockExtension(): Extension {
       },
       '.cm-line.cm-markdown-block': {
         position: 'relative',
-        padding: '3px 0 3px 30px',
+        padding: '2px 0 2px 42px',
         borderRadius: '5px',
-        color: '#e7e7e7',
+        color: '#dedede',
       },
       '.cm-line.cm-markdown-block:hover': {
         backgroundColor: 'rgba(255, 255, 255, 0.025)',
       },
       '.cm-line.cm-activeLine': {
-        backgroundColor: 'rgba(255, 255, 255, 0.045)',
+        backgroundColor: 'rgba(255, 255, 255, 0.035)',
       },
       '.cm-markdown-heading-1': {
         marginTop: '20px',
@@ -260,7 +473,7 @@ export function markdownBlockExtension(): Extension {
       },
       '.cm-markdown-paragraph': {
         fontSize: '15px',
-        lineHeight: '1.72',
+        lineHeight: '1.74',
       },
       '.cm-markdown-unordered-list, .cm-markdown-ordered-list, .cm-markdown-task-open, .cm-markdown-task-done': {
         fontSize: '15px',
@@ -268,7 +481,6 @@ export function markdownBlockExtension(): Extension {
       },
       '.cm-markdown-task-done': {
         color: '#9ca3af',
-        textDecoration: 'line-through',
       },
       '.cm-markdown-quote': {
         marginTop: '4px',
@@ -290,8 +502,8 @@ export function markdownBlockExtension(): Extension {
       },
       '.cm-markdown-marker': {
         display: 'inline-flex',
-        minWidth: '24px',
-        marginLeft: '-30px',
+        minWidth: '26px',
+        marginLeft: '-34px',
         marginRight: '6px',
         justifyContent: 'center',
         color: '#8f8f98',
@@ -299,20 +511,68 @@ export function markdownBlockExtension(): Extension {
         textDecoration: 'none',
         fontStyle: 'normal',
       },
+      '.cm-task-toggle': {
+        height: '20px',
+        alignItems: 'center',
+        border: '0',
+        borderRadius: '4px',
+        backgroundColor: 'transparent',
+        cursor: 'pointer',
+        padding: '0',
+      },
+      '.cm-task-toggle:hover': {
+        backgroundColor: 'rgba(255, 255, 255, 0.08)',
+        color: '#f4f4f5',
+      },
       '.cm-markdown-marker-heading-1, .cm-markdown-marker-heading-2, .cm-markdown-marker-heading-3, .cm-markdown-marker-heading-4, .cm-markdown-marker-heading-5, .cm-markdown-marker-heading-6, .cm-markdown-marker-quote, .cm-markdown-marker-thematic-break': {
+        width: '0',
+        minWidth: '0',
+        margin: '0',
+      },
+      '.cm-markdown-marker-strong-marker, .cm-markdown-marker-emphasis-marker, .cm-markdown-marker-code-marker': {
         width: '0',
         minWidth: '0',
         margin: '0',
       },
       '.cm-markdown-marker-code-fence': {
         minWidth: '34px',
-        marginLeft: '-40px',
+        marginLeft: '-44px',
         marginRight: '6px',
         borderRadius: '4px',
         backgroundColor: 'rgba(255, 255, 255, 0.08)',
         color: '#cdd6f4',
         fontSize: '10px',
         textTransform: 'uppercase',
+      },
+      '.cm-block-handle': {
+        position: 'absolute',
+        left: '4px',
+        top: '50%',
+        display: 'inline-flex',
+        height: '22px',
+        width: '24px',
+        transform: 'translateY(-50%)',
+        alignItems: 'center',
+        justifyContent: 'center',
+        border: '0',
+        borderRadius: '5px',
+        background: 'transparent',
+        color: '#6b7280',
+        cursor: 'grab',
+        fontSize: '13px',
+        lineHeight: '1',
+        opacity: '0',
+        transition: 'opacity 120ms ease, background-color 120ms ease, color 120ms ease',
+      },
+      '.cm-line:hover .cm-block-handle, .cm-line.cm-activeLine .cm-block-handle': {
+        opacity: '1',
+      },
+      '.cm-block-handle:hover': {
+        backgroundColor: 'rgba(255, 255, 255, 0.07)',
+        color: '#d4d4d8',
+      },
+      '.cm-block-handle:active': {
+        cursor: 'grabbing',
       },
     }),
   ];
