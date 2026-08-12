@@ -16,6 +16,7 @@ from archivum.config import Settings, get_settings
 from archivum.db import sqlite, qdrant_client as qdrant, graph
 from archivum.ingest.agent import slugify
 from archivum.knowledge.repository import KnowledgeRepository
+from archivum.knowledge.suggestions import init_suggestion_schema
 from archivum.linting import WIKILINK_RE
 from archivum.pages_to_knowledge import (
     remove_page_from_knowledge,
@@ -206,6 +207,7 @@ async def _sync_page_graph(
 
 async def _sync_page_knowledge(slug: str, title: str, content: str, wiki_id: str) -> None:
     async with sqlite.get_db() as conn:
+        await init_suggestion_schema(conn)
         await sync_page_to_knowledge(
             KnowledgeRepository(conn),
             slug=slug,
