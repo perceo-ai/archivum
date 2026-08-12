@@ -1,9 +1,9 @@
 """archgraph.hook — CLI entrypoint and git post-commit hook installer.
 
 The CLI stores the extracted code graph in the canonical knowledge repository.
-Canonical records live in ``<repo>/.archivum/knowledge.db``. The SQLite lexical
-index in ``<cache_dir>/index.db`` remains a rebuildable projection used for
-deterministic code retrieval.
+Canonical records use the application's configured SQLite database. The SQLite
+lexical index in ``<cache_dir>/index.db`` remains a rebuildable projection used
+for deterministic code retrieval.
 """
 from __future__ import annotations
 
@@ -17,6 +17,7 @@ import aiosqlite
 
 from archivum.archgraph.ingest import IngestReport, ingest_repo
 from archivum.archgraph.mapper import knowledge_to_candidate_object, knowledge_to_candidate_relationship
+from archivum.db import sqlite
 from archivum.knowledge.repository import KnowledgeRepository, init_knowledge_schema
 
 
@@ -27,9 +28,7 @@ from archivum.knowledge.repository import KnowledgeRepository, init_knowledge_sc
 async def _run_ingest(repo: Path, scope: str, cache_dir: Path, update: bool) -> IngestReport:
     """Open canonical knowledge storage and run the ingest pipeline."""
     cache_dir.mkdir(parents=True, exist_ok=True)
-    knowledge_path = repo / ".archivum" / "knowledge.db"
-    knowledge_path.parent.mkdir(parents=True, exist_ok=True)
-    async with aiosqlite.connect(knowledge_path) as knowledge_conn:
+    async with sqlite.get_db() as knowledge_conn:
         await init_knowledge_schema(knowledge_conn)
         async with aiosqlite.connect(cache_dir / "index.db") as lexical_conn:
             report = await ingest_repo(
@@ -50,9 +49,7 @@ async def _run_ingest_and_export(
     from archivum.archgraph.export import export_graph
 
     cache_dir.mkdir(parents=True, exist_ok=True)
-    knowledge_path = repo / ".archivum" / "knowledge.db"
-    knowledge_path.parent.mkdir(parents=True, exist_ok=True)
-    async with aiosqlite.connect(knowledge_path) as knowledge_conn:
+    async with sqlite.get_db() as knowledge_conn:
         await init_knowledge_schema(knowledge_conn)
         knowledge = KnowledgeRepository(knowledge_conn)
         async with aiosqlite.connect(cache_dir / "index.db") as lexical_conn:

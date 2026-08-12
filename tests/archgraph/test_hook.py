@@ -8,6 +8,7 @@ from pathlib import Path
 import pytest
 
 from archivum.archgraph.ingest import IngestReport
+from archivum.db import sqlite as app_sqlite
 
 
 # ---------------------------------------------------------------------------
@@ -68,14 +69,22 @@ def test_bad_args_returns_nonzero():
     assert rc != 0
 
 
-def test_cli_real_ingest_smoke(git_repo, tmp_path):
+def test_cli_real_ingest_smoke(git_repo, tmp_path, monkeypatch):
     """End-to-end smoke: real _run_ingest via CLI returns 0."""
     from archivum.archgraph.hook import main
 
     cache_dir = tmp_path / "c"
+    canonical_db = tmp_path / "archivum.db"
+    monkeypatch.setattr(app_sqlite, "_db_path", canonical_db)
+
     rc = main(["ingest", str(git_repo), "--scope", "repo:test", "--cache-dir", str(cache_dir)])
     assert rc == 0
-    assert (git_repo / ".archivum" / "knowledge.db").exists()
+    assert canonical_db.exists()
+    assert not (git_repo / ".archivum" / "knowledge.db").exists()
+
+    with sqlite3.connect(canonical_db) as conn:
+        tables = {row[0] for row in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+    assert "knowledge_objects" in tables
 
     with sqlite3.connect(cache_dir / "index.db") as conn:
         tables = {row[0] for row in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}

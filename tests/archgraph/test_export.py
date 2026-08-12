@@ -11,6 +11,7 @@ from archivum.archgraph.mapper import (
     CandidateRelationship,
     Provenance,
 )
+from archivum.db import sqlite as app_sqlite
 
 
 # ---------------------------------------------------------------------------
@@ -131,12 +132,13 @@ def test_export_html_marks_extraction_method(tmp_path):
     )
 
 
-def test_cli_export_smoke(git_repo, tmp_path):
+def test_cli_export_smoke(git_repo, tmp_path, monkeypatch):
     """CLI with --export writes graph.json to the export directory."""
     from archivum.archgraph.hook import main
 
     cache_dir = tmp_path / "c"
     export_dir = tmp_path / "g"
+    monkeypatch.setattr(app_sqlite, "_db_path", tmp_path / "archivum.db")
 
     rc = main([
         "ingest", str(git_repo),

@@ -62,3 +62,25 @@ such as calls, imports, and references through the canonical adapters.
 - Required suite passed:
   `cd apps/backend && uv run --group dev pytest ../../tests/archgraph -q`
   (`62 passed in 2.70s`).
+
+## Review Fix Round 2: Application Canonical Store
+
+### Changes
+
+- Replaced the repo-local canonical database connection in the CLI hook with
+  `archivum.db.sqlite.get_db()`, so canonical knowledge records use the
+  application's configured durable SQLite path. The lexical projection remains
+  isolated at `<cache_dir>/index.db`.
+- Updated CLI smoke coverage to configure a temporary application database and
+  assert canonical tables are written there, never under the ingested repo.
+- Added direct canonical relationship assertions for scope and confidence,
+  alongside the existing extraction method, citation, and source-scope checks.
+
+### Verification
+
+- Focused configured-store and relationship metadata coverage passed:
+  `cd apps/backend && uv run --group dev pytest ../../tests/archgraph/test_hook.py::test_cli_real_ingest_smoke ../../tests/archgraph/test_ingest.py::test_archgraph_ingest_writes_to_knowledge_repository -q`
+  (`2 passed`).
+- Required suite passed:
+  `cd apps/backend && uv run --group dev pytest ../../tests/archgraph -q`
+  (`62 passed in 2.55s`).

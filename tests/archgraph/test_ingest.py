@@ -51,8 +51,17 @@ async def test_archgraph_ingest_writes_to_knowledge_repository(git_repo, cache_d
         assert any(obj.kind in {"symbol", "type", "file"} for obj in objects)
         relationships = await knowledge.list_relationships(scope="repo:test")
         assert relationships
-        assert all(relationship.extraction_method in {"EXTRACTED", "INFERRED", "AMBIGUOUS"} for relationship in relationships)
-        assert all(relationship.citations and relationship.properties["source_scope"] == "repo:test" for relationship in relationships)
+        assert all(
+            relationship.extraction_method in {"EXTRACTED", "INFERRED", "AMBIGUOUS"}
+            for relationship in relationships
+        )
+        assert all(relationship.scope == "repo:test" for relationship in relationships)
+        assert all(0.0 <= relationship.confidence <= 1.0 for relationship in relationships)
+        assert all(
+            relationship.citations
+            and relationship.properties["source_scope"] == "repo:test"
+            for relationship in relationships
+        )
 
 
 async def test_full_ingest_writes_canonical_objects(git_repo, cache_dir, tmp_path):
