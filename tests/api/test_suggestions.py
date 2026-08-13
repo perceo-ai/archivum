@@ -123,6 +123,25 @@ def test_accept_reject_enforce_scope_and_conflicts(tmp_path, monkeypatch):
     assert hidden.status_code == 404
 
 
+def test_review_action_route_supports_merge_replace_keep_retire_scope_visibility(tmp_path, monkeypatch):
+    db_path = tmp_path / "suggestions.db"
+    _patch_suggestion_db(monkeypatch, db_path)
+    client = _client_for_wiki("alpha")
+
+    for action, expected in [
+        ("merge", "merged"),
+        ("replace", "replaced"),
+        ("keep_both", "kept"),
+        ("retire", "retired"),
+        ("change_scope", "scope_changed"),
+        ("change_visibility", "visibility_changed"),
+    ]:
+        suggestion = asyncio.run(_seed_suggestion(db_path, target_id=f"page:alpha:{action}"))
+        response = client.post(f"/api/suggestions/{suggestion.id}/review", json={"action": action})
+        assert response.status_code == 200
+        assert response.json()["status"] == expected
+
+
 def test_create_suggestion_rejects_cross_wiki_targets(tmp_path, monkeypatch):
     db_path = tmp_path / "suggestions.db"
     asyncio.run(_seed_suggestion(db_path, target_id="page:alpha:seed"))

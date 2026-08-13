@@ -10,7 +10,49 @@ import aiosqlite
 from pydantic import BaseModel
 
 
-SuggestionStatus = Literal["pending", "accepted", "rejected"]
+SuggestionStatus = Literal[
+    "pending",
+    "accepted",
+    "edited",
+    "rejected",
+    "merged",
+    "replaced",
+    "kept",
+    "retired",
+    "scope_changed",
+    "visibility_changed",
+    "expired",
+]
+SuggestionAction = Literal[
+    "accept",
+    "edit",
+    "reject",
+    "merge",
+    "replace",
+    "keep_both",
+    "retire",
+    "change_scope",
+    "change_visibility",
+    "expire",
+]
+
+ACTION_TO_STATUS: dict[SuggestionAction, SuggestionStatus] = {
+    "accept": "accepted",
+    "edit": "edited",
+    "reject": "rejected",
+    "merge": "merged",
+    "replace": "replaced",
+    "keep_both": "kept",
+    "retire": "retired",
+    "change_scope": "scope_changed",
+    "change_visibility": "visibility_changed",
+    "expire": "expired",
+}
+
+_STATUS_SQL = (
+    "'pending', 'accepted', 'edited', 'rejected', 'merged', 'replaced', "
+    "'kept', 'retired', 'scope_changed', 'visibility_changed', 'expired'"
+)
 
 
 class MemorySuggestion(BaseModel):
@@ -36,13 +78,60 @@ async def init_suggestion_schema(conn: aiosqlite.Connection) -> None:
             proposed_objects  TEXT NOT NULL,
             citations         TEXT NOT NULL,
             status            TEXT NOT NULL DEFAULT 'pending'
-                              CHECK (status IN ('pending', 'accepted', 'rejected')),
+                              CHECK (status IN ('pending', 'accepted', 'edited',
+                                                'rejected', 'merged', 'replaced',
+                                                'kept', 'retired', 'scope_changed',
+                                                'visibility_changed', 'expired')),
             created_at        TEXT NOT NULL DEFAULT (datetime('now')),
             updated_at        TEXT NOT NULL DEFAULT (datetime('now'))
         );
 
         CREATE INDEX IF NOT EXISTS idx_memory_suggestions_target_status
             ON memory_suggestions(target_id, status);
+        """
+    )
+    await _migrate_status_check(conn)
+    await conn.commit()
+
+
+async def _migrate_status_check(conn: aiosqlite.Connection) -> None:
+    """Expand older suggestion tables whose CHECK only allowed accept/reject."""
+    async with conn.execute(
+        "SELECT sql FROM sqlite_master WHERE type='table' AND name='memory_suggestions'"
+    ) as cursor:
+        row = await cursor.fetchone()
+    if row is None or "scope_changed" in row["sql"]:
+        return
+    await conn.executescript(
+        f"""
+        CREATE TABLE memory_suggestions_new (
+            id                TEXT PRIMARY KEY,
+            target_id         TEXT NOT NULL,
+            suggestion_type   TEXT NOT NULL,
+            proposed_markdown TEXT NOT NULL,
+            proposed_objects  TEXT NOT NULL,
+            citations         TEXT NOT NULL,
+            status            TEXT NOT NULL DEFAULT 'pending'
+                              CHECK (status IN ({_STATUS_SQL})),
+            created_at        TEXT NOT NULL DEFAULT (datetime('now')),
+            updated_at        TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+
+        INSERT INTO memory_suggestions_new
+            (id, target_id, suggestion_type, proposed_markdown,
+             proposed_objects, citations, status, created_at, updated_at)
+        SELECT id, target_id, suggestion_type, proposed_markdown,
+               proposed_objects, citations, status, created_at, updated_at
+        FROM memory_suggestions;
+
+        DROP TABLE memory_suggestions;
+        ALTER TABLE memory_suggestions_new RENAME TO memory_suggestions;
+        """
+    )
+    await conn.execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_memory_suggestions_target_status
+            ON memory_suggestions(target_id, status)
         """
     )
     await conn.commit()
@@ -143,6 +232,11 @@ class SuggestionRepository:
 
     async def reject_suggestion(self, suggestion_id: str) -> None:
         await self._transition(suggestion_id, "rejected")
+
+    async def transition_suggestion(
+        self, suggestion_id: str, action: SuggestionAction
+    ) -> None:
+        await self._transition(suggestion_id, ACTION_TO_STATUS[action])
 
     async def _transition(self, suggestion_id: str, target_status: SuggestionStatus) -> None:
         await self._conn.execute("BEGIN")

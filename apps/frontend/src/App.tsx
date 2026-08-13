@@ -8,13 +8,14 @@ import LoginPage from './pages/LoginPage';
 import NotFoundPage from './pages/NotFoundPage';
 import SharePage from './pages/SharePage';
 import PublicWikiPage from './pages/PublicWikiPage';
+import HomePage from './pages/HomePage';
 import LibraryPage from './pages/LibraryPage';
 import WorkflowsPage from './pages/WorkflowsPage';
 import ToolsPage from './pages/ToolsPage';
 import { listPages, refreshSession } from './api';
 
 function ProtectedRoutes() {
-  const { isAuthenticated, pages, pagesLoaded } = useAppState();
+  const { isAuthenticated, pagesLoaded } = useAppState();
   const dispatch = useAppDispatch();
   const navigate = useNavigate();
 
@@ -51,9 +52,9 @@ function ProtectedRoutes() {
   return (
     <Routes>
       <Route path="/" element={
-        pages.length > 0
-          ? <Navigate to={`/wiki/${pages[0].slug}`} replace />
-          : <Navigate to="/library" replace />
+        <Layout>
+          <HomePage />
+        </Layout>
       } />
       <Route path="/library" element={
         <Layout>

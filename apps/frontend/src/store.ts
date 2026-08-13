@@ -3,6 +3,7 @@ import type { Page } from './types';
 
 export type SaveStatus = 'idle' | 'saving' | 'saved' | 'error';
 export type ActiveView =
+  | 'home'
   | 'editor'
   | 'library'
   | 'workflows'

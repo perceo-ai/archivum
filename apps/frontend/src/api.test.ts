@@ -26,6 +26,7 @@ import {
   listPageSuggestions,
   acceptSuggestion,
   rejectSuggestion,
+  reviewSuggestion,
 } from './api';
 import type { Page, SearchResult, GraphNode, GraphEdge, LifeProject, LifeTask } from './types';
 
@@ -49,6 +50,11 @@ const makePage = (overrides: Partial<Page> = {}): Page => ({
   updated_at: '2024-01-01T00:00:00Z',
   authored_by: 'agent',
   ...overrides,
+});
+
+const apiJsonResponse = (body: unknown) => new Response(JSON.stringify(body), {
+  status: 200,
+  headers: { 'Content-Type': 'application/json' },
 });
 
 describe('refreshSession', () => {
@@ -474,6 +480,95 @@ describe('suggestions api', () => {
     expect(fetchMock).toHaveBeenCalledWith('/api/suggestions/suggestion%3Aone/reject', expect.objectContaining({
       method: 'POST',
       credentials: 'include',
+    }));
+  });
+
+  it('sends review actions for merge and lifecycle decisions', async () => {
+    fetchMock.mockResolvedValueOnce(new Response(
+      JSON.stringify({ ...suggestion, status: 'merged' }),
+      { status: 200, headers: { 'Content-Type': 'application/json' } },
+    ));
+
+    await expect(reviewSuggestion('suggestion:one', 'merge')).resolves.toEqual({
+      ...suggestion,
+      status: 'merged',
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith('/api/suggestions/suggestion%3Aone/review', expect.objectContaining({
+      method: 'POST',
+      credentials: 'include',
+      body: JSON.stringify({ action: 'merge' }),
+    }));
+  });
+});
+
+describe('capture and distillation api', () => {
+  it('captures a typed conversation with CSRF protection', async () => {
+    vi.stubGlobal('document', { cookie: 'csrf_token=csrf-123' });
+    fetchMock.mockResolvedValueOnce(apiJsonResponse({
+      source_id: 'source:capture:one',
+      content_hash: 'abc',
+      version: 1,
+      document_id: 'doc:one',
+      chunk_count: 2,
+      deduplicated: false,
+    }));
+
+    const { captureConversation } = await import('./api');
+
+    await expect(captureConversation({
+      session_id: 'home-capture',
+      interface: 'archivum_home',
+      scope: 'person:self',
+      turns: [{ role: 'user', text: 'Remember this.' }],
+    })).resolves.toMatchObject({ source_id: 'source:capture:one' });
+
+    expect(fetchMock).toHaveBeenCalledWith('/api/sources/capture', expect.objectContaining({
+      method: 'POST',
+      headers: expect.objectContaining({ 'X-CSRF-Token': 'csrf-123' }),
+      body: JSON.stringify({
+        session_id: 'home-capture',
+        interface: 'archivum_home',
+        started_at: '',
+        scope: 'person:self',
+        origin_uri: '',
+        turns: [{ role: 'user', text: 'Remember this.', ts: '', tool_calls: [] }],
+      }),
+    }));
+  });
+
+  it('distills captured sources without forcing markdown page writes', async () => {
+    fetchMock.mockResolvedValueOnce(apiJsonResponse({
+      source_id: 'source:capture:one',
+      session_id: 'home-capture',
+      scope: 'person:self',
+      atoms_total: 1,
+      atoms_accepted: 0,
+      atoms_pending_review: 1,
+      asset_ids: [],
+      scenario_id: null,
+      persona_updated: false,
+      skill_id: null,
+      skill_reason: null,
+      pages_written: [],
+    }));
+
+    const { distillSource } = await import('./api');
+
+    await expect(distillSource({
+      source_id: 'source:capture:one',
+      scenario_key: 'home',
+      write_pages: false,
+    })).resolves.toMatchObject({ atoms_pending_review: 1 });
+
+    expect(fetchMock).toHaveBeenCalledWith('/api/memory/distill', expect.objectContaining({
+      method: 'POST',
+      body: JSON.stringify({
+        source_id: 'source:capture:one',
+        scenario_key: 'home',
+        threshold: undefined,
+        write_pages: false,
+      }),
     }));
   });
 });

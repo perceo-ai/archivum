@@ -12,6 +12,7 @@ from archivum.auth import CurrentUser, get_current_user, require_writer
 from archivum.db import sqlite
 from archivum.knowledge.suggestions import (
     MemorySuggestion,
+    SuggestionAction,
     SuggestionRepository,
     SuggestionStatus,
 )
@@ -32,6 +33,10 @@ class CreateSuggestionRequest(BaseModel):
         if bool(self.target_id) == bool(self.page_slug):
             raise ValueError("Provide exactly one of target_id or page_slug")
         return self
+
+
+class ReviewSuggestionRequest(BaseModel):
+    action: SuggestionAction
 
 
 @router.get("", response_model=list[MemorySuggestion])
@@ -93,6 +98,34 @@ async def reject_suggestion(
     current_user: CurrentUser = Depends(require_writer),
 ) -> MemorySuggestion:
     return await _transition_suggestion(suggestion_id, "rejected", current_user)
+
+
+@router.post("/{suggestion_id:path}/review", response_model=MemorySuggestion)
+async def review_suggestion(
+    suggestion_id: str,
+    body: ReviewSuggestionRequest,
+    current_user: CurrentUser = Depends(require_writer),
+) -> MemorySuggestion:
+    async with sqlite.get_db() as conn:
+        repo = SuggestionRepository(conn)
+        suggestion = await repo.get_suggestion(suggestion_id)
+        if suggestion is None or not _is_authorized_target(
+            suggestion.target_id, current_user.wiki_id
+        ):
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail={"detail": "Suggestion not found", "code": "suggestion_not_found"},
+            )
+        try:
+            await repo.transition_suggestion(suggestion_id, body.action)
+        except ValueError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail={"detail": str(exc), "code": "suggestion_conflict"},
+            ) from exc
+        loaded = await repo.get_suggestion(suggestion_id)
+        assert loaded is not None
+        return loaded
 
 
 async def _transition_suggestion(

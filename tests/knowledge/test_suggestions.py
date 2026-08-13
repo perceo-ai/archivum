@@ -56,6 +56,30 @@ async def test_suggestion_can_be_rejected():
 
 
 @pytest.mark.asyncio
+async def test_suggestion_supports_review_action_lifecycle_states():
+    async with aiosqlite.connect(":memory:") as conn:
+        await init_suggestion_schema(conn)
+        repo = SuggestionRepository(conn)
+        for action, expected in [
+            ("merge", "merged"),
+            ("replace", "replaced"),
+            ("keep_both", "kept"),
+            ("retire", "retired"),
+            ("change_scope", "scope_changed"),
+            ("change_visibility", "visibility_changed"),
+        ]:
+            suggestion = await repo.create_suggestion(
+                target_id=f"page:default:{action}",
+                suggestion_type="memory_atom",
+                proposed_markdown=f"## {action}",
+                proposed_objects=[],
+                citations=[],
+            )
+            await repo.transition_suggestion(suggestion.id, action)
+            assert (await repo.get_suggestion(suggestion.id)).status == expected
+
+
+@pytest.mark.asyncio
 async def test_conflicting_transitions_and_missing_ids_fail():
     async with aiosqlite.connect(":memory:") as conn:
         await init_suggestion_schema(conn)

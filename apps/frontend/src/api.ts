@@ -365,8 +365,33 @@ export type MemorySuggestion = {
   proposed_markdown: string;
   proposed_objects: unknown[];
   citations: Citation[];
-  status: 'pending' | 'accepted' | 'rejected';
+  status: SuggestionStatus;
 };
+
+export type SuggestionStatus =
+  | 'pending'
+  | 'accepted'
+  | 'edited'
+  | 'rejected'
+  | 'merged'
+  | 'replaced'
+  | 'kept'
+  | 'retired'
+  | 'scope_changed'
+  | 'visibility_changed'
+  | 'expired';
+
+export type SuggestionReviewAction =
+  | 'accept'
+  | 'edit'
+  | 'reject'
+  | 'merge'
+  | 'replace'
+  | 'keep_both'
+  | 'retire'
+  | 'change_scope'
+  | 'change_visibility'
+  | 'expire';
 
 export type CreateSuggestionInput = {
   target_id?: string;
@@ -412,6 +437,17 @@ export async function acceptSuggestion(suggestionId: string): Promise<MemorySugg
 export async function rejectSuggestion(suggestionId: string): Promise<MemorySuggestion> {
   const res = await apiFetch(`/api/suggestions/${encodeURIComponent(suggestionId)}/reject`, {
     method: 'POST',
+  });
+  return res.json();
+}
+
+export async function reviewSuggestion(
+  suggestionId: string,
+  action: SuggestionReviewAction,
+): Promise<MemorySuggestion> {
+  const res = await apiFetch(`/api/suggestions/${encodeURIComponent(suggestionId)}/review`, {
+    method: 'POST',
+    body: JSON.stringify({ action }),
   });
   return res.json();
 }
@@ -630,6 +666,65 @@ export async function distillSource(input: {
   const res = await apiFetch('/api/memory/distill', {
     method: 'POST',
     body: JSON.stringify(input),
+  });
+  return res.json();
+}
+
+export type CaptureTurnInput = {
+  role: 'system' | 'user' | 'assistant' | 'tool' | string;
+  text: string;
+  ts?: string;
+  tool_calls?: Array<{
+    name: string;
+    arguments?: Record<string, unknown>;
+    result?: string | null;
+    call_id?: string | null;
+    ok?: boolean;
+  }>;
+};
+
+export type CaptureConversationInput = {
+  session_id: string;
+  interface?: string;
+  started_at?: string;
+  turns: CaptureTurnInput[];
+  scope?: string;
+  origin_uri?: string;
+};
+
+export type CaptureResponse = {
+  source_id: string;
+  content_hash: string;
+  version: number;
+  document_id: string;
+  chunk_count: number;
+  deduplicated: boolean;
+};
+
+export async function captureConversation(
+  input: CaptureConversationInput,
+): Promise<CaptureResponse> {
+  const res = await apiFetch('/api/sources/capture', {
+    method: 'POST',
+    body: JSON.stringify({
+      session_id: input.session_id,
+      interface: input.interface ?? 'archivum_home',
+      started_at: input.started_at ?? '',
+      scope: input.scope ?? 'person:self',
+      origin_uri: input.origin_uri ?? '',
+      turns: input.turns.map((turn) => ({
+        role: turn.role,
+        text: turn.text,
+        ts: turn.ts ?? '',
+        tool_calls: (turn.tool_calls ?? []).map((call) => ({
+          name: call.name,
+          arguments: call.arguments ?? {},
+          result: call.result ?? null,
+          call_id: call.call_id ?? null,
+          ok: call.ok ?? true,
+        })),
+      })),
+    }),
   });
   return res.json();
 }
