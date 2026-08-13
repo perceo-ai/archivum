@@ -21,8 +21,6 @@ const REVIEW_ACTIONS: Array<{
   { action: 'replace', label: 'Replace', icon: Split, variant: 'outline' },
   { action: 'keep_both', label: 'Keep both', icon: Shield, variant: 'outline' },
   { action: 'retire', label: 'Retire stale', icon: AlertTriangle, variant: 'outline' },
-  { action: 'change_scope', label: 'Change scope', icon: Split, variant: 'outline' },
-  { action: 'change_visibility', label: 'Visibility', icon: Shield, variant: 'outline' },
   { action: 'reject', label: 'Reject', icon: X, variant: 'ghost' },
 ];
 

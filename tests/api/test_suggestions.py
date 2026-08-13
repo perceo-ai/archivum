@@ -10,8 +10,10 @@ from fastapi.testclient import TestClient
 
 from archivum.auth import create_access_token
 from archivum.config import get_settings
+from archivum.knowledge.models import Citation
 from archivum.knowledge.suggestions import SuggestionRepository, init_suggestion_schema
 from archivum.main import create_app
+from archivum.memory.registry import MemoryAssetRegistry, init_memory_schema
 
 
 def _client_for_wiki(wiki_id: str) -> TestClient:
@@ -37,6 +39,7 @@ async def _seed_suggestion(
 ):
     async with aiosqlite.connect(str(db_path)) as conn:
         conn.row_factory = aiosqlite.Row
+        await init_memory_schema(conn)
         await init_suggestion_schema(conn)
         return await SuggestionRepository(conn).create_suggestion(
             target_id=target_id,
@@ -44,6 +47,32 @@ async def _seed_suggestion(
             proposed_markdown=proposed_markdown,
             proposed_objects=[],
             citations=[],
+        )
+
+
+async def _seed_memory_asset(db_path, asset_id: str, *, status: str = "active"):
+    async with aiosqlite.connect(str(db_path)) as conn:
+        conn.row_factory = aiosqlite.Row
+        await init_memory_schema(conn)
+        return await MemoryAssetRegistry(conn).register_asset(
+            id=asset_id,
+            wiki_id="alpha",
+            asset_type="wiki",
+            layer="L2",
+            name=asset_id,
+            scope="person:self",
+            status=status,
+            summary="existing",
+            body="Existing memory",
+            citations=[
+                Citation(
+                    source_id="source:seed",
+                    chunk_id="chunk:seed",
+                    span_start=0,
+                    span_end=4,
+                    quote="seed",
+                )
+            ],
         )
 
 
@@ -123,7 +152,9 @@ def test_accept_reject_enforce_scope_and_conflicts(tmp_path, monkeypatch):
     assert hidden.status_code == 404
 
 
-def test_review_action_route_supports_merge_replace_keep_retire_scope_visibility(tmp_path, monkeypatch):
+def test_review_action_route_supports_merge_replace_keep_retire_scope_visibility(
+    tmp_path, monkeypatch
+):
     db_path = tmp_path / "suggestions.db"
     _patch_suggestion_db(monkeypatch, db_path)
     client = _client_for_wiki("alpha")
@@ -133,13 +164,154 @@ def test_review_action_route_supports_merge_replace_keep_retire_scope_visibility
         ("replace", "replaced"),
         ("keep_both", "kept"),
         ("retire", "retired"),
-        ("change_scope", "scope_changed"),
-        ("change_visibility", "visibility_changed"),
     ]:
-        suggestion = asyncio.run(_seed_suggestion(db_path, target_id=f"page:alpha:{action}"))
-        response = client.post(f"/api/suggestions/{suggestion.id}/review", json={"action": action})
+        suggestion = asyncio.run(
+            _seed_suggestion(db_path, target_id=f"page:alpha:{action}")
+        )
+        response = client.post(
+            f"/api/suggestions/{suggestion.id}/review", json={"action": action}
+        )
         assert response.status_code == 200
         assert response.json()["status"] == expected
+
+
+def test_accepting_a_memory_suggestion_registers_active_memory_asset(tmp_path, monkeypatch):
+    db_path = tmp_path / "suggestions.db"
+    _patch_suggestion_db(monkeypatch, db_path)
+    client = _client_for_wiki("alpha")
+    suggestion = asyncio.run(
+        _seed_suggestion(
+            db_path,
+            target_id="wiki:alpha",
+            proposed_markdown="Remember the human-centered direction.",
+        )
+    )
+
+    response = client.post(
+        f"/api/suggestions/{suggestion.id}/review", json={"action": "accept"}
+    )
+
+    assert response.status_code == 200
+
+    async def load_asset():
+        async with aiosqlite.connect(str(db_path)) as conn:
+            conn.row_factory = aiosqlite.Row
+            return await MemoryAssetRegistry(conn).get_asset(
+                f"memory:suggestion:{suggestion.id}"
+            )
+
+    asset = asyncio.run(load_asset())
+    assert asset is not None
+    assert asset.status == "active"
+    assert asset.body == "Remember the human-centered direction."
+    assert asset.approved_by == "owner"
+
+
+def test_replace_archives_conflicting_memory_and_records_supersession(tmp_path, monkeypatch):
+    db_path = tmp_path / "suggestions.db"
+    _patch_suggestion_db(monkeypatch, db_path)
+    asyncio.run(_seed_memory_asset(db_path, "memory:old"))
+    client = _client_for_wiki("alpha")
+    suggestion = asyncio.run(
+        _seed_suggestion(
+            db_path,
+            target_id="wiki:alpha",
+            proposed_markdown="The human is the root.",
+        )
+    )
+    async def add_conflict():
+        async with aiosqlite.connect(str(db_path)) as conn:
+            await conn.execute(
+                "UPDATE memory_suggestions SET conflicts=? WHERE id=?",
+                ('["memory:old"]', suggestion.id),
+            )
+            await conn.commit()
+
+    asyncio.run(add_conflict())
+
+    response = client.post(
+        f"/api/suggestions/{suggestion.id}/review", json={"action": "replace"}
+    )
+
+    assert response.status_code == 200
+
+    async def load_assets():
+        async with aiosqlite.connect(str(db_path)) as conn:
+            conn.row_factory = aiosqlite.Row
+            registry = MemoryAssetRegistry(conn)
+            return (
+                await registry.get_asset("memory:old"),
+                await registry.get_asset(f"memory:suggestion:{suggestion.id}"),
+            )
+
+    old, new = asyncio.run(load_assets())
+    assert old.status == "archived"
+    assert old.superseded_by == [new.id]
+    assert new.supersedes == ["memory:old"]
+
+
+def test_scope_and_visibility_actions_require_destinations_and_update_assets(
+    tmp_path, monkeypatch
+):
+    db_path = tmp_path / "suggestions.db"
+    _patch_suggestion_db(monkeypatch, db_path)
+    asyncio.run(_seed_memory_asset(db_path, "memory:target"))
+    client = _client_for_wiki("alpha")
+    suggestion = asyncio.run(
+        _seed_suggestion(
+            db_path,
+            target_id="wiki:alpha",
+            proposed_markdown="Update governance.",
+        )
+    )
+
+    missing_scope = client.post(
+        f"/api/suggestions/{suggestion.id}/review",
+        json={"action": "change_scope", "asset_id": "memory:target"},
+    )
+    assert missing_scope.status_code == 400
+
+    scoped = client.post(
+        f"/api/suggestions/{suggestion.id}/review",
+        json={
+            "action": "change_scope",
+            "asset_id": "memory:target",
+            "scope": "project:archivum",
+        },
+    )
+    assert scoped.status_code == 200
+
+    suggestion2 = asyncio.run(
+        _seed_suggestion(
+            db_path,
+            target_id="wiki:alpha",
+            proposed_markdown="Update visibility.",
+        )
+    )
+    missing_visibility = client.post(
+        f"/api/suggestions/{suggestion2.id}/review",
+        json={"action": "change_visibility", "asset_id": "memory:target"},
+    )
+    assert missing_visibility.status_code == 400
+
+    visible = client.post(
+        f"/api/suggestions/{suggestion2.id}/review",
+        json={
+            "action": "change_visibility",
+            "asset_id": "memory:target",
+            "visibility": "shared",
+        },
+    )
+    assert visible.status_code == 200
+
+    async def load_asset():
+        async with aiosqlite.connect(str(db_path)) as conn:
+            conn.row_factory = aiosqlite.Row
+            return await MemoryAssetRegistry(conn).get_asset("memory:target")
+
+    asset = asyncio.run(load_asset())
+    assert asset.scope == "project:archivum"
+    assert asset.visibility == "shared"
 
 
 def test_create_suggestion_rejects_cross_wiki_targets(tmp_path, monkeypatch):

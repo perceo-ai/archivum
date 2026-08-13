@@ -257,12 +257,6 @@ export default function HomePage() {
                   <Button size="sm" variant="outline" onClick={() => handleReviewAction(suggestion, 'retire')}>
                     Retire
                   </Button>
-                  <Button size="sm" variant="outline" onClick={() => handleReviewAction(suggestion, 'change_scope')}>
-                    Scope
-                  </Button>
-                  <Button size="sm" variant="outline" onClick={() => handleReviewAction(suggestion, 'change_visibility')}>
-                    Visibility
-                  </Button>
                   <Button size="sm" variant="ghost" onClick={() => handleReviewAction(suggestion, 'reject')}>
                     Reject
                   </Button>

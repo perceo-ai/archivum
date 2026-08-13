@@ -513,6 +513,31 @@ describe('suggestions api', () => {
     }));
   });
 
+  it('sends destination payloads for scoped review actions', async () => {
+    fetchMock.mockResolvedValueOnce(new Response(
+      JSON.stringify({ ...suggestion, status: 'scope_changed' }),
+      { status: 200, headers: { 'Content-Type': 'application/json' } },
+    ));
+
+    await expect(reviewSuggestion('suggestion:one', 'change_scope', {
+      asset_id: 'memory:target',
+      scope: 'project:archivum',
+    })).resolves.toEqual({
+      ...suggestion,
+      status: 'scope_changed',
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith('/api/suggestions/suggestion%3Aone/review', expect.objectContaining({
+      method: 'POST',
+      credentials: 'include',
+      body: JSON.stringify({
+        action: 'change_scope',
+        asset_id: 'memory:target',
+        scope: 'project:archivum',
+      }),
+    }));
+  });
+
   it('expires due pending suggestions', async () => {
     fetchMock.mockResolvedValueOnce(apiJsonResponse([{ ...suggestion, status: 'expired' }]));
 

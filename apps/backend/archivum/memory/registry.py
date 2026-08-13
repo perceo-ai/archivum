@@ -394,6 +394,11 @@ class MemoryAssetRegistry:
             raise ValueError(f"Unsupported memory asset visibility: {visibility}")
         return await self._set_field(asset_id, "visibility", visibility)
 
+    async def set_scope(self, asset_id: str, scope: str) -> MemoryAsset:
+        if not scope.strip():
+            raise ValueError("Memory asset scope must be non-empty")
+        return await self._set_field(asset_id, "scope", scope)
+
     async def _set_field(self, asset_id: str, column: str, value: str) -> MemoryAsset:
         cursor = await self._conn.execute(
             f"UPDATE memory_assets SET {column}=?, updated_at=? WHERE id=?",
