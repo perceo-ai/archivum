@@ -474,7 +474,12 @@ export async function rejectSuggestion(suggestionId: string): Promise<MemorySugg
 export async function reviewSuggestion(
   suggestionId: string,
   action: SuggestionReviewAction,
-  options: { asset_id?: string; scope?: string; visibility?: string } = {},
+  options: {
+    asset_id?: string;
+    scope?: string;
+    visibility?: string;
+    edited_markdown?: string;
+  } = {},
 ): Promise<MemorySuggestion> {
   const res = await apiFetch(`/api/suggestions/${encodeURIComponent(suggestionId)}/review`, {
     method: 'POST',

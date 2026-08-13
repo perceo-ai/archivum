@@ -130,6 +130,40 @@ async def test_status_and_visibility_transitions():
 
 
 @pytest.mark.asyncio
+async def test_scoped_asset_mutators_require_matching_wiki():
+    async with aiosqlite.connect(":memory:") as conn:
+        registry = await _registry(conn)
+        await _register(registry, wiki_id="default")
+
+        with pytest.raises(KeyError):
+            await registry.set_status_for_wiki(
+                "memory:skill:deploy",
+                "other",
+                "archived",
+            )
+
+        archived = await registry.set_status_for_wiki(
+            "memory:skill:deploy",
+            "default",
+            "archived",
+        )
+        scoped = await registry.set_scope_for_wiki(
+            "memory:skill:deploy",
+            "default",
+            "project:archivum",
+        )
+        visible = await registry.set_visibility_for_wiki(
+            "memory:skill:deploy",
+            "default",
+            "shared",
+        )
+
+        assert archived.status == "archived"
+        assert scoped.scope == "project:archivum"
+        assert visible.visibility == "shared"
+
+
+@pytest.mark.asyncio
 async def test_invalid_enum_values_are_rejected():
     async with aiosqlite.connect(":memory:") as conn:
         registry = await _registry(conn)

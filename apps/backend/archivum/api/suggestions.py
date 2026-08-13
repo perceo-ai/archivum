@@ -52,6 +52,7 @@ class ReviewSuggestionRequest(BaseModel):
     asset_id: str | None = None
     scope: str | None = None
     visibility: str | None = None
+    edited_markdown: str | None = None
 
 
 class ExpireSuggestionsRequest(BaseModel):
@@ -166,23 +167,29 @@ async def _review_suggestion(
     current_user: CurrentUser,
 ) -> MemorySuggestion:
     async with sqlite.get_db() as conn:
+        await conn.execute("BEGIN IMMEDIATE")
         repo = SuggestionRepository(conn)
-        suggestion = await repo.get_suggestion(suggestion_id)
-        if suggestion is None or not _is_authorized_target(
-            suggestion.target_id, current_user.wiki_id
-        ):
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail={"detail": "Suggestion not found", "code": "suggestion_not_found"},
-            )
         try:
+            suggestion = await repo.get_suggestion(suggestion_id)
+            if suggestion is None or not _is_authorized_target(
+                suggestion.target_id, current_user.wiki_id
+            ):
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail={
+                        "detail": "Suggestion not found",
+                        "code": "suggestion_not_found",
+                    },
+                )
             if suggestion.status != "pending":
                 raise ValueError(
                     f"Suggestion '{suggestion_id}' is not pending and cannot be transitioned"
                 )
             await _apply_review_effect(conn, suggestion, body, current_user)
-            await repo.transition_suggestion(suggestion_id, body.action)
+            await repo.transition_suggestion(suggestion_id, body.action, commit=False)
+            await conn.commit()
         except ValueError as exc:
+            await conn.rollback()
             conflict = "is not pending" in str(exc)
             error_status = (
                 status.HTTP_409_CONFLICT
@@ -197,10 +204,17 @@ async def _review_suggestion(
                 },
             ) from exc
         except KeyError as exc:
+            await conn.rollback()
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail={"detail": str(exc), "code": "review_target_not_found"},
             ) from exc
+        except HTTPException:
+            await conn.rollback()
+            raise
+        except Exception:
+            await conn.rollback()
+            raise
         loaded = await repo.get_suggestion(suggestion_id)
         assert loaded is not None
         return loaded
@@ -212,39 +226,72 @@ async def _apply_review_effect(
     body: ReviewSuggestionRequest,
     current_user: CurrentUser,
 ) -> None:
-    registry = MemoryAssetRegistry(conn)
-    if body.action in {"accept", "merge", "keep_both"}:
+    registry = MemoryAssetRegistry(conn, autocommit=False)
+    if body.action in {"accept", "edit", "merge", "keep_both"}:
+        if body.action == "edit" and body.edited_markdown is None:
+            raise ValueError("Edit review actions require edited_markdown")
         await _register_suggestion_asset(
             registry,
             suggestion,
             current_user,
             supersedes=[],
+            markdown=body.edited_markdown,
         )
         return
     if body.action == "replace":
-        supersedes = _review_target_asset_ids(suggestion, body)
+        supersedes = await _review_target_asset_ids(
+            registry,
+            suggestion,
+            body,
+            current_user.wiki_id,
+        )
         await _register_suggestion_asset(
             registry,
             suggestion,
             current_user,
             supersedes=supersedes,
+            markdown=None,
         )
         for asset_id in supersedes:
-            await registry.set_status(asset_id, "archived")
+            await registry.set_status_for_wiki(
+                asset_id,
+                current_user.wiki_id,
+                "archived",
+            )
         return
     if body.action == "retire":
-        for asset_id in _review_target_asset_ids(suggestion, body):
-            await registry.set_status(asset_id, "archived")
+        asset_ids = await _review_target_asset_ids(
+            registry,
+            suggestion,
+            body,
+            current_user.wiki_id,
+        )
+        for asset_id in asset_ids:
+            await registry.set_status_for_wiki(
+                asset_id,
+                current_user.wiki_id,
+                "archived",
+            )
         return
     if body.action == "change_scope":
         if body.asset_id is None or body.scope is None:
             raise ValueError("Scope review actions require asset_id and scope")
-        await registry.set_scope(body.asset_id, body.scope)
+        await _require_review_asset(registry, body.asset_id, current_user.wiki_id)
+        await registry.set_scope_for_wiki(
+            body.asset_id,
+            current_user.wiki_id,
+            body.scope,
+        )
         return
     if body.action == "change_visibility":
         if body.asset_id is None or body.visibility is None:
             raise ValueError("Visibility review actions require asset_id and visibility")
-        await registry.set_visibility(body.asset_id, body.visibility)
+        await _require_review_asset(registry, body.asset_id, current_user.wiki_id)
+        await registry.set_visibility_for_wiki(
+            body.asset_id,
+            current_user.wiki_id,
+            body.visibility,
+        )
 
 
 async def _register_suggestion_asset(
@@ -253,19 +300,21 @@ async def _register_suggestion_asset(
     current_user: CurrentUser,
     *,
     supersedes: list[str],
+    markdown: str | None,
 ) -> None:
     now = datetime.now(UTC).isoformat()
+    body = suggestion.proposed_markdown if markdown is None else markdown
     await registry.register_asset(
         id=_suggestion_asset_id(suggestion),
         wiki_id=current_user.wiki_id,
         asset_type="wiki",
         layer="L1",
-        name=_suggestion_asset_name(suggestion),
+        name=_suggestion_asset_name(suggestion, body),
         scope=_suggestion_scope(suggestion, current_user.wiki_id),
         status="active",
         visibility=_suggestion_visibility(suggestion),
-        summary=suggestion.rationale or _truncate(suggestion.proposed_markdown, 160),
-        body=suggestion.proposed_markdown,
+        summary=suggestion.rationale or _truncate(body, 160),
+        body=body,
         tags=["suggestion", suggestion.suggestion_type],
         metadata={
             "suggestion_id": suggestion.id,
@@ -290,8 +339,8 @@ def _suggestion_asset_id(suggestion: MemorySuggestion) -> str:
     return f"memory:suggestion:{suggestion.id}"
 
 
-def _suggestion_asset_name(suggestion: MemorySuggestion) -> str:
-    for line in suggestion.proposed_markdown.splitlines():
+def _suggestion_asset_name(suggestion: MemorySuggestion, markdown: str) -> str:
+    for line in markdown.splitlines():
         cleaned = line.strip().lstrip("#").strip()
         if cleaned:
             return _truncate(cleaned, 80)
@@ -325,9 +374,11 @@ def _suggestion_citations(suggestion: MemorySuggestion) -> list[Citation]:
     return citations
 
 
-def _review_target_asset_ids(
+async def _review_target_asset_ids(
+    registry: MemoryAssetRegistry,
     suggestion: MemorySuggestion,
     body: ReviewSuggestionRequest,
+    wiki_id: str,
 ) -> list[str]:
     candidates: list[str] = []
     if body.asset_id is not None:
@@ -342,7 +393,19 @@ def _review_target_asset_ids(
         if candidate.startswith("memory:") and candidate not in seen:
             seen.add(candidate)
             asset_ids.append(candidate)
+    for asset_id in asset_ids:
+        await _require_review_asset(registry, asset_id, wiki_id)
     return asset_ids
+
+
+async def _require_review_asset(
+    registry: MemoryAssetRegistry,
+    asset_id: str,
+    wiki_id: str,
+) -> None:
+    asset = await registry.get_asset_for_wiki(asset_id, wiki_id)
+    if asset is None:
+        raise KeyError(f"Memory asset '{asset_id}' not found")
 
 
 def _truncate(value: str, limit: int) -> str:

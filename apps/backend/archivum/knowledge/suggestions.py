@@ -305,9 +305,13 @@ class SuggestionRepository:
         await self._transition(suggestion_id, "rejected")
 
     async def transition_suggestion(
-        self, suggestion_id: str, action: SuggestionAction
+        self,
+        suggestion_id: str,
+        action: SuggestionAction,
+        *,
+        commit: bool = True,
     ) -> None:
-        await self._transition(suggestion_id, ACTION_TO_STATUS[action])
+        await self._transition(suggestion_id, ACTION_TO_STATUS[action], commit=commit)
 
     async def expire_due_candidates(self, now: str) -> list[MemorySuggestion]:
         async with self._conn.execute(
@@ -327,8 +331,15 @@ class SuggestionRepository:
                 expired.append(loaded)
         return expired
 
-    async def _transition(self, suggestion_id: str, target_status: SuggestionStatus) -> None:
-        await self._conn.execute("BEGIN")
+    async def _transition(
+        self,
+        suggestion_id: str,
+        target_status: SuggestionStatus,
+        *,
+        commit: bool = True,
+    ) -> None:
+        if commit:
+            await self._conn.execute("BEGIN")
         try:
             cursor = await self._conn.execute(
                 """
@@ -349,9 +360,11 @@ class SuggestionRepository:
                     raise ValueError(
                         f"Suggestion '{suggestion_id}' is already {row['status']}"
                     )
-            await self._conn.commit()
+            if commit:
+                await self._conn.commit()
         except Exception:
-            await self._conn.rollback()
+            if commit:
+                await self._conn.rollback()
             raise
 
     @staticmethod

@@ -77,8 +77,9 @@ async def _migrate_memory_schema(conn: aiosqlite.Connection) -> None:
 class MemoryAssetRegistry:
     """Register, version, govern, and equip memory assets."""
 
-    def __init__(self, conn: aiosqlite.Connection) -> None:
+    def __init__(self, conn: aiosqlite.Connection, *, autocommit: bool = True) -> None:
         self._conn = conn
+        self._autocommit = autocommit
 
     # ── Scopes ────────────────────────────────────────────────────────────
 
@@ -227,7 +228,8 @@ class MemoryAssetRegistry:
             effective_status = existing.status
             effective_visibility = existing.visibility
 
-        await self._conn.execute("BEGIN")
+        if self._autocommit:
+            await self._conn.execute("BEGIN")
         try:
             await self._conn.execute(
                 """
@@ -318,9 +320,11 @@ class MemoryAssetRegistry:
                     now,
                 ),
             )
-            await self._conn.commit()
+            if self._autocommit:
+                await self._conn.commit()
         except Exception:
-            await self._conn.rollback()
+            if self._autocommit:
+                await self._conn.rollback()
             raise
 
         loaded = await self.get_asset(id)
@@ -330,6 +334,16 @@ class MemoryAssetRegistry:
     async def get_asset(self, asset_id: str) -> MemoryAsset | None:
         async with self._conn.execute(
             "SELECT * FROM memory_assets WHERE id=?", (asset_id,)
+        ) as cursor:
+            row = await cursor.fetchone()
+        return _row_to_asset(row) if row else None
+
+    async def get_asset_for_wiki(
+        self, asset_id: str, wiki_id: str
+    ) -> MemoryAsset | None:
+        async with self._conn.execute(
+            "SELECT * FROM memory_assets WHERE id=? AND wiki_id=?",
+            (asset_id, wiki_id),
         ) as cursor:
             row = await cursor.fetchone()
         return _row_to_asset(row) if row else None
@@ -372,6 +386,13 @@ class MemoryAssetRegistry:
             raise ValueError(f"Unsupported memory asset status: {status}")
         return await self._set_field(asset_id, "status", status)
 
+    async def set_status_for_wiki(
+        self, asset_id: str, wiki_id: str, status: str
+    ) -> MemoryAsset:
+        if status not in ASSET_STATUSES:
+            raise ValueError(f"Unsupported memory asset status: {status}")
+        return await self._set_field(asset_id, "status", status, wiki_id=wiki_id)
+
     async def _append_asset_list_field(
         self, asset_id: str, column: str, value: str, *, updated_at: str
     ) -> None:
@@ -394,15 +415,44 @@ class MemoryAssetRegistry:
             raise ValueError(f"Unsupported memory asset visibility: {visibility}")
         return await self._set_field(asset_id, "visibility", visibility)
 
+    async def set_visibility_for_wiki(
+        self, asset_id: str, wiki_id: str, visibility: str
+    ) -> MemoryAsset:
+        if visibility not in ASSET_VISIBILITIES:
+            raise ValueError(f"Unsupported memory asset visibility: {visibility}")
+        return await self._set_field(
+            asset_id, "visibility", visibility, wiki_id=wiki_id
+        )
+
     async def set_scope(self, asset_id: str, scope: str) -> MemoryAsset:
         if not scope.strip():
             raise ValueError("Memory asset scope must be non-empty")
         return await self._set_field(asset_id, "scope", scope)
 
-    async def _set_field(self, asset_id: str, column: str, value: str) -> MemoryAsset:
+    async def set_scope_for_wiki(
+        self, asset_id: str, wiki_id: str, scope: str
+    ) -> MemoryAsset:
+        if not scope.strip():
+            raise ValueError("Memory asset scope must be non-empty")
+        return await self._set_field(asset_id, "scope", scope, wiki_id=wiki_id)
+
+    async def _set_field(
+        self,
+        asset_id: str,
+        column: str,
+        value: str,
+        *,
+        wiki_id: str | None = None,
+    ) -> MemoryAsset:
+        where = "id=?" if wiki_id is None else "id=? AND wiki_id=?"
+        params: tuple[Any, ...] = (
+            (value, _now(), asset_id)
+            if wiki_id is None
+            else (value, _now(), asset_id, wiki_id)
+        )
         cursor = await self._conn.execute(
-            f"UPDATE memory_assets SET {column}=?, updated_at=? WHERE id=?",
-            (value, _now(), asset_id),
+            f"UPDATE memory_assets SET {column}=?, updated_at=? WHERE {where}",
+            params,
         )
         if cursor.rowcount == 0:
             raise KeyError(f"Memory asset '{asset_id}' not found")
@@ -413,8 +463,13 @@ class MemoryAssetRegistry:
                 "WHERE asset_id=? AND version=(SELECT version FROM memory_assets WHERE id=?)",
                 (value, asset_id, asset_id),
             )
-        await self._conn.commit()
-        loaded = await self.get_asset(asset_id)
+        if self._autocommit:
+            await self._conn.commit()
+        loaded = (
+            await self.get_asset(asset_id)
+            if wiki_id is None
+            else await self.get_asset_for_wiki(asset_id, wiki_id)
+        )
         assert loaded is not None
         return loaded
 

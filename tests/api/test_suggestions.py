@@ -50,17 +50,23 @@ async def _seed_suggestion(
         )
 
 
-async def _seed_memory_asset(db_path, asset_id: str, *, status: str = "active"):
+async def _seed_memory_asset(
+    db_path,
+    asset_id: str,
+    *,
+    status: str = "active",
+    wiki_id: str = "alpha",
+):
     async with aiosqlite.connect(str(db_path)) as conn:
         conn.row_factory = aiosqlite.Row
         await init_memory_schema(conn)
         return await MemoryAssetRegistry(conn).register_asset(
             id=asset_id,
-            wiki_id="alpha",
+            wiki_id=wiki_id,
             asset_type="wiki",
             layer="L2",
             name=asset_id,
-            scope="person:self",
+            scope=f"wiki:{wiki_id}",
             status=status,
             summary="existing",
             body="Existing memory",
@@ -207,6 +213,55 @@ def test_accepting_a_memory_suggestion_registers_active_memory_asset(tmp_path, m
     assert asset.approved_by == "owner"
 
 
+def test_editing_a_memory_suggestion_registers_edited_memory_asset(tmp_path, monkeypatch):
+    db_path = tmp_path / "suggestions.db"
+    _patch_suggestion_db(monkeypatch, db_path)
+    client = _client_for_wiki("alpha")
+    suggestion = asyncio.run(
+        _seed_suggestion(
+            db_path,
+            target_id="wiki:alpha",
+            proposed_markdown="Original proposed memory.",
+        )
+    )
+
+    missing_edit = client.post(
+        f"/api/suggestions/{suggestion.id}/review",
+        json={"action": "edit"},
+    )
+    assert missing_edit.status_code == 400
+
+    suggestion = asyncio.run(
+        _seed_suggestion(
+            db_path,
+            target_id="wiki:alpha",
+            proposed_markdown="Original proposed memory.",
+        )
+    )
+    edited = client.post(
+        f"/api/suggestions/{suggestion.id}/review",
+        json={
+            "action": "edit",
+            "edited_markdown": "Reviewer-approved memory.",
+        },
+    )
+
+    assert edited.status_code == 200
+    assert edited.json()["status"] == "edited"
+
+    async def load_asset():
+        async with aiosqlite.connect(str(db_path)) as conn:
+            conn.row_factory = aiosqlite.Row
+            return await MemoryAssetRegistry(conn).get_asset(
+                f"memory:suggestion:{suggestion.id}"
+            )
+
+    asset = asyncio.run(load_asset())
+    assert asset is not None
+    assert asset.body == "Reviewer-approved memory."
+    assert asset.status == "active"
+
+
 def test_replace_archives_conflicting_memory_and_records_supersession(tmp_path, monkeypatch):
     db_path = tmp_path / "suggestions.db"
     _patch_suggestion_db(monkeypatch, db_path)
@@ -248,6 +303,111 @@ def test_replace_archives_conflicting_memory_and_records_supersession(tmp_path, 
     assert old.status == "archived"
     assert old.superseded_by == [new.id]
     assert new.supersedes == ["memory:old"]
+
+
+def test_review_actions_reject_cross_wiki_asset_targets(tmp_path, monkeypatch):
+    db_path = tmp_path / "suggestions.db"
+    _patch_suggestion_db(monkeypatch, db_path)
+    asyncio.run(_seed_memory_asset(db_path, "memory:foreign", wiki_id="other"))
+    client = _client_for_wiki("alpha")
+    suggestion = asyncio.run(
+        _seed_suggestion(
+            db_path,
+            target_id="wiki:alpha",
+            proposed_markdown="Replacement text.",
+        )
+    )
+
+    async def add_foreign_conflict():
+        async with aiosqlite.connect(str(db_path)) as conn:
+            await conn.execute(
+                "UPDATE memory_suggestions SET conflicts=? WHERE id=?",
+                ('["memory:foreign"]', suggestion.id),
+            )
+            await conn.commit()
+
+    asyncio.run(add_foreign_conflict())
+
+    replace = client.post(
+        f"/api/suggestions/{suggestion.id}/review",
+        json={"action": "replace"},
+    )
+    assert replace.status_code == 404
+
+    suggestion2 = asyncio.run(
+        _seed_suggestion(
+            db_path,
+            target_id="wiki:alpha",
+            proposed_markdown="Visibility text.",
+        )
+    )
+    visibility = client.post(
+        f"/api/suggestions/{suggestion2.id}/review",
+        json={
+            "action": "change_visibility",
+            "asset_id": "memory:foreign",
+            "visibility": "shared",
+        },
+    )
+    assert visibility.status_code == 404
+
+    async def load_foreign_and_replacement():
+        async with aiosqlite.connect(str(db_path)) as conn:
+            conn.row_factory = aiosqlite.Row
+            registry = MemoryAssetRegistry(conn)
+            return (
+                await registry.get_asset("memory:foreign"),
+                await registry.get_asset(f"memory:suggestion:{suggestion.id}"),
+            )
+
+    foreign, replacement = asyncio.run(load_foreign_and_replacement())
+    assert foreign.status == "active"
+    assert foreign.visibility == "private"
+    assert replacement is None
+
+
+def test_review_effects_roll_back_when_transition_fails(tmp_path, monkeypatch):
+    from archivum.api import suggestions as suggestions_api
+
+    db_path = tmp_path / "suggestions.db"
+    _patch_suggestion_db(monkeypatch, db_path)
+    client = _client_for_wiki("alpha")
+    suggestion = asyncio.run(
+        _seed_suggestion(
+            db_path,
+            target_id="wiki:alpha",
+            proposed_markdown="Transient memory.",
+        )
+    )
+
+    async def fail_transition(self, suggestion_id, action, *, commit=True):
+        raise ValueError("forced transition failure")
+
+    monkeypatch.setattr(
+        suggestions_api.SuggestionRepository,
+        "transition_suggestion",
+        fail_transition,
+    )
+
+    response = client.post(
+        f"/api/suggestions/{suggestion.id}/review",
+        json={"action": "accept"},
+    )
+    assert response.status_code == 400
+
+    async def load_state():
+        async with aiosqlite.connect(str(db_path)) as conn:
+            conn.row_factory = aiosqlite.Row
+            registry = MemoryAssetRegistry(conn)
+            repo = SuggestionRepository(conn)
+            return (
+                await registry.get_asset(f"memory:suggestion:{suggestion.id}"),
+                await repo.get_suggestion(suggestion.id),
+            )
+
+    asset, reloaded = asyncio.run(load_state())
+    assert asset is None
+    assert reloaded.status == "pending"
 
 
 def test_scope_and_visibility_actions_require_destinations_and_update_assets(
