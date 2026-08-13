@@ -18,7 +18,10 @@ describe('human-centered home surface', () => {
 
     expect(html).toContain('person:self');
     expect(html).toContain('What should Archivum remember?');
+    expect(html).toContain('Librarian response');
     expect(html).toContain('Current active context');
+    expect(html).toContain('Context explanations');
+    expect(html).toContain('Staleness warnings');
     expect(html).toContain('Suggested updates');
     expect(html).toContain('Accepted memory');
   });

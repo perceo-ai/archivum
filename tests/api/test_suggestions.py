@@ -159,3 +159,69 @@ def test_create_suggestion_rejects_cross_wiki_targets(tmp_path, monkeypatch):
     )
 
     assert response.status_code == 403
+
+
+def test_create_suggestion_accepts_review_card_metadata(tmp_path, monkeypatch):
+    db_path = tmp_path / "suggestions.db"
+    asyncio.run(_seed_suggestion(db_path, target_id="page:alpha:seed"))
+    _patch_suggestion_db(monkeypatch, db_path)
+
+    response = _client_for_wiki("alpha").post(
+        "/api/suggestions",
+        json={
+            "target_id": "wiki:alpha",
+            "suggestion_type": "memory_atom",
+            "proposed_markdown": "Remember the human-centered direction.",
+            "proposed_objects": [],
+            "citations": [],
+            "proposed_scopes": ["person:self", "project:archivum"],
+            "scores": {"future_utility": 0.9, "risk": 0.1},
+            "duplicates": ["memory:old"],
+            "conflicts": ["memory:conflict"],
+            "retention_tier": "candidate",
+            "agent_visibility": "on_review",
+            "rationale": "Useful durable product direction.",
+            "estimated_durability": "durable",
+            "expires_at": "2026-09-12T00:00:00+00:00",
+        },
+    )
+
+    assert response.status_code == 201
+    body = response.json()
+    assert body["proposed_scopes"] == ["person:self", "project:archivum"]
+    assert body["scores"]["future_utility"] == 0.9
+    assert body["duplicates"] == ["memory:old"]
+    assert body["conflicts"] == ["memory:conflict"]
+    assert body["agent_visibility"] == "on_review"
+    assert body["rationale"] == "Useful durable product direction."
+
+
+def test_expire_suggestions_route_expires_only_due_pending_cards(tmp_path, monkeypatch):
+    db_path = tmp_path / "suggestions.db"
+    _patch_suggestion_db(monkeypatch, db_path)
+    stale = asyncio.run(
+        _seed_suggestion(db_path, target_id="wiki:alpha", proposed_markdown="old")
+    )
+    fresh = asyncio.run(
+        _seed_suggestion(db_path, target_id="wiki:alpha", proposed_markdown="fresh")
+    )
+    async def set_expiry():
+        async with aiosqlite.connect(str(db_path)) as conn:
+            await conn.execute(
+                "UPDATE memory_suggestions SET expires_at=? WHERE id=?",
+                ("2026-08-01T00:00:00+00:00", stale.id),
+            )
+            await conn.execute(
+                "UPDATE memory_suggestions SET expires_at=? WHERE id=?",
+                ("2026-09-01T00:00:00+00:00", fresh.id),
+            )
+            await conn.commit()
+    asyncio.run(set_expiry())
+
+    response = _client_for_wiki("alpha").post(
+        "/api/suggestions/expire",
+        json={"now": "2026-08-13T00:00:00+00:00"},
+    )
+
+    assert response.status_code == 200
+    assert [item["id"] for item in response.json()] == [stale.id]

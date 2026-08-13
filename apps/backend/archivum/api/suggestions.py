@@ -27,6 +27,15 @@ class CreateSuggestionRequest(BaseModel):
     proposed_markdown: str = ""
     proposed_objects: list[Any] = Field(default_factory=list)
     citations: list[Any] = Field(default_factory=list)
+    proposed_scopes: list[str] = Field(default_factory=list)
+    scores: dict[str, float] = Field(default_factory=dict)
+    duplicates: list[str] = Field(default_factory=list)
+    conflicts: list[str] = Field(default_factory=list)
+    retention_tier: str = "candidate"
+    agent_visibility: str = "review_required"
+    rationale: str = ""
+    estimated_durability: str = ""
+    expires_at: str | None = None
 
     @model_validator(mode="after")
     def target_is_unambiguous(self) -> "CreateSuggestionRequest":
@@ -37,6 +46,10 @@ class CreateSuggestionRequest(BaseModel):
 
 class ReviewSuggestionRequest(BaseModel):
     action: SuggestionAction
+
+
+class ExpireSuggestionsRequest(BaseModel):
+    now: str = Field(min_length=1)
 
 
 @router.get("", response_model=list[MemorySuggestion])
@@ -81,7 +94,31 @@ async def create_suggestion(
             proposed_markdown=body.proposed_markdown,
             proposed_objects=body.proposed_objects,
             citations=body.citations,
+            proposed_scopes=body.proposed_scopes,
+            scores=body.scores,
+            duplicates=body.duplicates,
+            conflicts=body.conflicts,
+            retention_tier=body.retention_tier,
+            agent_visibility=body.agent_visibility,
+            rationale=body.rationale,
+            estimated_durability=body.estimated_durability,
+            expires_at=body.expires_at,
         )
+
+
+@router.post("/expire", response_model=list[MemorySuggestion])
+async def expire_suggestions(
+    body: ExpireSuggestionsRequest,
+    current_user: CurrentUser = Depends(require_writer),
+) -> list[MemorySuggestion]:
+    async with sqlite.get_db() as conn:
+        repo = SuggestionRepository(conn)
+        expired = await repo.expire_due_candidates(body.now)
+        return [
+            suggestion
+            for suggestion in expired
+            if _is_authorized_target(suggestion.target_id, current_user.wiki_id)
+        ]
 
 
 @router.post("/{suggestion_id:path}/accept", response_model=MemorySuggestion)

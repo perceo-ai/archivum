@@ -67,3 +67,6 @@ class ContextPackage(BaseModel):
     citations: list[Citation]
     insufficient_evidence: bool
     reason: str | None
+    inclusion_explanations: dict[str, str] = Field(default_factory=dict)
+    exclusion_explanations: dict[str, str] = Field(default_factory=dict)
+    staleness_warnings: dict[str, str] = Field(default_factory=dict)

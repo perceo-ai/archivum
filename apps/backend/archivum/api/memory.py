@@ -22,6 +22,7 @@ from archivum.memory.models import (
     LoadoutPackage,
     MemoryAsset,
     MemoryAssetVersion,
+    MemoryScope,
 )
 from archivum.memory.registry import MemoryAssetRegistry
 from archivum.memory.service import (
@@ -51,6 +52,12 @@ class RegisterAssetRequest(BaseModel):
     tags: list[str] = Field(default_factory=list)
     metadata: dict[str, Any] = Field(default_factory=dict)
     citations: list[Citation] = Field(default_factory=list)
+    approved_by: str | None = None
+    reviewed_at: str | None = None
+    supersedes: list[str] = Field(default_factory=list)
+    superseded_by: list[str] = Field(default_factory=list)
+    conflict_lineage: list[str] = Field(default_factory=list)
+    retired_at: str | None = None
     status: str = "draft"
     visibility: str = "private"
     change_note: str = ""
@@ -62,6 +69,16 @@ class AssetStatusRequest(BaseModel):
 
 class AssetVisibilityRequest(BaseModel):
     visibility: str = Field(min_length=1)
+
+
+class ScopeRequest(BaseModel):
+    id: str = Field(min_length=1)
+    scope_type: str = Field(min_length=1)
+    name: str = Field(min_length=1)
+    parent_scope_id: str | None = None
+    budget_tokens: int = Field(default=4_000, ge=0)
+    budget_items: int = Field(default=20, ge=0)
+    retention_policy: dict[str, Any] = Field(default_factory=dict)
 
 
 class AgentRequest(BaseModel):
@@ -109,6 +126,38 @@ class DistillResponse(BaseModel):
 # ── Assets ────────────────────────────────────────────────────────────────
 
 
+@router.get("/scopes", response_model=list[MemoryScope])
+async def list_scopes(
+    scope_type: str | None = Query(default=None),
+    current_user: CurrentUser = Depends(get_current_user),
+) -> list[MemoryScope]:
+    async with sqlite.get_db() as conn:
+        return await MemoryAssetRegistry(conn).list_scopes(
+            current_user.wiki_id, scope_type=scope_type
+        )
+
+
+@router.post("/scopes", response_model=MemoryScope, status_code=status.HTTP_201_CREATED)
+async def upsert_scope(
+    body: ScopeRequest,
+    current_user: CurrentUser = Depends(require_writer),
+) -> MemoryScope:
+    async with sqlite.get_db() as conn:
+        try:
+            return await MemoryAssetRegistry(conn).upsert_scope(
+                id=body.id,
+                wiki_id=current_user.wiki_id,
+                scope_type=body.scope_type,
+                name=body.name,
+                parent_scope_id=body.parent_scope_id,
+                budget_tokens=body.budget_tokens,
+                budget_items=body.budget_items,
+                retention_policy=body.retention_policy,
+            )
+        except ValueError as exc:
+            raise _bad_request(str(exc), "invalid_memory_scope") from exc
+
+
 @router.get("/assets", response_model=list[MemoryAsset])
 async def list_assets(
     asset_type: str | None = Query(default=None),
@@ -149,6 +198,12 @@ async def register_asset(
                 tags=body.tags,
                 metadata=body.metadata,
                 citations=body.citations,
+                approved_by=body.approved_by,
+                reviewed_at=body.reviewed_at,
+                supersedes=body.supersedes,
+                superseded_by=body.superseded_by,
+                conflict_lineage=body.conflict_lineage,
+                retired_at=body.retired_at,
                 change_note=body.change_note,
             )
         except ValueError as exc:

@@ -326,6 +326,9 @@ export type ContextPackage = {
   citations: Citation[];
   insufficient_evidence: boolean;
   reason: string | null;
+  inclusion_explanations: Record<string, string>;
+  exclusion_explanations: Record<string, string>;
+  staleness_warnings: Record<string, string>;
 };
 
 export type ContextPackageRequest = {
@@ -365,6 +368,15 @@ export type MemorySuggestion = {
   proposed_markdown: string;
   proposed_objects: unknown[];
   citations: Citation[];
+  proposed_scopes: string[];
+  scores: Record<string, number>;
+  duplicates: string[];
+  conflicts: string[];
+  retention_tier: string;
+  agent_visibility: string;
+  rationale: string;
+  estimated_durability: string;
+  expires_at: string | null;
   status: SuggestionStatus;
 };
 
@@ -400,6 +412,15 @@ export type CreateSuggestionInput = {
   proposed_markdown?: string;
   proposed_objects?: unknown[];
   citations?: Citation[];
+  proposed_scopes?: string[];
+  scores?: Record<string, number>;
+  duplicates?: string[];
+  conflicts?: string[];
+  retention_tier?: string;
+  agent_visibility?: string;
+  rationale?: string;
+  estimated_durability?: string;
+  expires_at?: string | null;
 };
 
 export async function listSuggestions(): Promise<MemorySuggestion[]> {
@@ -422,6 +443,15 @@ export async function createSuggestion(input: CreateSuggestionInput): Promise<Me
       proposed_markdown: input.proposed_markdown ?? '',
       proposed_objects: input.proposed_objects ?? [],
       citations: input.citations ?? [],
+      proposed_scopes: input.proposed_scopes ?? [],
+      scores: input.scores ?? {},
+      duplicates: input.duplicates ?? [],
+      conflicts: input.conflicts ?? [],
+      retention_tier: input.retention_tier ?? 'candidate',
+      agent_visibility: input.agent_visibility ?? 'review_required',
+      rationale: input.rationale ?? '',
+      estimated_durability: input.estimated_durability ?? '',
+      expires_at: input.expires_at ?? null,
     }),
   });
   return res.json();
@@ -452,6 +482,14 @@ export async function reviewSuggestion(
   return res.json();
 }
 
+export async function expireSuggestions(now: string): Promise<MemorySuggestion[]> {
+  const res = await apiFetch('/api/suggestions/expire', {
+    method: 'POST',
+    body: JSON.stringify({ now }),
+  });
+  return res.json();
+}
+
 // ── Memory assets, loadouts, and distillation ───────────────────────────────
 
 export type MemoryAssetType =
@@ -464,6 +502,47 @@ export type MemoryAssetType =
   | 'persona';
 
 export type MemoryLayer = 'L0' | 'L1' | 'L2' | 'L3';
+
+export type MemoryScope = {
+  id: string;
+  wiki_id: string;
+  scope_type: 'human' | 'topic' | 'project' | 'repo' | 'person' | 'org';
+  name: string;
+  parent_scope_id: string | null;
+  budget_tokens: number;
+  budget_items: number;
+  retention_policy: Record<string, unknown>;
+  created_at?: string;
+  updated_at?: string;
+};
+
+export type UpsertMemoryScopeInput = {
+  id: string;
+  scope_type: MemoryScope['scope_type'];
+  name: string;
+  parent_scope_id?: string | null;
+  budget_tokens?: number;
+  budget_items?: number;
+  retention_policy?: Record<string, unknown>;
+};
+
+export async function listMemoryScopes(
+  scopeType?: MemoryScope['scope_type'],
+): Promise<MemoryScope[]> {
+  const suffix = scopeType ? `?scope_type=${encodeURIComponent(scopeType)}` : '';
+  const res = await apiFetch(`/api/memory/scopes${suffix}`);
+  return res.json();
+}
+
+export async function upsertMemoryScope(
+  input: UpsertMemoryScopeInput,
+): Promise<MemoryScope> {
+  const res = await apiFetch('/api/memory/scopes', {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+  return res.json();
+}
 
 export type MemoryAsset = {
   id: string;
@@ -482,6 +561,12 @@ export type MemoryAsset = {
   tags: string[];
   metadata: Record<string, unknown>;
   citations: Citation[];
+  approved_by: string | null;
+  reviewed_at: string | null;
+  supersedes: string[];
+  superseded_by: string[];
+  conflict_lineage: string[];
+  retired_at: string | null;
   created_at: string;
   updated_at: string;
 };

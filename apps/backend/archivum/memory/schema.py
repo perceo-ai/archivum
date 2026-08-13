@@ -22,6 +22,12 @@ CREATE TABLE IF NOT EXISTS memory_assets (
     tags        TEXT    NOT NULL DEFAULT '[]',
     metadata    TEXT    NOT NULL DEFAULT '{}',
     citations   TEXT    NOT NULL DEFAULT '[]',
+    approved_by TEXT,
+    reviewed_at TEXT,
+    supersedes  TEXT    NOT NULL DEFAULT '[]',
+    superseded_by TEXT  NOT NULL DEFAULT '[]',
+    conflict_lineage TEXT NOT NULL DEFAULT '[]',
+    retired_at  TEXT,
     created_at  TEXT    NOT NULL DEFAULT (datetime('now')),
     updated_at  TEXT    NOT NULL DEFAULT (datetime('now'))
 );
@@ -32,6 +38,31 @@ CREATE INDEX IF NOT EXISTS idx_memory_assets_scope
     ON memory_assets(scope);
 CREATE INDEX IF NOT EXISTS idx_memory_assets_layer
     ON memory_assets(wiki_id, layer);
+
+CREATE TABLE IF NOT EXISTS memory_scopes (
+    id               TEXT    NOT NULL,
+    wiki_id          TEXT    NOT NULL DEFAULT 'default',
+    scope_type       TEXT    NOT NULL
+                     CHECK (scope_type IN ('human', 'topic', 'project',
+                                           'repo', 'person', 'org')),
+    name             TEXT    NOT NULL,
+    parent_scope_id  TEXT,
+    budget_tokens    INTEGER NOT NULL DEFAULT 4000,
+    budget_items     INTEGER NOT NULL DEFAULT 20,
+    retention_policy TEXT    NOT NULL DEFAULT '{}',
+    created_at       TEXT    NOT NULL DEFAULT (datetime('now')),
+    updated_at       TEXT    NOT NULL DEFAULT (datetime('now')),
+    PRIMARY KEY (wiki_id, id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_memory_scopes_type
+    ON memory_scopes(wiki_id, scope_type);
+
+INSERT OR IGNORE INTO memory_scopes
+    (id, wiki_id, scope_type, name, budget_tokens, budget_items, retention_policy)
+VALUES
+    ('person:self', 'default', 'human', 'Self', 4000, 20,
+     '{"candidate_ttl_days":30,"archive_raw_after_days":180}');
 
 CREATE TABLE IF NOT EXISTS memory_asset_versions (
     asset_id    TEXT    NOT NULL,

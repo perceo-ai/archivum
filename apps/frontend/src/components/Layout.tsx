@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { BookOpen, Blocks, Home, PanelRight, Search, Wrench, X } from 'lucide-react';
+import { BookOpen, Blocks, ClipboardCheck, Database, FolderGit2, Home, PanelRight, Search, Tags, Users, Wrench, X } from 'lucide-react';
 import { type ActiveView, useAppDispatch, useAppState } from '../store';
 import { cn } from '../lib/cn';
 import FileTree from './FileTree';
@@ -22,7 +22,12 @@ type NavItem = {
 
 const NAV_ITEMS: NavItem[] = [
   { label: 'Home', path: '/', view: 'home', icon: Home },
+  { label: 'Topics', path: '/topics', view: 'topics', icon: Tags },
   { label: 'Library', path: '/library', view: 'library', icon: BookOpen },
+  { label: 'People', path: '/people', view: 'people', icon: Users },
+  { label: 'Repos', path: '/repos', view: 'repos', icon: FolderGit2 },
+  { label: 'Sources', path: '/sources', view: 'sources', icon: Database },
+  { label: 'Review', path: '/review', view: 'review', icon: ClipboardCheck },
   { label: 'Workflows', path: '/workflows/daily', view: 'workflows', icon: Blocks },
   { label: 'Tools', path: '/tools/graph', view: 'tools', icon: Wrench },
 ];
@@ -37,6 +42,16 @@ export default function Layout({ children }: LayoutProps) {
     ? 'workflows'
     : location.pathname.startsWith('/tools/')
       ? 'tools'
+      : location.pathname.startsWith('/topics')
+        ? 'topics'
+      : location.pathname.startsWith('/people')
+        ? 'people'
+      : location.pathname.startsWith('/repos')
+        ? 'repos'
+      : location.pathname.startsWith('/sources')
+        ? 'sources'
+      : location.pathname.startsWith('/review')
+        ? 'review'
       : location.pathname.startsWith('/library') || location.pathname.startsWith('/wiki/')
         ? 'library'
         : 'home';
@@ -172,7 +187,17 @@ export default function Layout({ children }: LayoutProps) {
                     ? 'Workflows'
                     : currentSection === 'tools'
                       ? 'Tools'
-                      : 'Home'}
+                      : currentSection === 'review'
+                        ? 'Review'
+                        : currentSection === 'topics'
+                          ? 'Topics'
+                          : currentSection === 'people'
+                            ? 'People'
+                            : currentSection === 'repos'
+                              ? 'Repos'
+                              : currentSection === 'sources'
+                                ? 'Sources'
+                                : 'Home'}
               </span>
             </div>
           )}

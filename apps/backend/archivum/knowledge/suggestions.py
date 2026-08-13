@@ -7,7 +7,7 @@ from typing import Any, Literal
 from uuid import uuid4
 
 import aiosqlite
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 SuggestionStatus = Literal[
@@ -62,6 +62,15 @@ class MemorySuggestion(BaseModel):
     proposed_markdown: str
     proposed_objects: list[Any]
     citations: list[Any]
+    proposed_scopes: list[str] = Field(default_factory=list)
+    scores: dict[str, float] = Field(default_factory=dict)
+    duplicates: list[str] = Field(default_factory=list)
+    conflicts: list[str] = Field(default_factory=list)
+    retention_tier: str = "candidate"
+    agent_visibility: str = "review_required"
+    rationale: str = ""
+    estimated_durability: str = ""
+    expires_at: str | None = None
     status: SuggestionStatus
 
 
@@ -77,6 +86,15 @@ async def init_suggestion_schema(conn: aiosqlite.Connection) -> None:
             proposed_markdown TEXT NOT NULL,
             proposed_objects  TEXT NOT NULL,
             citations         TEXT NOT NULL,
+            proposed_scopes   TEXT NOT NULL DEFAULT '[]',
+            scores            TEXT NOT NULL DEFAULT '{}',
+            duplicates        TEXT NOT NULL DEFAULT '[]',
+            conflicts         TEXT NOT NULL DEFAULT '[]',
+            retention_tier    TEXT NOT NULL DEFAULT 'candidate',
+            agent_visibility  TEXT NOT NULL DEFAULT 'review_required',
+            rationale         TEXT NOT NULL DEFAULT '',
+            estimated_durability TEXT NOT NULL DEFAULT '',
+            expires_at        TEXT,
             status            TEXT NOT NULL DEFAULT 'pending'
                               CHECK (status IN ('pending', 'accepted', 'edited',
                                                 'rejected', 'merged', 'replaced',
@@ -91,6 +109,7 @@ async def init_suggestion_schema(conn: aiosqlite.Connection) -> None:
         """
     )
     await _migrate_status_check(conn)
+    await _migrate_review_card_columns(conn)
     await conn.commit()
 
 
@@ -137,6 +156,29 @@ async def _migrate_status_check(conn: aiosqlite.Connection) -> None:
     await conn.commit()
 
 
+async def _migrate_review_card_columns(conn: aiosqlite.Connection) -> None:
+    async with conn.execute("PRAGMA table_info(memory_suggestions)") as cursor:
+        rows = await cursor.fetchall()
+    columns = {row["name"] for row in rows}
+    additions = {
+        "proposed_scopes": "TEXT NOT NULL DEFAULT '[]'",
+        "scores": "TEXT NOT NULL DEFAULT '{}'",
+        "duplicates": "TEXT NOT NULL DEFAULT '[]'",
+        "conflicts": "TEXT NOT NULL DEFAULT '[]'",
+        "retention_tier": "TEXT NOT NULL DEFAULT 'candidate'",
+        "agent_visibility": "TEXT NOT NULL DEFAULT 'review_required'",
+        "rationale": "TEXT NOT NULL DEFAULT ''",
+        "estimated_durability": "TEXT NOT NULL DEFAULT ''",
+        "expires_at": "TEXT",
+    }
+    for column, definition in additions.items():
+        if column not in columns:
+            await conn.execute(
+                f"ALTER TABLE memory_suggestions ADD COLUMN {column} {definition}"
+            )
+    await conn.commit()
+
+
 class SuggestionRepository:
     """CRUD and review-state transitions for proposed memory edits."""
 
@@ -151,6 +193,15 @@ class SuggestionRepository:
         proposed_markdown: str,
         proposed_objects: list[Any],
         citations: list[Any],
+        proposed_scopes: list[str] | None = None,
+        scores: dict[str, float] | None = None,
+        duplicates: list[str] | None = None,
+        conflicts: list[str] | None = None,
+        retention_tier: str = "candidate",
+        agent_visibility: str = "review_required",
+        rationale: str = "",
+        estimated_durability: str = "",
+        expires_at: str | None = None,
     ) -> MemorySuggestion:
         suggestion = MemorySuggestion(
             id=f"suggestion:{uuid4()}",
@@ -159,14 +210,25 @@ class SuggestionRepository:
             proposed_markdown=proposed_markdown,
             proposed_objects=proposed_objects,
             citations=citations,
+            proposed_scopes=proposed_scopes or [],
+            scores=scores or {},
+            duplicates=duplicates or [],
+            conflicts=conflicts or [],
+            retention_tier=retention_tier,
+            agent_visibility=agent_visibility,
+            rationale=rationale,
+            estimated_durability=estimated_durability,
+            expires_at=expires_at,
             status="pending",
         )
         await self._conn.execute(
             """
             INSERT INTO memory_suggestions
                 (id, target_id, suggestion_type, proposed_markdown,
-                 proposed_objects, citations, status)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+                 proposed_objects, citations, proposed_scopes, scores, duplicates,
+                 conflicts, retention_tier, agent_visibility, rationale,
+                 estimated_durability, expires_at, status)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 suggestion.id,
@@ -175,6 +237,15 @@ class SuggestionRepository:
                 suggestion.proposed_markdown,
                 json.dumps(suggestion.proposed_objects),
                 json.dumps(suggestion.citations),
+                json.dumps(suggestion.proposed_scopes),
+                json.dumps(suggestion.scores),
+                json.dumps(suggestion.duplicates),
+                json.dumps(suggestion.conflicts),
+                suggestion.retention_tier,
+                suggestion.agent_visibility,
+                suggestion.rationale,
+                suggestion.estimated_durability,
+                suggestion.expires_at,
                 suggestion.status,
             ),
         )
@@ -238,6 +309,24 @@ class SuggestionRepository:
     ) -> None:
         await self._transition(suggestion_id, ACTION_TO_STATUS[action])
 
+    async def expire_due_candidates(self, now: str) -> list[MemorySuggestion]:
+        async with self._conn.execute(
+            """
+            SELECT id FROM memory_suggestions
+            WHERE status='pending' AND expires_at IS NOT NULL AND expires_at <= ?
+            ORDER BY expires_at ASC, id ASC
+            """,
+            (now,),
+        ) as cursor:
+            rows = await cursor.fetchall()
+        expired: list[MemorySuggestion] = []
+        for row in rows:
+            await self._transition(row["id"], "expired")
+            loaded = await self.get_suggestion(row["id"])
+            if loaded is not None:
+                expired.append(loaded)
+        return expired
+
     async def _transition(self, suggestion_id: str, target_status: SuggestionStatus) -> None:
         await self._conn.execute("BEGIN")
         try:
@@ -274,5 +363,14 @@ class SuggestionRepository:
             proposed_markdown=row["proposed_markdown"],
             proposed_objects=json.loads(row["proposed_objects"]),
             citations=json.loads(row["citations"]),
+            proposed_scopes=json.loads(row["proposed_scopes"]),
+            scores=json.loads(row["scores"]),
+            duplicates=json.loads(row["duplicates"]),
+            conflicts=json.loads(row["conflicts"]),
+            retention_tier=row["retention_tier"],
+            agent_visibility=row["agent_visibility"],
+            rationale=row["rationale"],
+            estimated_durability=row["estimated_durability"],
+            expires_at=row["expires_at"],
             status=row["status"],
         )

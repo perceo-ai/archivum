@@ -170,6 +170,14 @@ export default function HomePage() {
             </div>
             {status && <p className="text-sm text-emerald-300">{status}</p>}
             {error && <p className="text-sm text-destructive">{error}</p>}
+            <div className="soft-border rounded-[8px] border bg-black/10 px-3 py-2">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-zinc-500">
+                Librarian response
+              </p>
+              <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                Raw capture is saved immediately. Durable memory stays review-gated, cited, scoped, and agent-visible only after approval.
+              </p>
+            </div>
           </form>
         </section>
 
@@ -197,6 +205,23 @@ export default function HomePage() {
                 {context.reason}
               </p>
             )}
+            <div className="soft-border rounded-[8px] border bg-black/10 px-3 py-2">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-zinc-500">
+                Context explanations
+              </p>
+              <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                {Object.keys(context?.inclusion_explanations ?? {}).length} included ·{' '}
+                {Object.keys(context?.exclusion_explanations ?? {}).length} excluded by budget or trust
+              </p>
+            </div>
+            <div className="soft-border rounded-[8px] border bg-black/10 px-3 py-2">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-zinc-500">
+                Staleness warnings
+              </p>
+              <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                {Object.values(context?.staleness_warnings ?? {})[0] ?? 'No stale context flagged.'}
+              </p>
+            </div>
           </div>
         </section>
 

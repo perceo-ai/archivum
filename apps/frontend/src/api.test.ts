@@ -27,6 +27,9 @@ import {
   acceptSuggestion,
   rejectSuggestion,
   reviewSuggestion,
+  expireSuggestions,
+  listMemoryScopes,
+  upsertMemoryScope,
 } from './api';
 import type { Page, SearchResult, GraphNode, GraphEdge, LifeProject, LifeTask } from './types';
 
@@ -423,6 +426,15 @@ describe('suggestions api', () => {
     proposed_markdown: '## Suggested',
     proposed_objects: [],
     citations: [],
+    proposed_scopes: ['person:self'],
+    scores: { future_utility: 0.9 },
+    duplicates: [],
+    conflicts: ['memory:old'],
+    retention_tier: 'candidate',
+    agent_visibility: 'review_required',
+    rationale: 'Useful later.',
+    estimated_durability: 'durable',
+    expires_at: null,
     status: 'pending' as const,
   };
 
@@ -498,6 +510,55 @@ describe('suggestions api', () => {
       method: 'POST',
       credentials: 'include',
       body: JSON.stringify({ action: 'merge' }),
+    }));
+  });
+
+  it('expires due pending suggestions', async () => {
+    fetchMock.mockResolvedValueOnce(apiJsonResponse([{ ...suggestion, status: 'expired' }]));
+
+    await expect(expireSuggestions('2026-08-13T00:00:00+00:00')).resolves.toEqual([
+      { ...suggestion, status: 'expired' },
+    ]);
+
+    expect(fetchMock).toHaveBeenCalledWith('/api/suggestions/expire', expect.objectContaining({
+      method: 'POST',
+      body: JSON.stringify({ now: '2026-08-13T00:00:00+00:00' }),
+    }));
+  });
+});
+
+describe('memory scopes api', () => {
+  const scope = {
+    id: 'topic:clean-memory',
+    wiki_id: 'default',
+    scope_type: 'topic' as const,
+    name: 'Clean memory',
+    parent_scope_id: 'person:self',
+    budget_tokens: 3000,
+    budget_items: 12,
+    retention_policy: { candidate_ttl_days: 14 },
+  };
+
+  it('lists memory scopes with optional type filter', async () => {
+    fetchMock.mockResolvedValueOnce(apiJsonResponse([scope]));
+
+    await expect(listMemoryScopes('topic')).resolves.toEqual([scope]);
+
+    expect(fetchMock).toHaveBeenCalledWith('/api/memory/scopes?scope_type=topic', expect.objectContaining({
+      credentials: 'include',
+    }));
+  });
+
+  it('upserts a memory scope with CSRF protection', async () => {
+    vi.stubGlobal('document', { cookie: 'csrf_token=scope-csrf' });
+    fetchMock.mockResolvedValueOnce(apiJsonResponse(scope));
+
+    await expect(upsertMemoryScope(scope)).resolves.toEqual(scope);
+
+    expect(fetchMock).toHaveBeenCalledWith('/api/memory/scopes', expect.objectContaining({
+      method: 'POST',
+      headers: expect.objectContaining({ 'X-CSRF-Token': 'scope-csrf' }),
+      body: JSON.stringify(scope),
     }));
   });
 });

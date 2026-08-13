@@ -9,7 +9,9 @@ import NotFoundPage from './pages/NotFoundPage';
 import SharePage from './pages/SharePage';
 import PublicWikiPage from './pages/PublicWikiPage';
 import HomePage from './pages/HomePage';
+import LensPage from './pages/LensPage';
 import LibraryPage from './pages/LibraryPage';
+import ReviewPage from './pages/ReviewPage';
 import WorkflowsPage from './pages/WorkflowsPage';
 import ToolsPage from './pages/ToolsPage';
 import { listPages, refreshSession } from './api';
@@ -59,6 +61,31 @@ function ProtectedRoutes() {
       <Route path="/library" element={
         <Layout>
           <LibraryPage />
+        </Layout>
+      } />
+      <Route path="/review" element={
+        <Layout>
+          <ReviewPage />
+        </Layout>
+      } />
+      <Route path="/topics" element={
+        <Layout>
+          <LensPage lens="topics" />
+        </Layout>
+      } />
+      <Route path="/people" element={
+        <Layout>
+          <LensPage lens="people" />
+        </Layout>
+      } />
+      <Route path="/repos" element={
+        <Layout>
+          <LensPage lens="repos" />
+        </Layout>
+      } />
+      <Route path="/sources" element={
+        <Layout>
+          <LensPage lens="sources" />
         </Layout>
       } />
       <Route path="/wiki/*" element={

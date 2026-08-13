@@ -79,6 +79,35 @@ async def test_register_list_and_fetch_an_asset(env):
 
 
 @pytest.mark.asyncio
+async def test_memory_scope_routes_round_trip_budget_and_retention(env):
+    client, _ = env
+
+    created = client.post(
+        "/api/memory/scopes",
+        json={
+            "id": "topic:clean-memory",
+            "scope_type": "topic",
+            "name": "Clean memory",
+            "parent_scope_id": "person:self",
+            "budget_tokens": 3_000,
+            "budget_items": 12,
+            "retention_policy": {"candidate_ttl_days": 14},
+        },
+    )
+
+    assert created.status_code == 201
+    assert created.json()["id"] == "topic:clean-memory"
+    assert created.json()["retention_policy"] == {"candidate_ttl_days": 14}
+
+    listed = client.get("/api/memory/scopes").json()
+    assert "person:self" in {scope["id"] for scope in listed}
+    assert "topic:clean-memory" in {scope["id"] for scope in listed}
+
+    topics = client.get("/api/memory/scopes", params={"scope_type": "topic"}).json()
+    assert [scope["id"] for scope in topics] == ["topic:clean-memory"]
+
+
+@pytest.mark.asyncio
 async def test_unknown_asset_is_a_404(env):
     client, _ = env
     response = client.get("/api/memory/assets/memory:wiki:ghost")
@@ -114,6 +143,41 @@ async def test_edits_create_versions_and_status_transitions_do_not(env):
         "/api/memory/assets/memory:wiki:notes/visibility", json={"visibility": "shared"}
     )
     assert shared.json()["visibility"] == "shared"
+
+
+@pytest.mark.asyncio
+async def test_asset_api_exposes_review_lineage(env):
+    client, _ = env
+    old = client.post(
+        "/api/memory/assets",
+        json=_asset_payload(
+            id="memory:decision:old",
+            asset_type="wiki",
+            layer="L2",
+            name="Old direction",
+        ),
+    ).json()
+
+    new = client.post(
+        "/api/memory/assets",
+        json=_asset_payload(
+            id="memory:decision:new",
+            asset_type="wiki",
+            layer="L2",
+            name="New direction",
+            supersedes=[old["id"]],
+            conflict_lineage=["suggestion:conflict"],
+            approved_by="owner",
+        ),
+    ).json()
+
+    assert new["supersedes"] == [old["id"]]
+    assert new["conflict_lineage"] == ["suggestion:conflict"]
+    assert new["approved_by"] == "owner"
+    assert new["reviewed_at"]
+    assert client.get("/api/memory/assets/memory:decision:old").json()["superseded_by"] == [
+        new["id"]
+    ]
 
 
 @pytest.mark.asyncio

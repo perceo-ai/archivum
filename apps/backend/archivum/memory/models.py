@@ -57,6 +57,12 @@ class MemoryAsset(BaseModel):
     tags: list[str] = Field(default_factory=list)
     metadata: dict[str, Any] = Field(default_factory=dict)
     citations: list[Citation] = Field(default_factory=list)
+    approved_by: str | None = None
+    reviewed_at: str | None = None
+    supersedes: list[str] = Field(default_factory=list)
+    superseded_by: list[str] = Field(default_factory=list)
+    conflict_lineage: list[str] = Field(default_factory=list)
+    retired_at: str | None = None
     created_at: str = ""
     updated_at: str = ""
 
@@ -74,6 +80,21 @@ class MemoryAssetVersion(BaseModel):
     citations: list[Citation] = Field(default_factory=list)
     change_note: str = ""
     created_at: str = ""
+
+
+class MemoryScope(BaseModel):
+    """A budgeted memory scope such as person:self, a topic, project, or repo."""
+
+    id: str
+    wiki_id: str
+    scope_type: Literal["human", "topic", "project", "repo", "person", "org"]
+    name: str
+    parent_scope_id: str | None = None
+    budget_tokens: int = 4_000
+    budget_items: int = 20
+    retention_policy: dict[str, Any] = Field(default_factory=dict)
+    created_at: str = ""
+    updated_at: str = ""
 
 
 class AgentProfile(BaseModel):

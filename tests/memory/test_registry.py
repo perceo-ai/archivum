@@ -2,6 +2,7 @@ import aiosqlite
 import pytest
 
 from archivum.knowledge.models import Citation
+from archivum.memory.models import MemoryScope
 from archivum.memory.registry import MemoryAssetRegistry, init_memory_schema
 
 
@@ -77,6 +78,40 @@ async def test_content_edit_does_not_silently_reactivate_an_archived_asset():
 
 
 @pytest.mark.asyncio
+async def test_supersession_lineage_updates_both_assets():
+    async with aiosqlite.connect(":memory:") as conn:
+        registry = await _registry(conn)
+        old = await _register(
+            registry,
+            id="memory:decision:old",
+            asset_type="wiki",
+            layer="L2",
+            name="Old direction",
+            body="Projects are the root.",
+        )
+        new = await _register(
+            registry,
+            id="memory:decision:new",
+            asset_type="wiki",
+            layer="L2",
+            name="New direction",
+            body="The human is the root.",
+            supersedes=[old.id],
+            conflict_lineage=["suggestion:conflict"],
+            approved_by="owner",
+        )
+
+        reloaded_old = await registry.get_asset(old.id)
+        reloaded_new = await registry.get_asset(new.id)
+
+        assert reloaded_new.supersedes == [old.id]
+        assert reloaded_new.conflict_lineage == ["suggestion:conflict"]
+        assert reloaded_new.approved_by == "owner"
+        assert reloaded_new.reviewed_at
+        assert reloaded_old.superseded_by == [new.id]
+
+
+@pytest.mark.asyncio
 async def test_status_and_visibility_transitions():
     async with aiosqlite.connect(":memory:") as conn:
         registry = await _registry(conn)
@@ -126,6 +161,49 @@ async def test_list_assets_filters_by_wiki_type_and_status():
         assert [a.id for a in skills] == ["memory:skill:deploy"]
         active = await registry.list_assets(wiki_id="default", status="active")
         assert [a.id for a in active] == ["memory:chat:s1"]
+
+
+@pytest.mark.asyncio
+async def test_memory_scopes_round_trip_budget_and_retention_policy():
+    async with aiosqlite.connect(":memory:") as conn:
+        registry = await _registry(conn)
+        scope = await registry.upsert_scope(
+            id="project:archivum",
+            wiki_id="default",
+            scope_type="project",
+            name="Archivum",
+            parent_scope_id="person:self",
+            budget_tokens=6_000,
+            budget_items=24,
+            retention_policy={"candidate_ttl_days": 30, "archive_raw_after_days": 180},
+        )
+
+        assert scope == MemoryScope(
+            id="project:archivum",
+            wiki_id="default",
+            scope_type="project",
+            name="Archivum",
+            parent_scope_id="person:self",
+            budget_tokens=6_000,
+            budget_items=24,
+            retention_policy={"candidate_ttl_days": 30, "archive_raw_after_days": 180},
+        )
+        assert await registry.get_scope("project:archivum", "default") == scope
+        assert [item.id for item in await registry.list_scopes("default", "project")] == [
+            "project:archivum"
+        ]
+
+
+@pytest.mark.asyncio
+async def test_default_self_scope_exists_after_schema_initialization():
+    async with aiosqlite.connect(":memory:") as conn:
+        registry = await _registry(conn)
+
+        self_scope = await registry.get_scope("person:self", "default")
+
+        assert self_scope is not None
+        assert self_scope.scope_type == "human"
+        assert self_scope.budget_tokens > 0
 
 
 @pytest.mark.asyncio
