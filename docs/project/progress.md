@@ -94,7 +94,7 @@ Add new entries with the exact command and result.
 
 ## Known Gaps
 
-- Distillation runs on demand through `POST /api/memory/distill` or the `distill_source` MCP tool. There is no background worker that distils captured sessions automatically.
+- Distillation runs on demand through `POST /api/memory/distill` or the `distill_source` MCP tool. There is no background worker that distils captured sessions automatically. (A background retention sweep does now expire stale review candidates automatically.)
 - The Tools → Memory and Tools → Audit surfaces have backend and server-render coverage but still need browser click-through smoke.
 - Cataloguing existing pages, sources, and code graphs into the asset registry is an explicit action (`POST /api/memory/catalog`, the `catalog_memory_assets` MCP tool, or the Tools → Memory button). Nothing registers them automatically on write.
 

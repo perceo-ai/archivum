@@ -15,7 +15,41 @@ from typing import Literal
 
 from archivum.capture.schema import Conversation
 
-AtomType = Literal["decision", "preference", "constraint", "fact", "outcome"]
+# The strategy's semantic memory taxonomy plus the deterministic extras
+# (`constraint`, `outcome`) the rule extractor already emits. Deterministic
+# rules produce a subset; the LLM-assisted evaluator may type atoms with any
+# of these.
+AtomType = Literal[
+    "profile",
+    "preference",
+    "decision",
+    "principle",
+    "fact",
+    "procedure",
+    "skill",
+    "relationship",
+    "source_summary",
+    "code_insight",
+    "constraint",
+    "outcome",
+]
+
+SEMANTIC_ATOM_TYPES: frozenset[str] = frozenset(
+    {
+        "profile",
+        "preference",
+        "decision",
+        "principle",
+        "fact",
+        "procedure",
+        "skill",
+        "relationship",
+        "source_summary",
+        "code_insight",
+        "constraint",
+        "outcome",
+    }
+)
 
 MIN_ATOM_CHARS = 8
 MAX_ATOM_CHARS = 400

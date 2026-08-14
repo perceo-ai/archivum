@@ -179,6 +179,63 @@ async def test_reviewed_atoms_are_not_suggested_again(env):
 
 
 @pytest.mark.asyncio
+async def test_llm_evaluation_types_atoms_and_routes_proposals_to_review(
+    env, monkeypatch
+):
+    from unittest.mock import AsyncMock
+
+    from archivum.memory import service as service_mod
+    from archivum.memory.evaluator import (
+        AtomEvaluation,
+        EvaluationResult,
+        ProposedAtom,
+    )
+
+    settings, store = env
+    result = await store.capture(_conversation())
+    evaluation = EvaluationResult(
+        evaluations={
+            0: AtomEvaluation(
+                keep=True,
+                semantic_type="preference",
+                scores={"human_relevance": 0.9, "durability": 0.9},
+                rationale="Restated tooling preference.",
+                durability_estimate="long",
+            )
+        },
+        proposed=[
+            ProposedAtom(
+                text="Secret hygiene is a hard rule for the owner.",
+                semantic_type="principle",
+                turn_index=0,
+                rationale="Generalizes the stated constraint.",
+            )
+        ],
+    )
+    monkeypatch.setattr(
+        service_mod, "_maybe_evaluate", AsyncMock(return_value=evaluation)
+    )
+
+    report = await _distill(settings, result.source_id)
+
+    # 2 deterministic atoms + 1 LLM proposal, all review-gated.
+    assert report.atoms_pending_review == 3
+    async with sqlite_mod.get_db() as conn:
+        pending = await SuggestionRepository(conn).list_suggestions(
+            target_id="wiki:default"
+        )
+        atoms = await KnowledgeRepository(conn).list_objects(kind="memory_atom")
+    assert len(pending) == 3
+    rationales = {s.rationale for s in pending}
+    assert "Restated tooling preference." in rationales
+    assert "Generalizes the stated constraint." in rationales
+    typed = [a for a in atoms if a.properties.get("semantic_type") == "preference"]
+    assert typed
+    # The proposal itself never reaches canonical memory without review.
+    assert all("hard rule" not in atom.properties["text"] for atom in atoms)
+
+
+@pytest.mark.asyncio
 async def test_persona_appears_only_after_the_statement_recurs(env):
     settings, store = env
     first = await store.capture(_conversation(session_id="s1"))

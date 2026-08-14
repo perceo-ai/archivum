@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import logging
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 
 import aiosqlite
 
@@ -23,6 +23,12 @@ from archivum.knowledge.repository import KnowledgeRepository
 from archivum.knowledge.suggestions import SuggestionRepository
 from archivum.memory import distill
 from archivum.memory.atoms import Atom, atom_id, extract_atoms
+from archivum.memory.evaluator import (
+    AtomEvaluation,
+    EvaluationResult,
+    blend_confidence,
+    evaluate_conversation,
+)
 from archivum.memory.models import MemoryAsset
 from archivum.memory.registry import MemoryAssetRegistry
 from archivum.memory.skills import (
@@ -153,6 +159,9 @@ async def distill_conversation(
 
     atoms = extract_atoms(conversation)
     report.atoms_total = len(atoms)
+    evaluation = await _maybe_evaluate(conversation, atoms)
+    if evaluation is not None:
+        atoms = _blend_evaluated_atoms(atoms, evaluation)
     anchors = distill.turn_anchors(conversation, loaded.chunk_ids)
     prior = await _load_prior_atoms(repo, atoms, scope)
     records = distill.build_atom_objects(
@@ -167,7 +176,12 @@ async def distill_conversation(
     )
 
     queued = await _pending_atom_suggestion_ids(suggestions, wiki_id)
-    for record in records:
+    for index, record in enumerate(records):
+        atom_evaluation = (
+            evaluation.evaluations.get(index) if evaluation is not None else None
+        )
+        if atom_evaluation is not None and atom_evaluation.semantic_type:
+            record.object.properties["semantic_type"] = atom_evaluation.semantic_type
         prior_object = prior.get(record.object.id)
         prior_state = (
             prior_object.properties.get("review_state") if prior_object else None
@@ -179,14 +193,32 @@ async def distill_conversation(
             report.atoms_accepted += 1
             if state == "pending":
                 await _ensure_atom_suggestion(
-                    suggestions, record, wiki_id=wiki_id, queued=queued
+                    suggestions,
+                    record,
+                    wiki_id=wiki_id,
+                    queued=queued,
+                    evaluation=atom_evaluation,
                 )
                 report.atoms_pending_review += 1
         else:
             await _ensure_atom_suggestion(
-                suggestions, record, wiki_id=wiki_id, queued=queued
+                suggestions,
+                record,
+                wiki_id=wiki_id,
+                queued=queued,
+                evaluation=atom_evaluation,
             )
             report.atoms_pending_review += 1
+
+    report.atoms_pending_review += await _suggest_proposed_atoms(
+        suggestions,
+        evaluation,
+        loaded=loaded,
+        scope=scope,
+        wiki_id=wiki_id,
+        anchors=anchors,
+        queued=queued,
+    )
 
     # ── L1 asset: this session's chat memory ──
     chat_asset = await _register_chat_memory(
@@ -271,6 +303,85 @@ async def distill_conversation(
     return report
 
 
+async def _maybe_evaluate(
+    conversation: Conversation, atoms: list[Atom]
+) -> EvaluationResult | None:
+    """Run the optional LLM half of the hybrid evaluator when configured."""
+    settings = get_settings()
+    if not settings.memory_llm_evaluator_enabled:
+        return None
+    return await evaluate_conversation(conversation, atoms, settings=settings)
+
+
+def _blend_evaluated_atoms(
+    atoms: list[Atom], evaluation: EvaluationResult
+) -> list[Atom]:
+    """Blend deterministic and LLM confidence per atom, preserving order."""
+    blended: list[Atom] = []
+    for index, atom in enumerate(atoms):
+        atom_evaluation = evaluation.evaluations.get(index)
+        if atom_evaluation is None:
+            blended.append(atom)
+            continue
+        blended.append(
+            replace(
+                atom,
+                confidence=blend_confidence(atom.confidence, atom_evaluation),
+            )
+        )
+    return blended
+
+
+async def _suggest_proposed_atoms(
+    suggestions: SuggestionRepository,
+    evaluation: EvaluationResult | None,
+    *,
+    loaded: LoadedConversation,
+    scope: str,
+    wiki_id: str,
+    anchors: dict[int, distill.TurnAnchor],
+    queued: set[str],
+) -> int:
+    """Route LLM-proposed atoms straight to review; they never write directly."""
+    if evaluation is None or not evaluation.proposed:
+        return 0
+    turn_count = len(loaded.conversation.turns)
+    proposed_atoms = [
+        Atom(
+            atom_type=proposal.semantic_type,
+            text=proposal.text,
+            confidence=0.5,
+            turn_index=min(max(proposal.turn_index, 0), max(turn_count - 1, 0)),
+            char_start=0,
+            char_end=len(proposal.text),
+            rule="llm:proposed",
+        )
+        for proposal in evaluation.proposed
+    ]
+    records = distill.build_atom_objects(
+        proposed_atoms,
+        scope=scope,
+        source_id=loaded.source_id,
+        session_id=loaded.conversation.session_id,
+        anchors=anchors,
+        chunk_offsets=loaded.chunk_offsets,
+        threshold=2.0,  # > any confidence: proposals are review-only
+    )
+    created = 0
+    for record, proposal in zip(records, evaluation.proposed):
+        record.object.properties["semantic_type"] = proposal.semantic_type
+        if await _ensure_atom_suggestion(
+            suggestions,
+            record,
+            wiki_id=wiki_id,
+            queued=queued,
+            rationale=proposal.rationale
+            or "Proposed by the LLM evaluator; needs human review.",
+        ):
+            created += 1
+    return created
+
+
 async def _pending_atom_suggestion_ids(
     suggestions: SuggestionRepository, wiki_id: str
 ) -> set[str]:
@@ -294,10 +405,18 @@ async def _ensure_atom_suggestion(
     *,
     wiki_id: str,
     queued: set[str],
+    evaluation: AtomEvaluation | None = None,
+    rationale: str | None = None,
 ) -> bool:
     """Create one review card per atom; re-distillation must not duplicate."""
     if record.object.id in queued:
         return False
+    scores: dict[str, float] = {"confidence": record.object.confidence}
+    durability = ""
+    if evaluation is not None:
+        scores.update(evaluation.scores)
+        durability = evaluation.durability_estimate
+        rationale = rationale or evaluation.rationale
     await suggestions.create_suggestion(
         target_id=f"wiki:{wiki_id}",
         suggestion_type="memory_atom",
@@ -305,12 +424,14 @@ async def _ensure_atom_suggestion(
         proposed_objects=[record.object.model_dump()],
         citations=[c.model_dump() for c in record.object.citations],
         proposed_scopes=[record.object.scope],
-        scores={"confidence": record.object.confidence},
-        rationale=(
+        scores=scores,
+        rationale=rationale
+        or (
             "Above-threshold extraction; promotion still requires review."
             if record.accepted
             else "Extraction confidence below threshold; needs human review."
         ),
+        estimated_durability=durability,
     )
     queued.add(record.object.id)
     return True
