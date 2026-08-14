@@ -410,6 +410,27 @@ class MemoryAssetRegistry:
                 (_dumps(values), updated_at, asset_id),
             )
 
+    async def mark_reviewed(
+        self,
+        asset_id: str,
+        *,
+        approved_by: str,
+        reviewed_at: str | None = None,
+    ) -> MemoryAsset:
+        """Record who approved an asset and when; part of the promotion gate."""
+        cursor = await self._conn.execute(
+            "UPDATE memory_assets SET approved_by=?, reviewed_at=?, updated_at=? "
+            "WHERE id=?",
+            (approved_by, reviewed_at or _now(), _now(), asset_id),
+        )
+        if cursor.rowcount == 0:
+            raise KeyError(f"Memory asset '{asset_id}' not found")
+        if self._autocommit:
+            await self._conn.commit()
+        loaded = await self.get_asset(asset_id)
+        assert loaded is not None
+        return loaded
+
     async def set_visibility(self, asset_id: str, visibility: str) -> MemoryAsset:
         if visibility not in ASSET_VISIBILITIES:
             raise ValueError(f"Unsupported memory asset visibility: {visibility}")

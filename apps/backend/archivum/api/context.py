@@ -136,9 +136,10 @@ def _provenance_payload(hit) -> dict[str, ExtractionMethod | str | float | None]
 def _context_request_for_user(
     body: ContextPackageRequest, current_user: CurrentUser
 ) -> ContextRequest:
-    allowed_scope = f"wiki:{current_user.wiki_id}"
+    default_scope = f"wiki:{current_user.wiki_id}"
+    allowed_scopes = {default_scope, "person:self"}
     requested_scope = body.scope.strip() if body.scope is not None else None
-    if requested_scope and requested_scope != allowed_scope:
+    if requested_scope and requested_scope not in allowed_scopes:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail={
@@ -146,7 +147,7 @@ def _context_request_for_user(
                 "code": "unauthorized_context_scope",
             },
         )
-    return body.to_context_request(allowed_scope)
+    return body.to_context_request(requested_scope or default_scope)
 
 
 def _evidence_citations(hit) -> tuple[Citation, ...]:

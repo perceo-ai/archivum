@@ -1,8 +1,9 @@
 """Wire distillation, skills, and asset governance into the stores.
 
-The rule this module enforces: nothing crosses into canonical memory without
-either passing the confidence threshold or being routed to human review, and
-every written record keeps the citation it was extracted from.
+The rule this module enforces: durable memory promotion requires review.
+High-confidence atoms may be written to the canonical layer as provisional
+records, but every atom gets a review card, every distilled asset starts as
+a draft, and every written record keeps the citation it was extracted from.
 """
 
 from __future__ import annotations
@@ -165,17 +166,25 @@ async def distill_conversation(
         prior=prior,
     )
 
+    queued = await _pending_atom_suggestion_ids(suggestions, wiki_id)
     for record in records:
+        prior_object = prior.get(record.object.id)
+        prior_state = (
+            prior_object.properties.get("review_state") if prior_object else None
+        )
         if record.accepted:
+            state = "accepted" if prior_state == "accepted" else "pending"
+            record.object.properties["review_state"] = state
             await repo.upsert_object(record.object)
             report.atoms_accepted += 1
+            if state == "pending":
+                await _ensure_atom_suggestion(
+                    suggestions, record, wiki_id=wiki_id, queued=queued
+                )
+                report.atoms_pending_review += 1
         else:
-            await suggestions.create_suggestion(
-                target_id=f"wiki:{wiki_id}",
-                suggestion_type="memory_atom",
-                proposed_markdown=f"- {record.atom.text}",
-                proposed_objects=[record.object.model_dump()],
-                citations=[c.model_dump() for c in record.object.citations],
+            await _ensure_atom_suggestion(
+                suggestions, record, wiki_id=wiki_id, queued=queued
             )
             report.atoms_pending_review += 1
 
@@ -260,6 +269,51 @@ async def distill_conversation(
         report.asset_ids.append(skill_asset.id)
 
     return report
+
+
+async def _pending_atom_suggestion_ids(
+    suggestions: SuggestionRepository, wiki_id: str
+) -> set[str]:
+    """Collect atom object ids that already have a pending review card."""
+    pending = await suggestions.list_suggestions(
+        target_id=f"wiki:{wiki_id}", status="pending"
+    )
+    queued: set[str] = set()
+    for suggestion in pending:
+        if suggestion.suggestion_type != "memory_atom":
+            continue
+        for raw in suggestion.proposed_objects:
+            if isinstance(raw, dict) and raw.get("id"):
+                queued.add(str(raw["id"]))
+    return queued
+
+
+async def _ensure_atom_suggestion(
+    suggestions: SuggestionRepository,
+    record,
+    *,
+    wiki_id: str,
+    queued: set[str],
+) -> bool:
+    """Create one review card per atom; re-distillation must not duplicate."""
+    if record.object.id in queued:
+        return False
+    await suggestions.create_suggestion(
+        target_id=f"wiki:{wiki_id}",
+        suggestion_type="memory_atom",
+        proposed_markdown=f"- {record.atom.text}",
+        proposed_objects=[record.object.model_dump()],
+        citations=[c.model_dump() for c in record.object.citations],
+        proposed_scopes=[record.object.scope],
+        scores={"confidence": record.object.confidence},
+        rationale=(
+            "Above-threshold extraction; promotion still requires review."
+            if record.accepted
+            else "Extraction confidence below threshold; needs human review."
+        ),
+    )
+    queued.add(record.object.id)
+    return True
 
 
 async def _load_prior_atoms(
@@ -541,9 +595,13 @@ async def _register_object_asset(
     page_slug: str,
     page_writer,
     report: DistillationReport | None,
-    status: str = "active",
+    status: str = "draft",
 ) -> MemoryAsset:
-    """Register the canonical object as a governed asset sharing its id."""
+    """Register the canonical object as a governed asset sharing its id.
+
+    Assets start as drafts: activation is a human review decision, so nothing
+    distillation produces becomes agent-loadable on its own.
+    """
     layer = str(obj.properties.get("layer", "L1"))
     if page_writer is not None:
         try:
@@ -600,11 +658,21 @@ def _summary_for(obj: KnowledgeObject) -> str:
 
 
 async def activate_asset(
-    conn: aiosqlite.Connection, repo: KnowledgeRepository, asset_id: str
+    conn: aiosqlite.Connection,
+    repo: KnowledgeRepository,
+    asset_id: str,
+    *,
+    approved_by: str | None = None,
 ) -> MemoryAsset:
-    """Activate an asset and make sure the owner link exists for its type."""
+    """Activate an asset and make sure the owner link exists for its type.
+
+    Activation is the human promotion gate, so the approver is recorded on
+    the asset when known.
+    """
     registry = MemoryAssetRegistry(conn)
     asset = await registry.set_status(asset_id, "active")
+    if approved_by is not None:
+        asset = await registry.mark_reviewed(asset_id, approved_by=approved_by)
     relationship = _ASSET_RELATIONSHIPS.get(asset.asset_type, "owns_asset")
     if asset.citations:
         obj = await repo.get_object(asset.id)

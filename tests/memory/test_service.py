@@ -64,13 +64,16 @@ async def test_distillation_writes_cited_atoms_and_a_chat_asset(env):
     report = await _distill(settings, result.source_id)
     assert report.atoms_total == 2
     assert report.atoms_accepted == 2
-    assert report.atoms_pending_review == 0
+    assert report.atoms_pending_review == 2
 
     async with sqlite_mod.get_db() as conn:
         repo = KnowledgeRepository(conn)
         atoms = await repo.list_objects(kind="memory_atom", scope="wiki:default")
         chat = await repo.get_object(f"memory:chat:{result.source_id}")
         owner_edges = await repo.list_relationships(node_id=SELF_ID)
+        pending = await SuggestionRepository(conn).list_suggestions(
+            target_id="wiki:default"
+        )
 
     assert {atom.properties["atom_type"] for atom in atoms} == {
         "preference",
@@ -79,6 +82,9 @@ async def test_distillation_writes_cited_atoms_and_a_chat_asset(env):
     for atom in atoms:
         assert atom.citations and atom.citations[0].quote
         assert atom.extraction_method == "EXTRACTED"
+        # Direct canonical writes are provisional until a human reviews them.
+        assert atom.properties["review_state"] == "pending"
+    assert len(pending) == 2
     assert chat is not None
     assert chat.properties["session_id"] == "s1"
     assert "remembers" in {edge.rel_type for edge in owner_edges}
@@ -130,6 +136,49 @@ async def test_weak_atoms_go_to_review_instead_of_canonical_memory(env):
 
 
 @pytest.mark.asyncio
+async def test_distilled_assets_start_as_drafts_pending_review(env):
+    settings, store = env
+    result = await store.capture(_conversation())
+    report = await _distill(settings, result.source_id, scenario_key="archivum")
+
+    async with sqlite_mod.get_db() as conn:
+        registry = MemoryAssetRegistry(conn)
+        assets = [await registry.get_asset(asset_id) for asset_id in report.asset_ids]
+    # Nothing distillation produces is agent-loadable until a human activates it.
+    assert assets and all(asset.status == "draft" for asset in assets)
+    assert all(asset.approved_by is None for asset in assets)
+
+
+@pytest.mark.asyncio
+async def test_reviewed_atoms_are_not_suggested_again(env):
+    settings, store = env
+    result = await store.capture(_conversation(session_id="s1"))
+    await _distill(settings, result.source_id)
+
+    async with sqlite_mod.get_db() as conn:
+        repo = KnowledgeRepository(conn)
+        suggestions = SuggestionRepository(conn)
+        for suggestion in await suggestions.list_suggestions(target_id="wiki:default"):
+            await suggestions.accept_suggestion(suggestion.id)
+        # Simulate the review effect marking the canonical atom as accepted.
+        for atom in await repo.list_objects(kind="memory_atom"):
+            atom.properties["review_state"] = "accepted"
+            await repo.upsert_object(atom)
+
+    second = await store.capture(_conversation(session_id="s2"))
+    report = await _distill(settings, second.source_id)
+
+    assert report.atoms_pending_review == 0
+    async with sqlite_mod.get_db() as conn:
+        pending = await SuggestionRepository(conn).list_suggestions(
+            target_id="wiki:default"
+        )
+        atoms = await KnowledgeRepository(conn).list_objects(kind="memory_atom")
+    assert pending == []
+    assert all(atom.properties["review_state"] == "accepted" for atom in atoms)
+
+
+@pytest.mark.asyncio
 async def test_persona_appears_only_after_the_statement_recurs(env):
     settings, store = env
     first = await store.capture(_conversation(session_id="s1"))
@@ -163,7 +212,7 @@ async def test_scenario_memory_is_registered_as_an_l2_asset(env):
             node_id=report.scenario_id
         )
     assert asset.layer == "L2"
-    assert asset.status == "active"
+    assert asset.status == "draft"  # durable promotion requires review
     assert "contains_atom" in {edge.rel_type for edge in edges}
 
 
@@ -218,9 +267,11 @@ async def test_activating_an_asset_links_it_to_the_owner(env):
 
     async with sqlite_mod.get_db() as conn:
         repo = KnowledgeRepository(conn)
-        asset = await activate_asset(conn, repo, report.skill_id)
+        asset = await activate_asset(conn, repo, report.skill_id, approved_by="owner")
         edges = await repo.list_relationships(node_id=SELF_ID)
     assert asset.status == "active"
+    assert asset.approved_by == "owner"
+    assert asset.reviewed_at is not None
     assert any(
         edge.rel_type == "learned_skill" and edge.dst_id == report.skill_id
         for edge in edges
@@ -240,9 +291,14 @@ async def test_distillation_is_idempotent_for_the_same_source(env):
         versions = await MemoryAssetRegistry(conn).list_versions(
             f"memory:chat:{result.source_id}"
         )
+        pending = await SuggestionRepository(conn).list_suggestions(
+            target_id="wiki:default"
+        )
     assert len(atoms) == 2
     # Same evidence, same content: no version churn on re-distillation.
     assert [v.version for v in versions] == [1]
+    # Re-distilling the same source must not duplicate review cards.
+    assert len(pending) == 2
 
 
 @pytest.mark.asyncio

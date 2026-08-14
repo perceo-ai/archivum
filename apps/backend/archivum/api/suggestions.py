@@ -8,10 +8,13 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, Field, model_validator
 
+from pydantic import ValidationError
+
 from archivum.api.pages import _validate_slug
 from archivum.auth import CurrentUser, get_current_user, require_writer
 from archivum.db import sqlite
-from archivum.knowledge.models import Citation
+from archivum.knowledge.models import Citation, KnowledgeObject
+from archivum.knowledge.repository import KnowledgeRepository
 from archivum.knowledge.suggestions import (
     MemorySuggestion,
     SuggestionAction,
@@ -237,6 +240,7 @@ async def _apply_review_effect(
             supersedes=[],
             markdown=body.edited_markdown,
         )
+        await _promote_proposed_objects(conn, suggestion, current_user)
         return
     if body.action in {"merge", "replace"}:
         supersedes = await _review_target_asset_ids(
@@ -252,6 +256,7 @@ async def _apply_review_effect(
             supersedes=supersedes,
             markdown=None,
         )
+        await _promote_proposed_objects(conn, suggestion, current_user)
         for asset_id in supersedes:
             await registry.set_status_for_wiki(
                 asset_id,
@@ -333,6 +338,25 @@ async def _register_suggestion_asset(
         conflict_lineage=[suggestion.id] if supersedes else [],
         change_note=f"Accepted review suggestion {suggestion.id}",
     )
+
+
+async def _promote_proposed_objects(
+    conn: Any,
+    suggestion: MemorySuggestion,
+    current_user: CurrentUser,
+) -> None:
+    """Write reviewed proposed objects into canonical knowledge as accepted."""
+    repo = KnowledgeRepository(conn)
+    for raw in suggestion.proposed_objects:
+        if not isinstance(raw, dict):
+            continue
+        try:
+            obj = KnowledgeObject.model_validate(raw)
+        except ValidationError:
+            continue
+        obj.properties["review_state"] = "accepted"
+        obj.properties["approved_by"] = current_user.username
+        await repo.upsert_object(obj, commit=False)
 
 
 def _suggestion_asset_id(suggestion: MemorySuggestion) -> str:

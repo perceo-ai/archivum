@@ -95,6 +95,34 @@ async def test_context_package_allows_explicit_authenticated_wiki_scope(monkeypa
 
 
 @pytest.mark.asyncio
+async def test_context_package_allows_person_self_scope(monkeypatch):
+    package = ContextPackage(
+        query="Alpha",
+        seeds=["person:self"],
+        nodes=[],
+        edges=[],
+        citations=[],
+        insufficient_evidence=True,
+        reason="No cited knowledge objects matched the requested context.",
+    )
+
+    @asynccontextmanager
+    async def fake_db():
+        yield object()
+
+    build = AsyncMock(return_value=package)
+    monkeypatch.setattr(context_api.sqlite, "get_db", fake_db)
+    monkeypatch.setattr(context_api, "build_context_package", build)
+
+    await context_api.context_package(
+        context_api.ContextPackageRequest(query="Alpha", scope="person:self"),
+        CurrentUser(username="owner", role="owner", wiki_id="owner"),
+    )
+
+    assert build.await_args.args[1].scope == "person:self"
+
+
+@pytest.mark.asyncio
 async def test_context_package_rejects_other_wiki_scope(monkeypatch):
     @asynccontextmanager
     async def fake_db():

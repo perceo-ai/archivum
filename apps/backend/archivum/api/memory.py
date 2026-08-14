@@ -232,7 +232,12 @@ async def set_asset_status(
         await _require_asset(registry, asset_id, current_user.wiki_id)
         try:
             if body.status == "active":
-                return await activate_asset(conn, KnowledgeRepository(conn), asset_id)
+                return await activate_asset(
+                    conn,
+                    KnowledgeRepository(conn),
+                    asset_id,
+                    approved_by=current_user.username,
+                )
             return await registry.set_status(asset_id, body.status)
         except ValueError as exc:
             raise _bad_request(str(exc), "invalid_asset_status") from exc
