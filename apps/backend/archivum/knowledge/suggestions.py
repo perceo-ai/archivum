@@ -323,6 +323,25 @@ class SuggestionRepository:
             (now,),
         ) as cursor:
             rows = await cursor.fetchall()
+        return await self._expire_rows(rows)
+
+    async def expire_stale_candidates(
+        self, now: str, *, ttl_days: int
+    ) -> list[MemorySuggestion]:
+        """Expire pending candidates with no explicit expiry past the scope TTL."""
+        async with self._conn.execute(
+            """
+            SELECT id FROM memory_suggestions
+            WHERE status='pending' AND expires_at IS NULL
+              AND datetime(created_at) <= datetime(?, ?)
+            ORDER BY created_at ASC, id ASC
+            """,
+            (now, f"-{int(ttl_days)} days"),
+        ) as cursor:
+            rows = await cursor.fetchall()
+        return await self._expire_rows(rows)
+
+    async def _expire_rows(self, rows) -> list[MemorySuggestion]:
         expired: list[MemorySuggestion] = []
         for row in rows:
             await self._transition(row["id"], "expired")

@@ -101,6 +101,9 @@ class Settings(BaseSettings):
 
     # ── Background workers ────────────────────────────────────────────────
     page_write_worker_enabled: bool = False
+    # Periodic retention sweep: expires stale review candidates automatically.
+    retention_sweep_enabled: bool = True
+    retention_sweep_interval_seconds: int = 3600
 
     # ── Memory distillation ───────────────────────────────────────────────
     # Distillation is deterministic and LLM-free. Atoms at or above the
