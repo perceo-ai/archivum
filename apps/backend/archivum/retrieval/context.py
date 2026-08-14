@@ -25,6 +25,14 @@ _OBJECT_SCAN_LIMIT = 10_000
 
 
 @dataclass(frozen=True)
+class ScopeBudget:
+    """Token/item limits configured for a memory scope."""
+
+    tokens: int | None
+    items: int | None
+
+
+@dataclass(frozen=True)
 class ContextRequest:
     query: str
     scope: str | None
@@ -39,7 +47,13 @@ class ContextRequest:
 async def build_context_package(
     repo: KnowledgeRepository, request: ContextRequest
 ) -> ContextPackage:
-    """Return a bounded, scoped subgraph rooted in requested or matched knowledge."""
+    """Return a bounded, scoped subgraph rooted in requested or matched knowledge.
+
+    Context packs are built from accepted memory only: provisional records that
+    are still pending human review are excluded, and per-scope token/item
+    budgets from the memory scope registry bound the result.
+    """
+    budget = await _load_scope_budget(repo._conn, request.scope)
     all_objects = await repo.list_objects(
         scope=request.scope, limit=_OBJECT_SCAN_LIMIT
     )
@@ -47,10 +61,21 @@ async def build_context_package(
         root = await repo.get_object(SELF_ID)
         if root is not None and all(obj.id != SELF_ID for obj in all_objects):
             all_objects.append(root)
+    pending_exclusions = {
+        obj.id: "Excluded pending human review."
+        for obj in all_objects
+        if _is_pending_review(obj)
+    }
+    all_objects = [obj for obj in all_objects if obj.id not in pending_exclusions]
     relationships = await repo.list_relationships(scope=request.scope)
     if _is_code_request(request):
         return await _build_code_context_package(
-            repo, all_objects, relationships, request
+            repo,
+            all_objects,
+            relationships,
+            request,
+            budget=budget,
+            extra_exclusions=pending_exclusions,
         )
 
     objects = _filter_source_type(all_objects, request.source_type)
@@ -63,7 +88,15 @@ async def build_context_package(
             seeds = [SELF_ID]
 
     visited, edges = _expand(objects_by_id, relationships, seeds, request)
-    return _package_from_records(request.query, seeds, objects_by_id, visited, edges)
+    return _package_from_records(
+        request.query,
+        seeds,
+        objects_by_id,
+        visited,
+        edges,
+        budget=budget,
+        extra_exclusions=pending_exclusions,
+    )
 
 
 async def _build_code_context_package(
@@ -71,6 +104,9 @@ async def _build_code_context_package(
     objects: list[KnowledgeObject],
     relationships: list[KnowledgeRelationship],
     request: ContextRequest,
+    *,
+    budget: "ScopeBudget | None" = None,
+    extra_exclusions: dict[str, str] | None = None,
 ) -> ContextPackage:
     objects_by_id = {obj.id: obj for obj in objects}
     explicit_seeds = [
@@ -78,7 +114,13 @@ async def _build_code_context_package(
     ]
     subgraph = await _retrieve_code_subgraph(repo, objects, relationships, request)
     if subgraph is None:
-        return _build_canonical_code_fallback(objects_by_id, relationships, request)
+        return _build_canonical_code_fallback(
+            objects_by_id,
+            relationships,
+            request,
+            budget=budget,
+            extra_exclusions=extra_exclusions,
+        )
 
     seeds = _bounded_unique([*explicit_seeds, *subgraph.seeds], request.max_nodes)
     node_ids = _bounded_unique(
@@ -103,7 +145,15 @@ async def _build_code_context_package(
         and edge["source"] in node_ids
         and edge["target"] in node_ids
     ]
-    return _package_from_records(request.query, seeds, objects_by_id, node_ids, edges)
+    return _package_from_records(
+        request.query,
+        seeds,
+        objects_by_id,
+        node_ids,
+        edges,
+        budget=budget,
+        extra_exclusions=extra_exclusions,
+    )
 
 
 async def _retrieve_code_subgraph(
@@ -154,6 +204,9 @@ def _build_canonical_code_fallback(
     objects_by_id: dict[str, KnowledgeObject],
     relationships: list[KnowledgeRelationship],
     request: ContextRequest,
+    *,
+    budget: "ScopeBudget | None" = None,
+    extra_exclusions: dict[str, str] | None = None,
 ) -> ContextPackage:
     seeds = _bounded_unique(
         _select_seeds(list(objects_by_id.values()), request), request.max_nodes
@@ -161,7 +214,73 @@ def _build_canonical_code_fallback(
     if not seeds and request.source_type is None and SELF_ID in objects_by_id:
         seeds = [SELF_ID]
     node_ids, edges = _expand(objects_by_id, relationships, seeds, request)
-    return _package_from_records(request.query, seeds, objects_by_id, node_ids, edges)
+    return _package_from_records(
+        request.query,
+        seeds,
+        objects_by_id,
+        node_ids,
+        edges,
+        budget=budget,
+        extra_exclusions=extra_exclusions,
+    )
+
+
+async def _load_scope_budget(
+    connection: aiosqlite.Connection, scope: str | None
+) -> ScopeBudget | None:
+    """Read the scope's configured budget; tolerate stores without the table."""
+    if scope is None:
+        return None
+    async with connection.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name='memory_scopes'"
+    ) as cursor:
+        if await cursor.fetchone() is None:
+            return None
+    async with connection.execute(
+        "SELECT budget_tokens, budget_items FROM memory_scopes WHERE id=? LIMIT 1",
+        (scope,),
+    ) as cursor:
+        row = await cursor.fetchone()
+    if row is None:
+        return None
+    return ScopeBudget(tokens=row["budget_tokens"], items=row["budget_items"])
+
+
+def _is_pending_review(obj: KnowledgeObject) -> bool:
+    return obj.properties.get("review_state") == "pending"
+
+
+def _estimate_tokens(obj: KnowledgeObject) -> int:
+    text = " ".join([obj.label, *(str(value) for value in obj.properties.values())])
+    return max(1, len(text) // 4)
+
+
+def _apply_scope_budget(
+    node_ids: list[str],
+    objects_by_id: dict[str, KnowledgeObject],
+    budget: ScopeBudget | None,
+) -> tuple[list[str], dict[str, str]]:
+    """Trim traversal output to the scope's budgets, explaining each drop.
+
+    The first node always fits so a tight budget still yields a usable seed.
+    """
+    if budget is None or (budget.tokens is None and budget.items is None):
+        return node_ids, {}
+    kept: list[str] = []
+    excluded: dict[str, str] = {}
+    spent = 0
+    for node_id in node_ids:
+        obj = objects_by_id[node_id]
+        if budget.items is not None and len(kept) >= budget.items:
+            excluded[node_id] = "Excluded by scope item budget."
+            continue
+        cost = _estimate_tokens(obj)
+        if budget.tokens is not None and kept and spent + cost > budget.tokens:
+            excluded[node_id] = "Excluded by scope token budget."
+            continue
+        kept.append(node_id)
+        spent += cost
+    return kept, excluded
 
 
 async def _has_lexical_index(connection: aiosqlite.Connection) -> bool:
@@ -254,7 +373,17 @@ def _package_from_records(
     objects_by_id: dict[str, KnowledgeObject],
     node_ids: list[str],
     edges: list[KnowledgeRelationship],
+    *,
+    budget: ScopeBudget | None = None,
+    extra_exclusions: dict[str, str] | None = None,
 ) -> ContextPackage:
+    node_ids, budget_exclusions = _apply_scope_budget(node_ids, objects_by_id, budget)
+    kept_ids = set(node_ids)
+    edges = [
+        relationship
+        for relationship in edges
+        if relationship.src_id in kept_ids and relationship.dst_id in kept_ids
+    ]
     nodes = [_context_node(objects_by_id[node_id]) for node_id in node_ids]
     context_edges = [_context_edge(relationship) for relationship in edges]
     citations = _unique_citations(
@@ -277,6 +406,8 @@ def _package_from_records(
         for object_id in objects_by_id
         if object_id not in selected_ids
     }
+    exclusion_explanations.update(budget_exclusions)
+    exclusion_explanations.update(extra_exclusions or {})
     staleness_warnings = {
         object_id: "Marked stale by source metadata."
         for object_id, obj in objects_by_id.items()
