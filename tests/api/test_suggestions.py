@@ -164,6 +164,7 @@ def test_review_action_route_supports_merge_replace_keep_retire_scope_visibility
     db_path = tmp_path / "suggestions.db"
     _patch_suggestion_db(monkeypatch, db_path)
     client = _client_for_wiki("alpha")
+    asyncio.run(_seed_memory_asset(db_path, "memory:existing"))
 
     for action, expected in [
         ("merge", "merged"),
@@ -175,10 +176,58 @@ def test_review_action_route_supports_merge_replace_keep_retire_scope_visibility
             _seed_suggestion(db_path, target_id=f"page:alpha:{action}")
         )
         response = client.post(
-            f"/api/suggestions/{suggestion.id}/review", json={"action": action}
+            f"/api/suggestions/{suggestion.id}/review",
+            json={"action": action, "asset_id": "memory:existing"},
         )
         assert response.status_code == 200
         assert response.json()["status"] == expected
+
+
+def test_merge_replace_retire_require_a_target_asset(tmp_path, monkeypatch):
+    db_path = tmp_path / "suggestions.db"
+    _patch_suggestion_db(monkeypatch, db_path)
+    client = _client_for_wiki("alpha")
+
+    for action in ["merge", "replace", "retire"]:
+        suggestion = asyncio.run(
+            _seed_suggestion(db_path, target_id=f"page:alpha:no-target-{action}")
+        )
+        response = client.post(
+            f"/api/suggestions/{suggestion.id}/review", json={"action": action}
+        )
+        assert response.status_code == 400
+        assert response.json()["detail"]["code"] == "invalid_review_action"
+
+
+def test_accept_honours_scope_and_visibility_overrides(tmp_path, monkeypatch):
+    db_path = tmp_path / "suggestions.db"
+    _patch_suggestion_db(monkeypatch, db_path)
+    client = _client_for_wiki("alpha")
+    suggestion = asyncio.run(
+        _seed_suggestion(
+            db_path,
+            target_id="wiki:alpha",
+            proposed_markdown="Scoped durable memory.",
+        )
+    )
+
+    response = client.post(
+        f"/api/suggestions/{suggestion.id}/review",
+        json={"action": "accept", "scope": "person:self", "visibility": "shared"},
+    )
+    assert response.status_code == 200
+
+    async def load_asset():
+        async with aiosqlite.connect(str(db_path)) as conn:
+            conn.row_factory = aiosqlite.Row
+            return await MemoryAssetRegistry(conn).get_asset(
+                f"memory:suggestion:{suggestion.id}"
+            )
+
+    asset = asyncio.run(load_asset())
+    assert asset is not None
+    assert asset.scope == "person:self"
+    assert asset.visibility == "shared"
 
 
 def test_accepting_a_memory_suggestion_registers_active_memory_asset(tmp_path, monkeypatch):

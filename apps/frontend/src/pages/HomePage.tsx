@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { Archive, CheckCircle2, CircleAlert, Network, RefreshCw, Search, Send, Sparkles } from 'lucide-react';
 import {
   captureConversation,
@@ -241,25 +242,22 @@ export default function HomePage() {
                   {suggestion.proposed_markdown || suggestion.target_id}
                 </p>
                 <p className="mt-2 text-xs text-zinc-500">{suggestion.citations.length} source citations</p>
-                <div className="mt-3 flex flex-wrap gap-2">
+                <div className="mt-3 flex flex-wrap items-center gap-2">
                   <Button size="sm" variant="outline" onClick={() => handleReviewAction(suggestion, 'accept')}>
                     Accept
-                  </Button>
-                  <Button size="sm" variant="outline" onClick={() => handleReviewAction(suggestion, 'merge')}>
-                    Merge
-                  </Button>
-                  <Button size="sm" variant="outline" onClick={() => handleReviewAction(suggestion, 'replace')}>
-                    Replace
                   </Button>
                   <Button size="sm" variant="outline" onClick={() => handleReviewAction(suggestion, 'keep_both')}>
                     Keep both
                   </Button>
-                  <Button size="sm" variant="outline" onClick={() => handleReviewAction(suggestion, 'retire')}>
-                    Retire
-                  </Button>
                   <Button size="sm" variant="ghost" onClick={() => handleReviewAction(suggestion, 'reject')}>
                     Reject
                   </Button>
+                  <Link
+                    to="/review"
+                    className="text-xs font-medium text-violet-300 underline-offset-2 hover:underline"
+                  >
+                    Edit, merge &amp; scope in Review
+                  </Link>
                 </div>
               </div>
             ))}

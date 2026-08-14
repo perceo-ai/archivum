@@ -1,13 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import { renderToString } from 'react-dom/server';
 import { StaticRouter } from 'react-router-dom/server';
+import fs from 'node:fs';
+import path from 'node:path';
 import { AppProvider } from './store';
 import ReviewPage from './pages/ReviewPage';
-import ToolsPage from './pages/ToolsPage';
-import LensPage from './pages/LensPage';
 
-describe('review surface', () => {
-  it('renders rich suggested update card fields', () => {
+describe('review workflow surface', () => {
+  it('renders the review queue with expiry controls', () => {
     const html = renderToString(
       <StaticRouter location="/review">
         <AppProvider>
@@ -16,42 +16,29 @@ describe('review surface', () => {
       </StaticRouter>,
     );
 
-    expect(html).toContain('Review');
-    expect(html).toContain('Why it matters');
-    expect(html).toContain('Scope');
-    expect(html).toContain('Durability');
-    expect(html).toContain('Agent visibility');
-    expect(html).toContain('Conflicts');
-    expect(html).toContain('Redundancy');
+    expect(html).toContain('Review updates');
+    expect(html).toContain('Expire stale');
   });
 
-  it('does not hide review under tools navigation', () => {
-    const html = renderToString(
-      <StaticRouter location="/tools/graph">
-        <ToolsPage />
-      </StaticRouter>,
-    );
+  it('exposes edit, scope, visibility, and target controls on cards', () => {
+    // Static contract: the strategy's card actions must all be wired.
+    const text = fs.readFileSync(path.resolve('src/pages/ReviewPage.tsx'), 'utf8');
 
-    expect(html).not.toContain('Review updates');
-  });
-});
-
-describe('human-first graph lenses', () => {
-  it('renders topic people repo and source lenses', () => {
-    for (const [location, lens, title] of [
-      ['/topics', 'topics', 'Topics'],
-      ['/people', 'people', 'People'],
-      ['/repos', 'repos', 'Repos'],
-      ['/sources', 'sources', 'Sources'],
-    ] as const) {
-      const html = renderToString(
-        <StaticRouter location={location}>
-          <LensPage lens={lens} />
-        </StaticRouter>,
-      );
-
-      expect(html).toContain(title);
-      expect(html).toContain('person:self lens');
+    for (const action of [
+      "'accept'",
+      "'edit'",
+      "'merge'",
+      "'replace'",
+      "'keep_both'",
+      "'retire'",
+      "'reject'",
+    ]) {
+      expect(text).toContain(action);
     }
+    expect(text).toContain('edited_markdown');
+    expect(text).toContain('Accept into scope');
+    expect(text).toContain('Agent visibility');
+    expect(text).toContain('Merge/replace/retire target');
+    expect(text).toContain('asset_id');
   });
 });

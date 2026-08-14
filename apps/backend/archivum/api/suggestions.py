@@ -239,6 +239,8 @@ async def _apply_review_effect(
             current_user,
             supersedes=[],
             markdown=body.edited_markdown,
+            scope=body.scope,
+            visibility=body.visibility,
         )
         await _promote_proposed_objects(conn, suggestion, current_user)
         return
@@ -249,12 +251,19 @@ async def _apply_review_effect(
             body,
             current_user.wiki_id,
         )
+        if not supersedes:
+            raise ValueError(
+                f"{body.action.capitalize()} review actions require a target "
+                "memory asset (asset_id, or a card with conflicts/duplicates)"
+            )
         await _register_suggestion_asset(
             registry,
             suggestion,
             current_user,
             supersedes=supersedes,
             markdown=None,
+            scope=body.scope,
+            visibility=body.visibility,
         )
         await _promote_proposed_objects(conn, suggestion, current_user)
         for asset_id in supersedes:
@@ -271,6 +280,11 @@ async def _apply_review_effect(
             body,
             current_user.wiki_id,
         )
+        if not asset_ids:
+            raise ValueError(
+                "Retire review actions require a target memory asset "
+                "(asset_id, or a card with conflicts/duplicates)"
+            )
         for asset_id in asset_ids:
             await registry.set_status_for_wiki(
                 asset_id,
@@ -306,6 +320,8 @@ async def _register_suggestion_asset(
     *,
     supersedes: list[str],
     markdown: str | None,
+    scope: str | None = None,
+    visibility: str | None = None,
 ) -> None:
     now = datetime.now(UTC).isoformat()
     body = suggestion.proposed_markdown if markdown is None else markdown
@@ -315,9 +331,9 @@ async def _register_suggestion_asset(
         asset_type="wiki",
         layer="L1",
         name=_suggestion_asset_name(suggestion, body),
-        scope=_suggestion_scope(suggestion, current_user.wiki_id),
+        scope=scope or _suggestion_scope(suggestion, current_user.wiki_id),
         status="active",
-        visibility=_suggestion_visibility(suggestion),
+        visibility=visibility or _suggestion_visibility(suggestion),
         summary=suggestion.rationale or _truncate(body, 160),
         body=body,
         tags=["suggestion", suggestion.suggestion_type],
