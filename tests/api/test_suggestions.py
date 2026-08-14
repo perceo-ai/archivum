@@ -305,6 +305,53 @@ def test_replace_archives_conflicting_memory_and_records_supersession(tmp_path, 
     assert new.supersedes == ["memory:old"]
 
 
+def test_merge_reconciles_referenced_memory_assets(tmp_path, monkeypatch):
+    db_path = tmp_path / "suggestions.db"
+    _patch_suggestion_db(monkeypatch, db_path)
+    asyncio.run(_seed_memory_asset(db_path, "memory:merge-source"))
+    client = _client_for_wiki("alpha")
+    suggestion = asyncio.run(
+        _seed_suggestion(
+            db_path,
+            target_id="wiki:alpha",
+            proposed_markdown="Merged canonical memory.",
+        )
+    )
+
+    async def add_conflict():
+        async with aiosqlite.connect(str(db_path)) as conn:
+            await conn.execute(
+                "UPDATE memory_suggestions SET conflicts=? WHERE id=?",
+                ('["memory:merge-source"]', suggestion.id),
+            )
+            await conn.commit()
+
+    asyncio.run(add_conflict())
+
+    response = client.post(
+        f"/api/suggestions/{suggestion.id}/review", json={"action": "merge"}
+    )
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "merged"
+
+    async def load_assets():
+        async with aiosqlite.connect(str(db_path)) as conn:
+            conn.row_factory = aiosqlite.Row
+            registry = MemoryAssetRegistry(conn)
+            return (
+                await registry.get_asset("memory:merge-source"),
+                await registry.get_asset(f"memory:suggestion:{suggestion.id}"),
+            )
+
+    old, merged = asyncio.run(load_assets())
+    assert old.status == "archived"
+    assert old.superseded_by == [merged.id]
+    assert merged.status == "active"
+    assert merged.supersedes == ["memory:merge-source"]
+    assert merged.body == "Merged canonical memory."
+
+
 def test_review_actions_reject_cross_wiki_asset_targets(tmp_path, monkeypatch):
     db_path = tmp_path / "suggestions.db"
     _patch_suggestion_db(monkeypatch, db_path)

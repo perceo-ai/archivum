@@ -227,7 +227,7 @@ async def _apply_review_effect(
     current_user: CurrentUser,
 ) -> None:
     registry = MemoryAssetRegistry(conn, autocommit=False)
-    if body.action in {"accept", "edit", "merge", "keep_both"}:
+    if body.action in {"accept", "edit", "keep_both"}:
         if body.action == "edit" and body.edited_markdown is None:
             raise ValueError("Edit review actions require edited_markdown")
         await _register_suggestion_asset(
@@ -238,7 +238,7 @@ async def _apply_review_effect(
             markdown=body.edited_markdown,
         )
         return
-    if body.action == "replace":
+    if body.action in {"merge", "replace"}:
         supersedes = await _review_target_asset_ids(
             registry,
             suggestion,
