@@ -26,6 +26,10 @@ import {
   listPageSuggestions,
   acceptSuggestion,
   rejectSuggestion,
+  reviewSuggestion,
+  expireSuggestions,
+  listMemoryScopes,
+  upsertMemoryScope,
 } from './api';
 import type { Page, SearchResult, GraphNode, GraphEdge, LifeProject, LifeTask } from './types';
 
@@ -49,6 +53,11 @@ const makePage = (overrides: Partial<Page> = {}): Page => ({
   updated_at: '2024-01-01T00:00:00Z',
   authored_by: 'agent',
   ...overrides,
+});
+
+const apiJsonResponse = (body: unknown) => new Response(JSON.stringify(body), {
+  status: 200,
+  headers: { 'Content-Type': 'application/json' },
 });
 
 describe('refreshSession', () => {
@@ -417,6 +426,15 @@ describe('suggestions api', () => {
     proposed_markdown: '## Suggested',
     proposed_objects: [],
     citations: [],
+    proposed_scopes: ['person:self'],
+    scores: { future_utility: 0.9 },
+    duplicates: [],
+    conflicts: ['memory:old'],
+    retention_tier: 'candidate',
+    agent_visibility: 'review_required',
+    rationale: 'Useful later.',
+    estimated_durability: 'durable',
+    expires_at: null,
     status: 'pending' as const,
   };
 
@@ -474,6 +492,169 @@ describe('suggestions api', () => {
     expect(fetchMock).toHaveBeenCalledWith('/api/suggestions/suggestion%3Aone/reject', expect.objectContaining({
       method: 'POST',
       credentials: 'include',
+    }));
+  });
+
+  it('sends review actions for merge and lifecycle decisions', async () => {
+    fetchMock.mockResolvedValueOnce(new Response(
+      JSON.stringify({ ...suggestion, status: 'merged' }),
+      { status: 200, headers: { 'Content-Type': 'application/json' } },
+    ));
+
+    await expect(reviewSuggestion('suggestion:one', 'merge')).resolves.toEqual({
+      ...suggestion,
+      status: 'merged',
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith('/api/suggestions/suggestion%3Aone/review', expect.objectContaining({
+      method: 'POST',
+      credentials: 'include',
+      body: JSON.stringify({ action: 'merge' }),
+    }));
+  });
+
+  it('sends destination payloads for scoped review actions', async () => {
+    fetchMock.mockResolvedValueOnce(new Response(
+      JSON.stringify({ ...suggestion, status: 'scope_changed' }),
+      { status: 200, headers: { 'Content-Type': 'application/json' } },
+    ));
+
+    await expect(reviewSuggestion('suggestion:one', 'change_scope', {
+      asset_id: 'memory:target',
+      scope: 'project:archivum',
+    })).resolves.toEqual({
+      ...suggestion,
+      status: 'scope_changed',
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith('/api/suggestions/suggestion%3Aone/review', expect.objectContaining({
+      method: 'POST',
+      credentials: 'include',
+      body: JSON.stringify({
+        action: 'change_scope',
+        asset_id: 'memory:target',
+        scope: 'project:archivum',
+      }),
+    }));
+  });
+
+  it('expires due pending suggestions', async () => {
+    fetchMock.mockResolvedValueOnce(apiJsonResponse([{ ...suggestion, status: 'expired' }]));
+
+    await expect(expireSuggestions('2026-08-13T00:00:00+00:00')).resolves.toEqual([
+      { ...suggestion, status: 'expired' },
+    ]);
+
+    expect(fetchMock).toHaveBeenCalledWith('/api/suggestions/expire', expect.objectContaining({
+      method: 'POST',
+      body: JSON.stringify({ now: '2026-08-13T00:00:00+00:00' }),
+    }));
+  });
+});
+
+describe('memory scopes api', () => {
+  const scope = {
+    id: 'topic:clean-memory',
+    wiki_id: 'default',
+    scope_type: 'topic' as const,
+    name: 'Clean memory',
+    parent_scope_id: 'person:self',
+    budget_tokens: 3000,
+    budget_items: 12,
+    retention_policy: { candidate_ttl_days: 14 },
+  };
+
+  it('lists memory scopes with optional type filter', async () => {
+    fetchMock.mockResolvedValueOnce(apiJsonResponse([scope]));
+
+    await expect(listMemoryScopes('topic')).resolves.toEqual([scope]);
+
+    expect(fetchMock).toHaveBeenCalledWith('/api/memory/scopes?scope_type=topic', expect.objectContaining({
+      credentials: 'include',
+    }));
+  });
+
+  it('upserts a memory scope with CSRF protection', async () => {
+    vi.stubGlobal('document', { cookie: 'csrf_token=scope-csrf' });
+    fetchMock.mockResolvedValueOnce(apiJsonResponse(scope));
+
+    await expect(upsertMemoryScope(scope)).resolves.toEqual(scope);
+
+    expect(fetchMock).toHaveBeenCalledWith('/api/memory/scopes', expect.objectContaining({
+      method: 'POST',
+      headers: expect.objectContaining({ 'X-CSRF-Token': 'scope-csrf' }),
+      body: JSON.stringify(scope),
+    }));
+  });
+});
+
+describe('capture and distillation api', () => {
+  it('captures a typed conversation with CSRF protection', async () => {
+    vi.stubGlobal('document', { cookie: 'csrf_token=csrf-123' });
+    fetchMock.mockResolvedValueOnce(apiJsonResponse({
+      source_id: 'source:capture:one',
+      content_hash: 'abc',
+      version: 1,
+      document_id: 'doc:one',
+      chunk_count: 2,
+      deduplicated: false,
+    }));
+
+    const { captureConversation } = await import('./api');
+
+    await expect(captureConversation({
+      session_id: 'home-capture',
+      interface: 'archivum_home',
+      scope: 'person:self',
+      turns: [{ role: 'user', text: 'Remember this.' }],
+    })).resolves.toMatchObject({ source_id: 'source:capture:one' });
+
+    expect(fetchMock).toHaveBeenCalledWith('/api/sources/capture', expect.objectContaining({
+      method: 'POST',
+      headers: expect.objectContaining({ 'X-CSRF-Token': 'csrf-123' }),
+      body: JSON.stringify({
+        session_id: 'home-capture',
+        interface: 'archivum_home',
+        started_at: '',
+        scope: 'person:self',
+        origin_uri: '',
+        turns: [{ role: 'user', text: 'Remember this.', ts: '', tool_calls: [] }],
+      }),
+    }));
+  });
+
+  it('distills captured sources without forcing markdown page writes', async () => {
+    fetchMock.mockResolvedValueOnce(apiJsonResponse({
+      source_id: 'source:capture:one',
+      session_id: 'home-capture',
+      scope: 'person:self',
+      atoms_total: 1,
+      atoms_accepted: 0,
+      atoms_pending_review: 1,
+      asset_ids: [],
+      scenario_id: null,
+      persona_updated: false,
+      skill_id: null,
+      skill_reason: null,
+      pages_written: [],
+    }));
+
+    const { distillSource } = await import('./api');
+
+    await expect(distillSource({
+      source_id: 'source:capture:one',
+      scenario_key: 'home',
+      write_pages: false,
+    })).resolves.toMatchObject({ atoms_pending_review: 1 });
+
+    expect(fetchMock).toHaveBeenCalledWith('/api/memory/distill', expect.objectContaining({
+      method: 'POST',
+      body: JSON.stringify({
+        source_id: 'source:capture:one',
+        scenario_key: 'home',
+        threshold: undefined,
+        write_pages: false,
+      }),
     }));
   });
 });

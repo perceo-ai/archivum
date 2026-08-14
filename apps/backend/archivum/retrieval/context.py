@@ -264,6 +264,24 @@ def _package_from_records(
         [*citations, *(citation for edge in context_edges for citation in edge.citations)]
     )
     insufficient_evidence = not any(node.citations for node in nodes)
+    selected_ids = {node.id for node in nodes}
+    inclusion_explanations = {
+        node.id: (
+            f"Included as a seed or graph neighbor in scope {node.scope}; "
+            f"{len(node.citations)} citation{'s' if len(node.citations) != 1 else ''} available."
+        )
+        for node in nodes
+    }
+    exclusion_explanations = {
+        object_id: "Excluded by max_nodes budget."
+        for object_id in objects_by_id
+        if object_id not in selected_ids
+    }
+    staleness_warnings = {
+        object_id: "Marked stale by source metadata."
+        for object_id, obj in objects_by_id.items()
+        if object_id in selected_ids and obj.properties.get("stale")
+    }
     return ContextPackage(
         query=query,
         seeds=seeds,
@@ -276,6 +294,9 @@ def _package_from_records(
             if insufficient_evidence
             else None
         ),
+        inclusion_explanations=inclusion_explanations,
+        exclusion_explanations=exclusion_explanations,
+        staleness_warnings=staleness_warnings,
     )
 
 

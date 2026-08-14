@@ -19,6 +19,7 @@ from archivum.memory.models import (
     AssetBinding,
     MemoryAsset,
     MemoryAssetVersion,
+    MemoryScope,
 )
 from archivum.memory.schema import MEMORY_SCHEMA
 
@@ -29,6 +30,7 @@ async def init_memory_schema(conn: aiosqlite.Connection) -> None:
     """Create the memory registry tables on an open SQLite connection."""
     conn.row_factory = aiosqlite.Row
     await conn.executescript(MEMORY_SCHEMA)
+    await _migrate_memory_schema(conn)
     await conn.commit()
 
 
@@ -55,11 +57,105 @@ def _validate(asset_type: str, layer: str, status: str, visibility: str) -> None
         raise ValueError(f"Unsupported memory asset visibility: {visibility}")
 
 
+async def _migrate_memory_schema(conn: aiosqlite.Connection) -> None:
+    async with conn.execute("PRAGMA table_info(memory_assets)") as cursor:
+        rows = await cursor.fetchall()
+    columns = {row["name"] for row in rows}
+    additions = {
+        "approved_by": "TEXT",
+        "reviewed_at": "TEXT",
+        "supersedes": "TEXT NOT NULL DEFAULT '[]'",
+        "superseded_by": "TEXT NOT NULL DEFAULT '[]'",
+        "conflict_lineage": "TEXT NOT NULL DEFAULT '[]'",
+        "retired_at": "TEXT",
+    }
+    for column, definition in additions.items():
+        if column not in columns:
+            await conn.execute(f"ALTER TABLE memory_assets ADD COLUMN {column} {definition}")
+
+
 class MemoryAssetRegistry:
     """Register, version, govern, and equip memory assets."""
 
-    def __init__(self, conn: aiosqlite.Connection) -> None:
+    def __init__(self, conn: aiosqlite.Connection, *, autocommit: bool = True) -> None:
         self._conn = conn
+        self._autocommit = autocommit
+
+    # ── Scopes ────────────────────────────────────────────────────────────
+
+    async def upsert_scope(
+        self,
+        *,
+        id: str,
+        wiki_id: str,
+        scope_type: str,
+        name: str,
+        parent_scope_id: str | None = None,
+        budget_tokens: int = 4_000,
+        budget_items: int = 20,
+        retention_policy: dict[str, Any] | None = None,
+    ) -> MemoryScope:
+        if scope_type not in {"human", "topic", "project", "repo", "person", "org"}:
+            raise ValueError(f"Unsupported memory scope type: {scope_type}")
+        if budget_tokens < 0 or budget_items < 0:
+            raise ValueError("Memory scope budgets must be non-negative")
+        now = _now()
+        await self._conn.execute(
+            """
+            INSERT INTO memory_scopes
+                (id, wiki_id, scope_type, name, parent_scope_id, budget_tokens,
+                 budget_items, retention_policy, created_at, updated_at)
+            VALUES (?,?,?,?,?,?,?,?,?,?)
+            ON CONFLICT(wiki_id, id) DO UPDATE SET
+                scope_type=excluded.scope_type,
+                name=excluded.name,
+                parent_scope_id=excluded.parent_scope_id,
+                budget_tokens=excluded.budget_tokens,
+                budget_items=excluded.budget_items,
+                retention_policy=excluded.retention_policy,
+                updated_at=excluded.updated_at
+            """,
+            (
+                id,
+                wiki_id,
+                scope_type,
+                name,
+                parent_scope_id,
+                budget_tokens,
+                budget_items,
+                _dumps(retention_policy or {}),
+                now,
+                now,
+            ),
+        )
+        await self._conn.commit()
+        scope = await self.get_scope(id, wiki_id)
+        assert scope is not None
+        return scope
+
+    async def get_scope(self, scope_id: str, wiki_id: str) -> MemoryScope | None:
+        async with self._conn.execute(
+            "SELECT * FROM memory_scopes WHERE wiki_id=? AND id=?",
+            (wiki_id, scope_id),
+        ) as cursor:
+            row = await cursor.fetchone()
+        return _row_to_scope(row) if row else None
+
+    async def list_scopes(
+        self, wiki_id: str, scope_type: str | None = None
+    ) -> list[MemoryScope]:
+        clauses = ["wiki_id=?"]
+        params: list[Any] = [wiki_id]
+        if scope_type is not None:
+            clauses.append("scope_type=?")
+            params.append(scope_type)
+        async with self._conn.execute(
+            f"SELECT * FROM memory_scopes WHERE {' AND '.join(clauses)} "
+            "ORDER BY scope_type ASC, name ASC, id ASC",
+            params,
+        ) as cursor:
+            rows = await cursor.fetchall()
+        return [_row_to_scope(row) for row in rows]
 
     # ── Assets ────────────────────────────────────────────────────────────
 
@@ -81,6 +177,12 @@ class MemoryAssetRegistry:
         tags: list[str] | None = None,
         metadata: dict[str, Any] | None = None,
         citations: list[Citation] | None = None,
+        approved_by: str | None = None,
+        reviewed_at: str | None = None,
+        supersedes: list[str] | None = None,
+        superseded_by: list[str] | None = None,
+        conflict_lineage: list[str] | None = None,
+        retired_at: str | None = None,
         change_note: str = "",
     ) -> MemoryAsset:
         """Create or update an asset, bumping the version only when content changes.
@@ -92,7 +194,11 @@ class MemoryAssetRegistry:
         tags = tags or []
         metadata = metadata or {}
         citations = citations or []
+        supersedes = supersedes or []
+        superseded_by = superseded_by or []
+        conflict_lineage = conflict_lineage or []
         now = _now()
+        effective_reviewed_at = reviewed_at or (now if approved_by else None)
 
         existing = await self.get_asset(id)
         if existing is None:
@@ -109,6 +215,12 @@ class MemoryAssetRegistry:
                 or existing.metadata != metadata
                 or [c.model_dump() for c in existing.citations]
                 != [c.model_dump() for c in citations]
+                or existing.approved_by != approved_by
+                or existing.reviewed_at != effective_reviewed_at
+                or existing.supersedes != supersedes
+                or existing.superseded_by != superseded_by
+                or existing.conflict_lineage != conflict_lineage
+                or existing.retired_at != retired_at
             )
             version = existing.version + 1 if changed else existing.version
             created_at = existing.created_at
@@ -116,15 +228,17 @@ class MemoryAssetRegistry:
             effective_status = existing.status
             effective_visibility = existing.visibility
 
-        await self._conn.execute("BEGIN")
+        if self._autocommit:
+            await self._conn.execute("BEGIN")
         try:
             await self._conn.execute(
                 """
                 INSERT INTO memory_assets
                     (id, wiki_id, asset_type, layer, name, owner, scope, status,
                      visibility, version, page_slug, summary, body, tags, metadata,
-                     citations, created_at, updated_at)
-                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                     citations, approved_by, reviewed_at, supersedes, superseded_by,
+                     conflict_lineage, retired_at, created_at, updated_at)
+                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
                 ON CONFLICT(id) DO UPDATE SET
                     wiki_id=excluded.wiki_id,
                     asset_type=excluded.asset_type,
@@ -139,6 +253,12 @@ class MemoryAssetRegistry:
                     tags=excluded.tags,
                     metadata=excluded.metadata,
                     citations=excluded.citations,
+                    approved_by=excluded.approved_by,
+                    reviewed_at=excluded.reviewed_at,
+                    supersedes=excluded.supersedes,
+                    superseded_by=excluded.superseded_by,
+                    conflict_lineage=excluded.conflict_lineage,
+                    retired_at=excluded.retired_at,
                     updated_at=excluded.updated_at
                 """,
                 (
@@ -158,10 +278,20 @@ class MemoryAssetRegistry:
                     _dumps(tags),
                     _dumps(metadata),
                     _citations_json(citations),
+                    approved_by,
+                    effective_reviewed_at,
+                    _dumps(supersedes),
+                    _dumps(superseded_by),
+                    _dumps(conflict_lineage),
+                    retired_at,
                     created_at,
                     now,
                 ),
             )
+            for superseded_id in supersedes:
+                await self._append_asset_list_field(
+                    superseded_id, "superseded_by", id, updated_at=now
+                )
             await self._conn.execute(
                 """
                 INSERT INTO memory_asset_versions
@@ -190,9 +320,11 @@ class MemoryAssetRegistry:
                     now,
                 ),
             )
-            await self._conn.commit()
+            if self._autocommit:
+                await self._conn.commit()
         except Exception:
-            await self._conn.rollback()
+            if self._autocommit:
+                await self._conn.rollback()
             raise
 
         loaded = await self.get_asset(id)
@@ -202,6 +334,16 @@ class MemoryAssetRegistry:
     async def get_asset(self, asset_id: str) -> MemoryAsset | None:
         async with self._conn.execute(
             "SELECT * FROM memory_assets WHERE id=?", (asset_id,)
+        ) as cursor:
+            row = await cursor.fetchone()
+        return _row_to_asset(row) if row else None
+
+    async def get_asset_for_wiki(
+        self, asset_id: str, wiki_id: str
+    ) -> MemoryAsset | None:
+        async with self._conn.execute(
+            "SELECT * FROM memory_assets WHERE id=? AND wiki_id=?",
+            (asset_id, wiki_id),
         ) as cursor:
             row = await cursor.fetchone()
         return _row_to_asset(row) if row else None
@@ -244,15 +386,73 @@ class MemoryAssetRegistry:
             raise ValueError(f"Unsupported memory asset status: {status}")
         return await self._set_field(asset_id, "status", status)
 
+    async def set_status_for_wiki(
+        self, asset_id: str, wiki_id: str, status: str
+    ) -> MemoryAsset:
+        if status not in ASSET_STATUSES:
+            raise ValueError(f"Unsupported memory asset status: {status}")
+        return await self._set_field(asset_id, "status", status, wiki_id=wiki_id)
+
+    async def _append_asset_list_field(
+        self, asset_id: str, column: str, value: str, *, updated_at: str
+    ) -> None:
+        async with self._conn.execute(
+            f"SELECT {column} FROM memory_assets WHERE id=?", (asset_id,)
+        ) as cursor:
+            row = await cursor.fetchone()
+        if row is None:
+            return
+        values = json.loads(row[column])
+        if value not in values:
+            values.append(value)
+            await self._conn.execute(
+                f"UPDATE memory_assets SET {column}=?, updated_at=? WHERE id=?",
+                (_dumps(values), updated_at, asset_id),
+            )
+
     async def set_visibility(self, asset_id: str, visibility: str) -> MemoryAsset:
         if visibility not in ASSET_VISIBILITIES:
             raise ValueError(f"Unsupported memory asset visibility: {visibility}")
         return await self._set_field(asset_id, "visibility", visibility)
 
-    async def _set_field(self, asset_id: str, column: str, value: str) -> MemoryAsset:
+    async def set_visibility_for_wiki(
+        self, asset_id: str, wiki_id: str, visibility: str
+    ) -> MemoryAsset:
+        if visibility not in ASSET_VISIBILITIES:
+            raise ValueError(f"Unsupported memory asset visibility: {visibility}")
+        return await self._set_field(
+            asset_id, "visibility", visibility, wiki_id=wiki_id
+        )
+
+    async def set_scope(self, asset_id: str, scope: str) -> MemoryAsset:
+        if not scope.strip():
+            raise ValueError("Memory asset scope must be non-empty")
+        return await self._set_field(asset_id, "scope", scope)
+
+    async def set_scope_for_wiki(
+        self, asset_id: str, wiki_id: str, scope: str
+    ) -> MemoryAsset:
+        if not scope.strip():
+            raise ValueError("Memory asset scope must be non-empty")
+        return await self._set_field(asset_id, "scope", scope, wiki_id=wiki_id)
+
+    async def _set_field(
+        self,
+        asset_id: str,
+        column: str,
+        value: str,
+        *,
+        wiki_id: str | None = None,
+    ) -> MemoryAsset:
+        where = "id=?" if wiki_id is None else "id=? AND wiki_id=?"
+        params: tuple[Any, ...] = (
+            (value, _now(), asset_id)
+            if wiki_id is None
+            else (value, _now(), asset_id, wiki_id)
+        )
         cursor = await self._conn.execute(
-            f"UPDATE memory_assets SET {column}=?, updated_at=? WHERE id=?",
-            (value, _now(), asset_id),
+            f"UPDATE memory_assets SET {column}=?, updated_at=? WHERE {where}",
+            params,
         )
         if cursor.rowcount == 0:
             raise KeyError(f"Memory asset '{asset_id}' not found")
@@ -263,8 +463,13 @@ class MemoryAssetRegistry:
                 "WHERE asset_id=? AND version=(SELECT version FROM memory_assets WHERE id=?)",
                 (value, asset_id, asset_id),
             )
-        await self._conn.commit()
-        loaded = await self.get_asset(asset_id)
+        if self._autocommit:
+            await self._conn.commit()
+        loaded = (
+            await self.get_asset(asset_id)
+            if wiki_id is None
+            else await self.get_asset_for_wiki(asset_id, wiki_id)
+        )
         assert loaded is not None
         return loaded
 
@@ -423,8 +628,27 @@ def _row_to_asset(row: aiosqlite.Row) -> MemoryAsset:
         tags=json.loads(row["tags"]),
         metadata=json.loads(row["metadata"]),
         citations=[Citation(**c) for c in json.loads(row["citations"])],
+        approved_by=row["approved_by"],
+        reviewed_at=row["reviewed_at"],
+        supersedes=json.loads(row["supersedes"]),
+        superseded_by=json.loads(row["superseded_by"]),
+        conflict_lineage=json.loads(row["conflict_lineage"]),
+        retired_at=row["retired_at"],
         created_at=row["created_at"],
         updated_at=row["updated_at"],
+    )
+
+
+def _row_to_scope(row: aiosqlite.Row) -> MemoryScope:
+    return MemoryScope(
+        id=row["id"],
+        wiki_id=row["wiki_id"],
+        scope_type=row["scope_type"],
+        name=row["name"],
+        parent_scope_id=row["parent_scope_id"],
+        budget_tokens=row["budget_tokens"],
+        budget_items=row["budget_items"],
+        retention_policy=json.loads(row["retention_policy"]),
     )
 
 

@@ -56,6 +56,30 @@ async def test_suggestion_can_be_rejected():
 
 
 @pytest.mark.asyncio
+async def test_suggestion_supports_review_action_lifecycle_states():
+    async with aiosqlite.connect(":memory:") as conn:
+        await init_suggestion_schema(conn)
+        repo = SuggestionRepository(conn)
+        for action, expected in [
+            ("merge", "merged"),
+            ("replace", "replaced"),
+            ("keep_both", "kept"),
+            ("retire", "retired"),
+            ("change_scope", "scope_changed"),
+            ("change_visibility", "visibility_changed"),
+        ]:
+            suggestion = await repo.create_suggestion(
+                target_id=f"page:default:{action}",
+                suggestion_type="memory_atom",
+                proposed_markdown=f"## {action}",
+                proposed_objects=[],
+                citations=[],
+            )
+            await repo.transition_suggestion(suggestion.id, action)
+            assert (await repo.get_suggestion(suggestion.id)).status == expected
+
+
+@pytest.mark.asyncio
 async def test_conflicting_transitions_and_missing_ids_fail():
     async with aiosqlite.connect(":memory:") as conn:
         await init_suggestion_schema(conn)
@@ -88,6 +112,45 @@ async def test_conflicting_transitions_and_missing_ids_fail():
 
 
 @pytest.mark.asyncio
+async def test_expire_due_candidates_moves_only_stale_pending_items():
+    async with aiosqlite.connect(":memory:") as conn:
+        await init_suggestion_schema(conn)
+        repo = SuggestionRepository(conn)
+        stale = await repo.create_suggestion(
+            target_id="wiki:default",
+            suggestion_type="memory_atom",
+            proposed_markdown="old",
+            proposed_objects=[],
+            citations=[],
+            expires_at="2026-08-01T00:00:00+00:00",
+        )
+        fresh = await repo.create_suggestion(
+            target_id="wiki:default",
+            suggestion_type="memory_atom",
+            proposed_markdown="fresh",
+            proposed_objects=[],
+            citations=[],
+            expires_at="2026-09-01T00:00:00+00:00",
+        )
+        accepted = await repo.create_suggestion(
+            target_id="wiki:default",
+            suggestion_type="memory_atom",
+            proposed_markdown="accepted",
+            proposed_objects=[],
+            citations=[],
+            expires_at="2026-08-01T00:00:00+00:00",
+        )
+        await repo.accept_suggestion(accepted.id)
+
+        expired = await repo.expire_due_candidates("2026-08-13T00:00:00+00:00")
+
+        assert [item.id for item in expired] == [stale.id]
+        assert (await repo.get_suggestion(stale.id)).status == "expired"
+        assert (await repo.get_suggestion(fresh.id)).status == "pending"
+        assert (await repo.get_suggestion(accepted.id)).status == "accepted"
+
+
+@pytest.mark.asyncio
 async def test_suggestion_payloads_round_trip_as_json():
     async with aiosqlite.connect(":memory:") as conn:
         await init_suggestion_schema(conn)
@@ -112,6 +175,51 @@ async def test_suggestion_payloads_round_trip_as_json():
         loaded = await repo.get_suggestion(suggestion.id)
         assert loaded.proposed_objects == objects
         assert loaded.citations == citations
+
+
+@pytest.mark.asyncio
+async def test_suggestion_round_trips_review_card_metadata():
+    async with aiosqlite.connect(":memory:") as conn:
+        await init_suggestion_schema(conn)
+        repo = SuggestionRepository(conn)
+
+        suggestion = await repo.create_suggestion(
+            target_id="wiki:default",
+            suggestion_type="memory_atom",
+            proposed_markdown="Archivum should be human-centered.",
+            proposed_objects=[],
+            citations=[],
+            proposed_scopes=["person:self", "project:archivum"],
+            scores={
+                "human_relevance": 0.95,
+                "future_utility": 0.9,
+                "durability": 0.8,
+                "specificity": 0.85,
+                "novelty": 0.7,
+                "evidence_quality": 0.75,
+                "compression_ratio": 0.6,
+                "risk": 0.1,
+            },
+            duplicates=["memory:principle:old"],
+            conflicts=["memory:decision:projects-root"],
+            retention_tier="candidate",
+            agent_visibility="on_review",
+            rationale="High utility product direction with explicit provenance.",
+            estimated_durability="durable",
+            expires_at="2026-09-12T00:00:00+00:00",
+        )
+
+        loaded = await repo.get_suggestion(suggestion.id)
+
+        assert loaded.proposed_scopes == ["person:self", "project:archivum"]
+        assert loaded.scores["future_utility"] == 0.9
+        assert loaded.duplicates == ["memory:principle:old"]
+        assert loaded.conflicts == ["memory:decision:projects-root"]
+        assert loaded.retention_tier == "candidate"
+        assert loaded.agent_visibility == "on_review"
+        assert loaded.rationale == "High utility product direction with explicit provenance."
+        assert loaded.estimated_durability == "durable"
+        assert loaded.expires_at == "2026-09-12T00:00:00+00:00"
 
 
 @pytest.mark.asyncio

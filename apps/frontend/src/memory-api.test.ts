@@ -45,6 +45,12 @@ const asset: MemoryAsset = {
   tags: ['chat', 'memory'],
   metadata: {},
   citations: [],
+  approved_by: null,
+  reviewed_at: null,
+  supersedes: [],
+  superseded_by: [],
+  conflict_lineage: [],
+  retired_at: null,
   created_at: '2026-08-12T00:00:00Z',
   updated_at: '2026-08-12T00:00:00Z',
 };

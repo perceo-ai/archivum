@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { BookOpen, Blocks, PanelRight, Search, Wrench, X } from 'lucide-react';
+import { BookOpen, Blocks, ClipboardCheck, Database, FolderGit2, Home, PanelRight, Search, Tags, Users, Wrench, X } from 'lucide-react';
 import { type ActiveView, useAppDispatch, useAppState } from '../store';
 import { cn } from '../lib/cn';
 import FileTree from './FileTree';
@@ -21,7 +21,13 @@ type NavItem = {
 };
 
 const NAV_ITEMS: NavItem[] = [
+  { label: 'Home', path: '/', view: 'home', icon: Home },
+  { label: 'Topics', path: '/topics', view: 'topics', icon: Tags },
   { label: 'Library', path: '/library', view: 'library', icon: BookOpen },
+  { label: 'People', path: '/people', view: 'people', icon: Users },
+  { label: 'Repos', path: '/repos', view: 'repos', icon: FolderGit2 },
+  { label: 'Sources', path: '/sources', view: 'sources', icon: Database },
+  { label: 'Review', path: '/review', view: 'review', icon: ClipboardCheck },
   { label: 'Workflows', path: '/workflows/daily', view: 'workflows', icon: Blocks },
   { label: 'Tools', path: '/tools/graph', view: 'tools', icon: Wrench },
 ];
@@ -36,7 +42,19 @@ export default function Layout({ children }: LayoutProps) {
     ? 'workflows'
     : location.pathname.startsWith('/tools/')
       ? 'tools'
-      : 'library';
+      : location.pathname.startsWith('/topics')
+        ? 'topics'
+      : location.pathname.startsWith('/people')
+        ? 'people'
+      : location.pathname.startsWith('/repos')
+        ? 'repos'
+      : location.pathname.startsWith('/sources')
+        ? 'sources'
+      : location.pathname.startsWith('/review')
+        ? 'review'
+      : location.pathname.startsWith('/library') || location.pathname.startsWith('/wiki/')
+        ? 'library'
+        : 'home';
   const isEditingPage = location.pathname.startsWith('/wiki/');
 
   function isActive(item: NavItem) {
@@ -86,12 +104,12 @@ export default function Layout({ children }: LayoutProps) {
   return (
     <div className={cn('perceo-shell flex h-screen overflow-hidden', !isEditingPage && 'grid-lines')}>
       <aside className="rail-panel hidden w-[72px] shrink-0 flex-col items-center px-3 py-4 text-white md:flex">
-        <button
-          type="button"
-          className="soft-border mb-6 flex h-11 w-11 items-center justify-center overflow-hidden rounded-[8px] border bg-white/[0.05] transition-colors hover:bg-white/[0.08]"
-          onClick={() => navigate(currentSlug ? `/wiki/${currentSlug}` : '/library')}
-          title="Archivum"
-        >
+          <button
+            type="button"
+            className="soft-border mb-6 flex h-11 w-11 items-center justify-center overflow-hidden rounded-[8px] border bg-white/[0.05] transition-colors hover:bg-white/[0.08]"
+            onClick={() => navigate('/')}
+            title="Archivum"
+          >
           <img src="/perceo-logo.png" alt="Archivum" className="h-full w-full object-cover" />
         </button>
 
@@ -167,7 +185,19 @@ export default function Layout({ children }: LayoutProps) {
                   ? 'Library'
                   : currentSection === 'workflows'
                     ? 'Workflows'
-                    : 'Tools'}
+                    : currentSection === 'tools'
+                      ? 'Tools'
+                      : currentSection === 'review'
+                        ? 'Review'
+                        : currentSection === 'topics'
+                          ? 'Topics'
+                          : currentSection === 'people'
+                            ? 'People'
+                            : currentSection === 'repos'
+                              ? 'Repos'
+                              : currentSection === 'sources'
+                                ? 'Sources'
+                                : 'Home'}
               </span>
             </div>
           )}
