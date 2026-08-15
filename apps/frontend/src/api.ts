@@ -625,6 +625,8 @@ export type DistillReport = {
   atoms_total: number;
   atoms_accepted: number;
   atoms_pending_review: number;
+  conflicts_flagged: number;
+  sentences_scanned: number;
   asset_ids: string[];
   scenario_id: string | null;
   persona_updated: boolean;

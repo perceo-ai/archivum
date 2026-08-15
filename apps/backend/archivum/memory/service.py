@@ -22,7 +22,8 @@ from archivum.knowledge.personal_root import ensure_personal_root, link_to_self
 from archivum.knowledge.repository import KnowledgeRepository
 from archivum.knowledge.suggestions import SuggestionRepository
 from archivum.memory import distill
-from archivum.memory.atoms import Atom, atom_id, extract_atoms
+from archivum.memory.atoms import Atom, atom_id, extract_atoms, split_sentences
+from archivum.memory.conflicts import RelatedMemory, find_related
 from archivum.memory.evaluator import (
     AtomEvaluation,
     EvaluationResult,
@@ -69,6 +70,8 @@ class DistillationReport:
     atoms_total: int = 0
     atoms_accepted: int = 0
     atoms_pending_review: int = 0
+    conflicts_flagged: int = 0
+    sentences_scanned: int = 0
     asset_ids: list[str] = field(default_factory=list)
     scenario_id: str | None = None
     persona_updated: bool = False
@@ -159,6 +162,9 @@ async def distill_conversation(
 
     atoms = extract_atoms(conversation)
     report.atoms_total = len(atoms)
+    report.sentences_scanned = sum(
+        len(split_sentences(turn.text)) for turn in conversation.turns
+    )
     evaluation = await _maybe_evaluate(conversation, atoms)
     if evaluation is not None:
         atoms = _blend_evaluated_atoms(atoms, evaluation)
@@ -176,12 +182,21 @@ async def distill_conversation(
     )
 
     queued = await _pending_atom_suggestion_ids(suggestions, wiki_id)
+    existing_atoms = await repo.list_objects(
+        kind="memory_atom", scope=scope, limit=10_000
+    )
     for index, record in enumerate(records):
         atom_evaluation = (
             evaluation.evaluations.get(index) if evaluation is not None else None
         )
         if atom_evaluation is not None and atom_evaluation.semantic_type:
             record.object.properties["semantic_type"] = atom_evaluation.semantic_type
+        related = find_related(
+            record.object.id, record.atom.text, record.atom.atom_type, existing_atoms
+        )
+        if related.conflicts:
+            record.object.properties["conflicts"] = related.conflicts
+            report.conflicts_flagged += 1
         prior_object = prior.get(record.object.id)
         prior_state = (
             prior_object.properties.get("review_state") if prior_object else None
@@ -198,6 +213,7 @@ async def distill_conversation(
                     wiki_id=wiki_id,
                     queued=queued,
                     evaluation=atom_evaluation,
+                    related=related,
                 )
                 report.atoms_pending_review += 1
         else:
@@ -207,6 +223,7 @@ async def distill_conversation(
                 wiki_id=wiki_id,
                 queued=queued,
                 evaluation=atom_evaluation,
+                related=related,
             )
             report.atoms_pending_review += 1
 
@@ -407,6 +424,7 @@ async def _ensure_atom_suggestion(
     queued: set[str],
     evaluation: AtomEvaluation | None = None,
     rationale: str | None = None,
+    related: RelatedMemory | None = None,
 ) -> bool:
     """Create one review card per atom; re-distillation must not duplicate."""
     if record.object.id in queued:
@@ -425,6 +443,8 @@ async def _ensure_atom_suggestion(
         citations=[c.model_dump() for c in record.object.citations],
         proposed_scopes=[record.object.scope],
         scores=scores,
+        duplicates=related.duplicates if related is not None else [],
+        conflicts=related.conflicts if related is not None else [],
         rationale=rationale
         or (
             "Above-threshold extraction; promotion still requires review."

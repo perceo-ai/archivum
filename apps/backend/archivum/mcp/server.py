@@ -471,6 +471,8 @@ async def distill_source(
         "atoms_total": report.atoms_total,
         "atoms_accepted": report.atoms_accepted,
         "atoms_pending_review": report.atoms_pending_review,
+        "conflicts_flagged": report.conflicts_flagged,
+        "sentences_scanned": report.sentences_scanned,
         "asset_ids": report.asset_ids,
         "scenario_id": report.scenario_id,
         "persona_updated": report.persona_updated,

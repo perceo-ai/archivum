@@ -424,11 +424,13 @@ def test_review_actions_reject_cross_wiki_asset_targets(tmp_path, monkeypatch):
 
     asyncio.run(add_foreign_conflict())
 
+    # The foreign asset is invisible to this wiki, so the card has no valid
+    # target and the replace is rejected rather than acting cross-wiki.
     replace = client.post(
         f"/api/suggestions/{suggestion.id}/review",
         json={"action": "replace"},
     )
-    assert replace.status_code == 404
+    assert replace.status_code == 400
 
     suggestion2 = asyncio.run(
         _seed_suggestion(

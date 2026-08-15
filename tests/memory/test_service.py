@@ -179,6 +179,38 @@ async def test_reviewed_atoms_are_not_suggested_again(env):
 
 
 @pytest.mark.asyncio
+async def test_contradicting_capture_flags_a_conflict_review_card(env):
+    settings, store = env
+    first = await store.capture(
+        _conversation(session_id="s1", texts=["I always use tabs for indentation."])
+    )
+    await _distill(settings, first.source_id)
+
+    second = await store.capture(
+        _conversation(session_id="s2", texts=["I never use tabs for indentation."])
+    )
+    report = await _distill(settings, second.source_id)
+
+    assert report.conflicts_flagged == 1
+    async with sqlite_mod.get_db() as conn:
+        pending = await SuggestionRepository(conn).list_suggestions(
+            target_id="wiki:default"
+        )
+    conflicted = [s for s in pending if s.conflicts]
+    assert len(conflicted) == 1
+    assert conflicted[0].conflicts[0].startswith("memory:atom:")
+
+
+@pytest.mark.asyncio
+async def test_report_counts_scanned_sentences(env):
+    settings, store = env
+    result = await store.capture(_conversation())
+    report = await _distill(settings, result.source_id)
+    # "I prefer uv over pip." and "Never commit secrets." are two sentences.
+    assert report.sentences_scanned == 2
+
+
+@pytest.mark.asyncio
 async def test_llm_evaluation_types_atoms_and_routes_proposals_to_review(
     env, monkeypatch
 ):

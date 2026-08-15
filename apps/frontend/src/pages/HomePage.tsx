@@ -21,6 +21,19 @@ import { Textarea } from '../components/ui/Textarea';
 
 const HOME_SCOPE = 'person:self';
 
+function librarianSummary(report: DistillReport): string {
+  const parts = [
+    `Scanned ${report.sentences_scanned} sentence${report.sentences_scanned === 1 ? '' : 's'}`,
+    `proposed ${report.atoms_pending_review} durable update${report.atoms_pending_review === 1 ? '' : 's'} for review`,
+  ];
+  const refused = Math.max(report.sentences_scanned - report.atoms_total, 0);
+  if (refused > 0) parts.push(`left ${refused} as raw capture only`);
+  if (report.conflicts_flagged > 0) {
+    parts.push(`flagged ${report.conflicts_flagged} potential conflict${report.conflicts_flagged === 1 ? '' : 's'}`);
+  }
+  return `${parts.join(', ')}.`;
+}
+
 export default function HomePage() {
   const dispatch = useAppDispatch();
   const [captureText, setCaptureText] = useState('');
@@ -80,10 +93,9 @@ export default function HomePage() {
         });
       }
       setCaptureText('');
-      const reviewCount = report?.atoms_pending_review ?? 0;
       setStatus(
-        distillAfterCapture
-          ? `Captured raw source ${captured.source_id}; ${reviewCount} update${reviewCount === 1 ? '' : 's'} pending review.`
+        distillAfterCapture && report
+          ? librarianSummary(report)
           : `Captured raw source ${captured.source_id}.`,
       );
       await refreshHome();

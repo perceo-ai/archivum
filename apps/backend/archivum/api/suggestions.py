@@ -420,21 +420,26 @@ async def _review_target_asset_ids(
     body: ReviewSuggestionRequest,
     wiki_id: str,
 ) -> list[str]:
-    candidates: list[str] = []
-    if body.asset_id is not None:
-        candidates.append(body.asset_id)
-    if suggestion.target_id.startswith("memory:"):
-        candidates.append(suggestion.target_id)
-    candidates.extend(suggestion.conflicts)
-    candidates.extend(suggestion.duplicates)
-    seen: set[str] = set()
+    """Resolve the assets a merge/replace/retire acts on.
+
+    An explicit asset_id must exist. Implicit candidates from the card's
+    conflicts/duplicates may reference canonical records (e.g. atoms) that are
+    not registered assets, so they are filtered rather than treated as errors.
+    """
     asset_ids: list[str] = []
-    for candidate in candidates:
-        if candidate.startswith("memory:") and candidate not in seen:
-            seen.add(candidate)
+    if body.asset_id is not None:
+        await _require_review_asset(registry, body.asset_id, wiki_id)
+        asset_ids.append(body.asset_id)
+    implicit: list[str] = []
+    if suggestion.target_id.startswith("memory:"):
+        implicit.append(suggestion.target_id)
+    implicit.extend(suggestion.conflicts)
+    implicit.extend(suggestion.duplicates)
+    for candidate in implicit:
+        if not candidate.startswith("memory:") or candidate in asset_ids:
+            continue
+        if await registry.get_asset_for_wiki(candidate, wiki_id) is not None:
             asset_ids.append(candidate)
-    for asset_id in asset_ids:
-        await _require_review_asset(registry, asset_id, wiki_id)
     return asset_ids
 
 

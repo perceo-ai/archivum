@@ -115,6 +115,8 @@ class DistillResponse(BaseModel):
     atoms_total: int
     atoms_accepted: int
     atoms_pending_review: int
+    conflicts_flagged: int
+    sentences_scanned: int
     asset_ids: list[str]
     scenario_id: str | None
     persona_updated: bool
@@ -428,6 +430,8 @@ def _to_distill_response(report: DistillationReport) -> DistillResponse:
         atoms_total=report.atoms_total,
         atoms_accepted=report.atoms_accepted,
         atoms_pending_review=report.atoms_pending_review,
+        conflicts_flagged=report.conflicts_flagged,
+        sentences_scanned=report.sentences_scanned,
         asset_ids=report.asset_ids,
         scenario_id=report.scenario_id,
         persona_updated=report.persona_updated,
