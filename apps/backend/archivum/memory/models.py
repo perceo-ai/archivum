@@ -11,6 +11,10 @@ from archivum.knowledge.models import Citation
 # Asset types mirror the memory kinds an owner actually accumulates: editable
 # wiki pages, distilled conversation memory, reusable procedures, code graphs,
 # ingested source bundles, project/scenario memory, and the owner profile.
+# These are storage-layer containers; the strategy's semantic memory types
+# (profile, preference, decision, principle, fact, procedure, skill,
+# relationship, source_summary, code_insight) live on the atoms and
+# candidates inside them — see `archivum.memory.atoms.SEMANTIC_ATOM_TYPES`.
 AssetType = Literal[
     "wiki",
     "chat",

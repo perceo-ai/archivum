@@ -28,10 +28,11 @@ class ContextPackageRequest(BaseModel):
     relations: list[str] | None = None
     seed_ids: list[str] | None = None
 
-    def to_context_request(self, scope: str) -> ContextRequest:
+    def to_context_request(self, scope: str, wiki_id: str) -> ContextRequest:
         return ContextRequest(
             query=self.query,
             scope=scope,
+            wiki_id=wiki_id,
             source_type=self.source_type,
             depth=self.depth,
             max_nodes=self.max_nodes,
@@ -136,9 +137,14 @@ def _provenance_payload(hit) -> dict[str, ExtractionMethod | str | float | None]
 def _context_request_for_user(
     body: ContextPackageRequest, current_user: CurrentUser
 ) -> ContextRequest:
-    allowed_scope = f"wiki:{current_user.wiki_id}"
+    default_scope = f"wiki:{current_user.wiki_id}"
+    allowed_scopes = {default_scope}
+    # person:self is the owner's personal memory; collaborators only see
+    # their wiki's scope.
+    if current_user.role == "owner":
+        allowed_scopes.add("person:self")
     requested_scope = body.scope.strip() if body.scope is not None else None
-    if requested_scope and requested_scope != allowed_scope:
+    if requested_scope and requested_scope not in allowed_scopes:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail={
@@ -146,7 +152,9 @@ def _context_request_for_user(
                 "code": "unauthorized_context_scope",
             },
         )
-    return body.to_context_request(allowed_scope)
+    return body.to_context_request(
+        requested_scope or default_scope, current_user.wiki_id
+    )
 
 
 def _evidence_citations(hit) -> tuple[Citation, ...]:

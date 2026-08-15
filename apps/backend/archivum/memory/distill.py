@@ -19,7 +19,24 @@ PERSONA_ID = "memory:persona:self"
 # An atom must recur across at least this many distinct sessions before it is
 # promoted into the persona layer. One offhand statement is not an identity.
 PERSONA_MIN_SESSIONS = 2
-PERSONA_ATOM_TYPES = frozenset({"preference", "fact", "constraint"})
+PERSONA_ATOM_TYPES = frozenset({"preference", "fact", "constraint", "profile", "principle"})
+
+# Render order for atom groups in markdown views: strategy semantic types
+# first, deterministic extras last.
+ATOM_RENDER_ORDER = (
+    "profile",
+    "decision",
+    "preference",
+    "principle",
+    "procedure",
+    "skill",
+    "relationship",
+    "source_summary",
+    "code_insight",
+    "constraint",
+    "fact",
+    "outcome",
+)
 
 SCENARIO_MAX_ATOMS = 40
 PERSONA_MAX_TRAITS = 60
@@ -333,7 +350,7 @@ def render_chat_memory_markdown(
     by_type: dict[str, list[AtomRecord]] = {}
     for record in records:
         by_type.setdefault(record.atom.atom_type, []).append(record)
-    for atom_type in ("decision", "preference", "constraint", "fact", "outcome"):
+    for atom_type in ATOM_RENDER_ORDER:
         group = by_type.get(atom_type)
         if not group:
             continue
@@ -364,7 +381,7 @@ def render_scenario_markdown(scenario: KnowledgeObject) -> str:
         f"average confidence {scenario.confidence:.2f}.",
         "",
     ]
-    for atom_type in ("decision", "preference", "constraint", "fact", "outcome"):
+    for atom_type in ATOM_RENDER_ORDER:
         items = by_type.get(atom_type) if isinstance(by_type, dict) else None
         if not items:
             continue

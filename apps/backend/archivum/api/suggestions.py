@@ -8,10 +8,13 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, Field, model_validator
 
+from pydantic import ValidationError
+
 from archivum.api.pages import _validate_slug
 from archivum.auth import CurrentUser, get_current_user, require_writer
 from archivum.db import sqlite
-from archivum.knowledge.models import Citation
+from archivum.knowledge.models import Citation, KnowledgeObject
+from archivum.knowledge.repository import KnowledgeRepository
 from archivum.knowledge.suggestions import (
     MemorySuggestion,
     SuggestionAction,
@@ -236,7 +239,10 @@ async def _apply_review_effect(
             current_user,
             supersedes=[],
             markdown=body.edited_markdown,
+            scope=body.scope,
+            visibility=body.visibility,
         )
+        await _promote_proposed_objects(conn, suggestion, current_user)
         return
     if body.action in {"merge", "replace"}:
         supersedes = await _review_target_asset_ids(
@@ -245,13 +251,21 @@ async def _apply_review_effect(
             body,
             current_user.wiki_id,
         )
+        if not supersedes:
+            raise ValueError(
+                f"{body.action.capitalize()} review actions require a target "
+                "memory asset (asset_id, or a card with conflicts/duplicates)"
+            )
         await _register_suggestion_asset(
             registry,
             suggestion,
             current_user,
             supersedes=supersedes,
             markdown=None,
+            scope=body.scope,
+            visibility=body.visibility,
         )
+        await _promote_proposed_objects(conn, suggestion, current_user)
         for asset_id in supersedes:
             await registry.set_status_for_wiki(
                 asset_id,
@@ -266,6 +280,11 @@ async def _apply_review_effect(
             body,
             current_user.wiki_id,
         )
+        if not asset_ids:
+            raise ValueError(
+                "Retire review actions require a target memory asset "
+                "(asset_id, or a card with conflicts/duplicates)"
+            )
         for asset_id in asset_ids:
             await registry.set_status_for_wiki(
                 asset_id,
@@ -301,6 +320,8 @@ async def _register_suggestion_asset(
     *,
     supersedes: list[str],
     markdown: str | None,
+    scope: str | None = None,
+    visibility: str | None = None,
 ) -> None:
     now = datetime.now(UTC).isoformat()
     body = suggestion.proposed_markdown if markdown is None else markdown
@@ -310,9 +331,9 @@ async def _register_suggestion_asset(
         asset_type="wiki",
         layer="L1",
         name=_suggestion_asset_name(suggestion, body),
-        scope=_suggestion_scope(suggestion, current_user.wiki_id),
+        scope=scope or _suggestion_scope(suggestion, current_user.wiki_id),
         status="active",
-        visibility=_suggestion_visibility(suggestion),
+        visibility=visibility or _suggestion_visibility(suggestion),
         summary=suggestion.rationale or _truncate(body, 160),
         body=body,
         tags=["suggestion", suggestion.suggestion_type],
@@ -333,6 +354,48 @@ async def _register_suggestion_asset(
         conflict_lineage=[suggestion.id] if supersedes else [],
         change_note=f"Accepted review suggestion {suggestion.id}",
     )
+
+
+async def _promote_proposed_objects(
+    conn: Any,
+    suggestion: MemorySuggestion,
+    current_user: CurrentUser,
+) -> None:
+    """Write reviewed proposed objects into canonical knowledge as accepted.
+
+    Promotion never crosses wiki boundaries: a proposed object is only
+    written when both its own scope and any existing canonical object it
+    would overwrite belong to the acting wiki. The owner scope
+    (`person:self`) is personal memory, so only the owner can promote
+    into or over it.
+
+    Must run inside the caller's open transaction (`_review_suggestion`
+    holds BEGIN IMMEDIATE); every upsert here uses commit=False so the
+    review transition and canonical writes commit atomically.
+    """
+    repo = KnowledgeRepository(conn)
+    allowed_scopes = {f"wiki:{current_user.wiki_id}"}
+    if current_user.role == "owner":
+        # person:self is a deployment-wide singleton: Archivum models one
+        # human, and every owner-role account curates that same personal
+        # memory across wikis. Supporting multiple distinct humans would
+        # require namespacing the person scope, not a check here.
+        allowed_scopes.add("person:self")
+    for raw in suggestion.proposed_objects:
+        if not isinstance(raw, dict):
+            continue
+        try:
+            obj = KnowledgeObject.model_validate(raw)
+        except ValidationError:
+            continue
+        if obj.scope not in allowed_scopes:
+            continue
+        existing = await repo.get_object(obj.id)
+        if existing is not None and existing.scope not in allowed_scopes:
+            continue
+        obj.properties["review_state"] = "accepted"
+        obj.properties["approved_by"] = current_user.username
+        await repo.upsert_object(obj, commit=False)
 
 
 def _suggestion_asset_id(suggestion: MemorySuggestion) -> str:
@@ -380,21 +443,26 @@ async def _review_target_asset_ids(
     body: ReviewSuggestionRequest,
     wiki_id: str,
 ) -> list[str]:
-    candidates: list[str] = []
-    if body.asset_id is not None:
-        candidates.append(body.asset_id)
-    if suggestion.target_id.startswith("memory:"):
-        candidates.append(suggestion.target_id)
-    candidates.extend(suggestion.conflicts)
-    candidates.extend(suggestion.duplicates)
-    seen: set[str] = set()
+    """Resolve the assets a merge/replace/retire acts on.
+
+    An explicit asset_id must exist. Implicit candidates from the card's
+    conflicts/duplicates may reference canonical records (e.g. atoms) that are
+    not registered assets, so they are filtered rather than treated as errors.
+    """
     asset_ids: list[str] = []
-    for candidate in candidates:
-        if candidate.startswith("memory:") and candidate not in seen:
-            seen.add(candidate)
+    if body.asset_id is not None:
+        await _require_review_asset(registry, body.asset_id, wiki_id)
+        asset_ids.append(body.asset_id)
+    implicit: list[str] = []
+    if suggestion.target_id.startswith("memory:"):
+        implicit.append(suggestion.target_id)
+    implicit.extend(suggestion.conflicts)
+    implicit.extend(suggestion.duplicates)
+    for candidate in implicit:
+        if not candidate.startswith("memory:") or candidate in asset_ids:
+            continue
+        if await registry.get_asset_for_wiki(candidate, wiki_id) is not None:
             asset_ids.append(candidate)
-    for asset_id in asset_ids:
-        await _require_review_asset(registry, asset_id, wiki_id)
     return asset_ids
 
 

@@ -16,9 +16,9 @@ from archivum.main import create_app
 from archivum.memory.registry import MemoryAssetRegistry, init_memory_schema
 
 
-def _client_for_wiki(wiki_id: str) -> TestClient:
+def _client_for_wiki(wiki_id: str, role: str = "owner") -> TestClient:
     settings = get_settings()
-    token = create_access_token("owner", "owner", wiki_id, settings)
+    token = create_access_token("owner", role, wiki_id, settings)
     with (
         patch("archivum.main.sqlite.init_db", new=AsyncMock()),
         patch("archivum.main.qdrant.init_collection", new=AsyncMock()),
@@ -164,6 +164,7 @@ def test_review_action_route_supports_merge_replace_keep_retire_scope_visibility
     db_path = tmp_path / "suggestions.db"
     _patch_suggestion_db(monkeypatch, db_path)
     client = _client_for_wiki("alpha")
+    asyncio.run(_seed_memory_asset(db_path, "memory:existing"))
 
     for action, expected in [
         ("merge", "merged"),
@@ -175,10 +176,58 @@ def test_review_action_route_supports_merge_replace_keep_retire_scope_visibility
             _seed_suggestion(db_path, target_id=f"page:alpha:{action}")
         )
         response = client.post(
-            f"/api/suggestions/{suggestion.id}/review", json={"action": action}
+            f"/api/suggestions/{suggestion.id}/review",
+            json={"action": action, "asset_id": "memory:existing"},
         )
         assert response.status_code == 200
         assert response.json()["status"] == expected
+
+
+def test_merge_replace_retire_require_a_target_asset(tmp_path, monkeypatch):
+    db_path = tmp_path / "suggestions.db"
+    _patch_suggestion_db(monkeypatch, db_path)
+    client = _client_for_wiki("alpha")
+
+    for action in ["merge", "replace", "retire"]:
+        suggestion = asyncio.run(
+            _seed_suggestion(db_path, target_id=f"page:alpha:no-target-{action}")
+        )
+        response = client.post(
+            f"/api/suggestions/{suggestion.id}/review", json={"action": action}
+        )
+        assert response.status_code == 400
+        assert response.json()["detail"]["code"] == "invalid_review_action"
+
+
+def test_accept_honours_scope_and_visibility_overrides(tmp_path, monkeypatch):
+    db_path = tmp_path / "suggestions.db"
+    _patch_suggestion_db(monkeypatch, db_path)
+    client = _client_for_wiki("alpha")
+    suggestion = asyncio.run(
+        _seed_suggestion(
+            db_path,
+            target_id="wiki:alpha",
+            proposed_markdown="Scoped durable memory.",
+        )
+    )
+
+    response = client.post(
+        f"/api/suggestions/{suggestion.id}/review",
+        json={"action": "accept", "scope": "person:self", "visibility": "shared"},
+    )
+    assert response.status_code == 200
+
+    async def load_asset():
+        async with aiosqlite.connect(str(db_path)) as conn:
+            conn.row_factory = aiosqlite.Row
+            return await MemoryAssetRegistry(conn).get_asset(
+                f"memory:suggestion:{suggestion.id}"
+            )
+
+    asset = asyncio.run(load_asset())
+    assert asset is not None
+    assert asset.scope == "person:self"
+    assert asset.visibility == "shared"
 
 
 def test_accepting_a_memory_suggestion_registers_active_memory_asset(tmp_path, monkeypatch):
@@ -352,6 +401,135 @@ def test_merge_reconciles_referenced_memory_assets(tmp_path, monkeypatch):
     assert merged.body == "Merged canonical memory."
 
 
+def test_accept_only_promotes_objects_scoped_to_the_acting_wiki(tmp_path, monkeypatch):
+    from archivum.knowledge.repository import (
+        KnowledgeRepository,
+        init_knowledge_schema,
+    )
+
+    db_path = tmp_path / "suggestions.db"
+    _patch_suggestion_db(monkeypatch, db_path)
+    client = _client_for_wiki("alpha")
+
+    def _proposed(object_id: str, scope: str) -> dict:
+        return {
+            "id": object_id,
+            "kind": "memory_atom",
+            "label": f"atom {object_id}",
+            "scope": scope,
+            "confidence": 0.8,
+            "extraction_method": "EXTRACTED",
+            "citations": [
+                {
+                    "source_id": "source:seed",
+                    "chunk_id": "chunk:seed",
+                    "span_start": 0,
+                    "span_end": 4,
+                    "quote": "seed",
+                }
+            ],
+            "properties": {"text": object_id},
+        }
+
+    async def seed():
+        async with aiosqlite.connect(str(db_path)) as conn:
+            conn.row_factory = aiosqlite.Row
+            await init_knowledge_schema(conn)
+            await init_memory_schema(conn)
+            await init_suggestion_schema(conn)
+            return await SuggestionRepository(conn).create_suggestion(
+                target_id="wiki:alpha",
+                suggestion_type="memory_atom",
+                proposed_markdown="- mixed scopes",
+                proposed_objects=[
+                    _proposed("memory:atom:ours", "wiki:alpha"),
+                    _proposed("memory:atom:owner", "person:self"),
+                    _proposed("memory:atom:theirs", "wiki:other"),
+                ],
+                citations=[],
+            )
+
+    suggestion = asyncio.run(seed())
+    response = client.post(
+        f"/api/suggestions/{suggestion.id}/review", json={"action": "accept"}
+    )
+    assert response.status_code == 200
+
+    async def load_objects():
+        async with aiosqlite.connect(str(db_path)) as conn:
+            conn.row_factory = aiosqlite.Row
+            repo = KnowledgeRepository(conn)
+            return (
+                await repo.get_object("memory:atom:ours"),
+                await repo.get_object("memory:atom:owner"),
+                await repo.get_object("memory:atom:theirs"),
+            )
+
+    ours, owner, theirs = asyncio.run(load_objects())
+    assert ours is not None and ours.properties["review_state"] == "accepted"
+    assert owner is not None
+    # Foreign-scoped proposals never cross the wiki boundary.
+    assert theirs is None
+
+
+def test_collaborators_cannot_promote_owner_scope_objects(tmp_path, monkeypatch):
+    from archivum.knowledge.repository import (
+        KnowledgeRepository,
+        init_knowledge_schema,
+    )
+
+    db_path = tmp_path / "suggestions.db"
+    _patch_suggestion_db(monkeypatch, db_path)
+    client = _client_for_wiki("alpha", role="collaborator")
+
+    async def seed():
+        async with aiosqlite.connect(str(db_path)) as conn:
+            conn.row_factory = aiosqlite.Row
+            await init_knowledge_schema(conn)
+            await init_memory_schema(conn)
+            await init_suggestion_schema(conn)
+            return await SuggestionRepository(conn).create_suggestion(
+                target_id="wiki:alpha",
+                suggestion_type="memory_atom",
+                proposed_markdown="- owner memory",
+                proposed_objects=[
+                    {
+                        "id": "memory:atom:owner-only",
+                        "kind": "memory_atom",
+                        "label": "atom owner-only",
+                        "scope": "person:self",
+                        "confidence": 0.8,
+                        "extraction_method": "EXTRACTED",
+                        "citations": [
+                            {
+                                "source_id": "source:seed",
+                                "chunk_id": "chunk:seed",
+                                "span_start": 0,
+                                "span_end": 4,
+                                "quote": "seed",
+                            }
+                        ],
+                        "properties": {"text": "owner memory"},
+                    }
+                ],
+                citations=[],
+            )
+
+    suggestion = asyncio.run(seed())
+    response = client.post(
+        f"/api/suggestions/{suggestion.id}/review", json={"action": "accept"}
+    )
+    assert response.status_code == 200
+
+    async def load_object():
+        async with aiosqlite.connect(str(db_path)) as conn:
+            conn.row_factory = aiosqlite.Row
+            return await KnowledgeRepository(conn).get_object("memory:atom:owner-only")
+
+    # The card is accepted, but the owner-scope object is never written.
+    assert asyncio.run(load_object()) is None
+
+
 def test_review_actions_reject_cross_wiki_asset_targets(tmp_path, monkeypatch):
     db_path = tmp_path / "suggestions.db"
     _patch_suggestion_db(monkeypatch, db_path)
@@ -375,11 +553,13 @@ def test_review_actions_reject_cross_wiki_asset_targets(tmp_path, monkeypatch):
 
     asyncio.run(add_foreign_conflict())
 
+    # The foreign asset is invisible to this wiki, so the card has no valid
+    # target and the replace is rejected rather than acting cross-wiki.
     replace = client.post(
         f"/api/suggestions/{suggestion.id}/review",
         json={"action": "replace"},
     )
-    assert replace.status_code == 404
+    assert replace.status_code == 400
 
     suggestion2 = asyncio.run(
         _seed_suggestion(

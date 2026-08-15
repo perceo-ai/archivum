@@ -35,6 +35,7 @@ from archivum.db import graph
 from archivum.auth import hash_password
 from archivum.logging_config import setup_logging
 from archivum.observability import new_trace_id, set_trace_id
+from archivum.memory.retention import run_retention_worker
 from archivum.page_write_queue import run_page_write_worker
 from archivum.rate_limit import RateLimitMiddleware
 
@@ -120,15 +121,20 @@ async def lifespan(app: FastAPI):
     if settings.page_write_worker_enabled:
         write_worker_task = asyncio.create_task(run_page_write_worker(settings))
 
+    retention_task: asyncio.Task[None] | None = None
+    if settings.retention_sweep_enabled:
+        retention_task = asyncio.create_task(run_retention_worker(settings))
+
     try:
         yield
     finally:
-        if write_worker_task:
-            write_worker_task.cancel()
-            try:
-                await write_worker_task
-            except asyncio.CancelledError:
-                pass
+        for task in (write_worker_task, retention_task):
+            if task:
+                task.cancel()
+                try:
+                    await task
+                except asyncio.CancelledError:
+                    pass
 
 
 def create_app() -> FastAPI:

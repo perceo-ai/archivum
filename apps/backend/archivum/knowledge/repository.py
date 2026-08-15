@@ -23,8 +23,10 @@ class KnowledgeRepository:
     def __init__(self, conn: aiosqlite.Connection) -> None:
         self._conn = conn
 
-    async def upsert_object(self, obj: KnowledgeObject) -> None:
-        await self._conn.execute("BEGIN")
+    async def upsert_object(self, obj: KnowledgeObject, *, commit: bool = True) -> None:
+        """Write one object; pass commit=False inside an open transaction."""
+        if commit:
+            await self._conn.execute("BEGIN")
         try:
             await self._conn.execute(
                 """
@@ -50,9 +52,11 @@ class KnowledgeRepository:
                 ),
             )
             await self._replace_citations("object", obj.id, obj.citations)
-            await self._conn.commit()
+            if commit:
+                await self._conn.commit()
         except Exception:
-            await self._conn.rollback()
+            if commit:
+                await self._conn.rollback()
             raise
 
     async def upsert_relationship(self, rel: KnowledgeRelationship) -> None:

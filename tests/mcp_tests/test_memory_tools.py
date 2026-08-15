@@ -8,6 +8,7 @@ from archivum.knowledge.personal_root import SELF_ID, ensure_personal_root
 from archivum.knowledge.repository import KnowledgeRepository
 from archivum.mcp import server
 from archivum.memory.registry import MemoryAssetRegistry
+from archivum.memory.service import activate_asset
 from archivum.store.blobs import BlobStore
 from archivum.store.repository import SourceStore
 
@@ -81,8 +82,9 @@ async def test_list_memory_assets_filters_by_status(env):
 
     active = await server.list_memory_assets(status="active")
     drafts = await server.list_memory_assets(status="draft")
-    assert {asset["asset_type"] for asset in active["assets"]} >= {"chat"}
-    assert {asset["asset_type"] for asset in drafts["assets"]} == {"skill"}
+    # Distillation output is review-gated: nothing activates on its own.
+    assert active["assets"] == []
+    assert {asset["asset_type"] for asset in drafts["assets"]} >= {"chat", "skill"}
 
 
 @pytest.mark.asyncio
@@ -94,6 +96,8 @@ async def test_load_agent_memory_returns_only_bound_active_assets(env):
 
     async with sqlite.get_db() as conn:
         registry = MemoryAssetRegistry(conn)
+        # Reviewing the chat memory is what makes it agent-loadable.
+        await activate_asset(conn, KnowledgeRepository(conn), chat_id, approved_by="owner")
         await registry.upsert_agent(agent_key="coder", wiki_id="default", name="Coder")
         await registry.bind_asset(
             agent_key="coder", wiki_id="default", asset_id=chat_id

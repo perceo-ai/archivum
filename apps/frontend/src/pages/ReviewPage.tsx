@@ -1,31 +1,33 @@
-import { useEffect, useState } from 'react';
-import { AlertTriangle, Check, GitMerge, RefreshCw, Shield, Split, X } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
+import { AlertTriangle, Check, GitMerge, Pencil, RefreshCw, Shield, Split, X } from 'lucide-react';
 import {
   expireSuggestions,
+  listMemoryAssets,
+  listMemoryScopes,
   listSuggestions,
   reviewSuggestion,
+  type MemoryAsset,
+  type MemoryScope,
   type MemorySuggestion,
   type SuggestionReviewAction,
 } from '../api';
 import { Badge } from '../components/ui/Badge';
 import { Button } from '../components/ui/Button';
+import { Textarea } from '../components/ui/Textarea';
 
-const REVIEW_ACTIONS: Array<{
-  action: SuggestionReviewAction;
-  label: string;
-  icon: typeof Check;
-  variant?: 'outline' | 'ghost';
-}> = [
-  { action: 'accept', label: 'Accept', icon: Check, variant: 'outline' },
-  { action: 'merge', label: 'Merge', icon: GitMerge, variant: 'outline' },
-  { action: 'replace', label: 'Replace', icon: Split, variant: 'outline' },
-  { action: 'keep_both', label: 'Keep both', icon: Shield, variant: 'outline' },
-  { action: 'retire', label: 'Retire stale', icon: AlertTriangle, variant: 'outline' },
-  { action: 'reject', label: 'Reject', icon: X, variant: 'ghost' },
-];
+const VISIBILITIES = ['private', 'shared', 'public'] as const;
+
+type ReviewOptions = {
+  asset_id?: string;
+  scope?: string;
+  visibility?: string;
+  edited_markdown?: string;
+};
 
 export default function ReviewPage() {
   const [suggestions, setSuggestions] = useState<MemorySuggestion[]>([]);
+  const [assets, setAssets] = useState<MemoryAsset[]>([]);
+  const [scopes, setScopes] = useState<MemoryScope[]>([]);
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -34,7 +36,14 @@ export default function ReviewPage() {
     setError(null);
     setLoading(true);
     try {
-      setSuggestions(await listSuggestions());
+      const [nextSuggestions, nextAssets, nextScopes] = await Promise.all([
+        listSuggestions(),
+        listMemoryAssets(),
+        listMemoryScopes(),
+      ]);
+      setSuggestions(nextSuggestions);
+      setAssets(nextAssets);
+      setScopes(nextScopes);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to load suggestions');
     } finally {
@@ -46,10 +55,14 @@ export default function ReviewPage() {
     refresh();
   }, []);
 
-  async function applyAction(suggestion: MemorySuggestion, action: SuggestionReviewAction) {
+  async function applyAction(
+    suggestion: MemorySuggestion,
+    action: SuggestionReviewAction,
+    options: ReviewOptions,
+  ) {
     setError(null);
     try {
-      const updated = await reviewSuggestion(suggestion.id, action);
+      const updated = await reviewSuggestion(suggestion.id, action, options);
       setSuggestions((current) => current.filter((item) => item.id !== updated.id));
       setMessage(`Marked ${suggestion.suggestion_type} as ${updated.status}.`);
     } catch (e) {
@@ -79,7 +92,7 @@ export default function ReviewPage() {
           <div className="min-w-0 flex-1">
             <h1 className="text-3xl font-semibold tracking-tight text-foreground">Review</h1>
             <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
-              Promote, merge, replace, scope, or retire proposed durable memory.
+              Promote, edit, merge, replace, scope, or retire proposed durable memory.
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
@@ -109,46 +122,13 @@ export default function ReviewPage() {
           {message && <p className="text-sm text-emerald-300">{message}</p>}
           {error && <p className="text-sm text-destructive">{error}</p>}
           {suggestions.map((suggestion) => (
-            <article key={suggestion.id} className="soft-border rounded-[8px] border bg-white/[0.03] p-4">
-              <div className="flex flex-wrap items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <h3 className="text-sm font-semibold text-foreground">{suggestion.suggestion_type}</h3>
-                    <Badge>{suggestion.status}</Badge>
-                    <Badge>{suggestion.retention_tier}</Badge>
-                  </div>
-                  <p className="mt-2 max-w-3xl text-sm leading-6 text-muted-foreground">
-                    {suggestion.proposed_markdown || suggestion.target_id}
-                  </p>
-                </div>
-                <Badge>{suggestion.citations.length} cited</Badge>
-              </div>
-
-              <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-                <ReviewMeta label="Why it matters" value={suggestion.rationale || 'No rationale recorded.'} />
-                <ReviewMeta label="Scope" value={suggestion.proposed_scopes.join(', ') || 'Unscoped'} />
-                <ReviewMeta label="Durability" value={suggestion.estimated_durability || 'Unscored'} />
-                <ReviewMeta label="Agent visibility" value={suggestion.agent_visibility} />
-                <ReviewMeta label="Conflicts" value={suggestion.conflicts.join(', ') || 'None'} />
-                <ReviewMeta label="Redundancy" value={suggestion.duplicates.join(', ') || 'None'} />
-                <ReviewMeta label="Expires" value={suggestion.expires_at || 'No expiry'} />
-                <ReviewMeta label="Scores" value={formatScores(suggestion.scores)} />
-              </div>
-
-              <div className="mt-4 flex flex-wrap gap-2">
-                {REVIEW_ACTIONS.map((item) => (
-                  <Button
-                    key={item.action}
-                    size="sm"
-                    variant={item.variant ?? 'outline'}
-                    onClick={() => applyAction(suggestion, item.action)}
-                  >
-                    <item.icon className="h-4 w-4" />
-                    {item.label}
-                  </Button>
-                ))}
-              </div>
-            </article>
+            <SuggestionCard
+              key={suggestion.id}
+              suggestion={suggestion}
+              assets={assets}
+              scopes={scopes}
+              onAction={applyAction}
+            />
           ))}
           {!loading && suggestions.length === 0 && (
             <p className="text-sm text-muted-foreground">
@@ -159,6 +139,213 @@ export default function ReviewPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+function SuggestionCard({
+  suggestion,
+  assets,
+  scopes,
+  onAction,
+}: {
+  suggestion: MemorySuggestion;
+  assets: MemoryAsset[];
+  scopes: MemoryScope[];
+  onAction: (
+    suggestion: MemorySuggestion,
+    action: SuggestionReviewAction,
+    options: ReviewOptions,
+  ) => Promise<void>;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [editedMarkdown, setEditedMarkdown] = useState(suggestion.proposed_markdown);
+  const [scope, setScope] = useState('');
+  const [visibility, setVisibility] = useState('');
+  const [targetId, setTargetId] = useState('');
+
+  const scopeOptions = useMemo(() => {
+    const known = new Set<string>();
+    for (const item of suggestion.proposed_scopes) known.add(item);
+    for (const item of scopes) known.add(item.id);
+    known.add('person:self');
+    return [...known].sort();
+  }, [suggestion.proposed_scopes, scopes]);
+
+  // Merge/replace/retire need something to act on: an explicit target here,
+  // or a card that already names conflicting/duplicate memory.
+  const implicitTargets = useMemo(
+    () =>
+      [suggestion.target_id, ...suggestion.conflicts, ...suggestion.duplicates].filter(
+        (id) => id.startsWith('memory:'),
+      ),
+    [suggestion],
+  );
+  const hasTarget = targetId !== '' || implicitTargets.length > 0;
+
+  const governance: ReviewOptions = {
+    ...(scope ? { scope } : {}),
+    ...(visibility ? { visibility } : {}),
+  };
+  const targeted: ReviewOptions = {
+    ...governance,
+    ...(targetId ? { asset_id: targetId } : {}),
+  };
+
+  return (
+    <article className="soft-border rounded-[8px] border bg-white/[0.03] p-4">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2">
+            <h3 className="text-sm font-semibold text-foreground">{suggestion.suggestion_type}</h3>
+            <Badge>{suggestion.status}</Badge>
+            <Badge>{suggestion.retention_tier}</Badge>
+          </div>
+          {!editing && (
+            <p className="mt-2 max-w-3xl text-sm leading-6 text-muted-foreground">
+              {suggestion.proposed_markdown || suggestion.target_id}
+            </p>
+          )}
+        </div>
+        <Badge>{suggestion.citations.length} cited</Badge>
+      </div>
+
+      {editing && (
+        <div className="mt-3 space-y-2">
+          <Textarea
+            value={editedMarkdown}
+            onChange={(event) => setEditedMarkdown(event.target.value)}
+            className="min-h-[120px]"
+            aria-label="Edit proposed memory"
+          />
+          <div className="flex flex-wrap gap-2">
+            <Button
+              size="sm"
+              onClick={() =>
+                onAction(suggestion, 'edit', { ...governance, edited_markdown: editedMarkdown })
+              }
+            >
+              <Check className="h-4 w-4" />
+              Save &amp; accept
+            </Button>
+            <Button size="sm" variant="ghost" onClick={() => setEditing(false)}>
+              Cancel
+            </Button>
+          </div>
+        </div>
+      )}
+
+      <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+        <ReviewMeta label="Why it matters" value={suggestion.rationale || 'No rationale recorded.'} />
+        <ReviewMeta label="Scope" value={suggestion.proposed_scopes.join(', ') || 'Unscoped'} />
+        <ReviewMeta label="Durability" value={suggestion.estimated_durability || 'Unscored'} />
+        <ReviewMeta label="Agent visibility" value={suggestion.agent_visibility} />
+        <ReviewMeta label="Conflicts" value={suggestion.conflicts.join(', ') || 'None'} />
+        <ReviewMeta label="Redundancy" value={suggestion.duplicates.join(', ') || 'None'} />
+        <ReviewMeta label="Expires" value={suggestion.expires_at || 'No expiry'} />
+        <ReviewMeta label="Scores" value={formatScores(suggestion.scores)} />
+      </div>
+
+      <div className="mt-4 grid gap-3 md:grid-cols-3">
+        <label className="flex flex-col gap-1 text-xs text-muted-foreground">
+          Accept into scope
+          <select
+            value={scope}
+            onChange={(event) => setScope(event.target.value)}
+            className="soft-border rounded-[6px] border bg-black/20 px-2 py-1.5 text-sm text-foreground"
+            aria-label="Accept into scope"
+          >
+            <option value="">Card default</option>
+            {scopeOptions.map((option) => (
+              <option key={option} value={option}>
+                {option}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="flex flex-col gap-1 text-xs text-muted-foreground">
+          Agent visibility
+          <select
+            value={visibility}
+            onChange={(event) => setVisibility(event.target.value)}
+            className="soft-border rounded-[6px] border bg-black/20 px-2 py-1.5 text-sm text-foreground"
+            aria-label="Agent visibility"
+          >
+            <option value="">Card default</option>
+            {VISIBILITIES.map((option) => (
+              <option key={option} value={option}>
+                {option}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="flex flex-col gap-1 text-xs text-muted-foreground">
+          Merge/replace/retire target
+          <select
+            value={targetId}
+            onChange={(event) => setTargetId(event.target.value)}
+            className="soft-border rounded-[6px] border bg-black/20 px-2 py-1.5 text-sm text-foreground"
+            aria-label="Merge, replace, or retire target"
+          >
+            <option value="">
+              {implicitTargets.length > 0
+                ? `Card targets (${implicitTargets.length})`
+                : 'Choose existing memory'}
+            </option>
+            {assets.map((asset) => (
+              <option key={asset.id} value={asset.id}>
+                {asset.name} · {asset.status}
+              </option>
+            ))}
+          </select>
+        </label>
+      </div>
+
+      <div className="mt-4 flex flex-wrap gap-2">
+        <Button size="sm" variant="outline" onClick={() => onAction(suggestion, 'accept', governance)}>
+          <Check className="h-4 w-4" />
+          Accept
+        </Button>
+        <Button size="sm" variant="outline" onClick={() => setEditing((current) => !current)}>
+          <Pencil className="h-4 w-4" />
+          Edit
+        </Button>
+        <Button
+          size="sm"
+          variant="outline"
+          disabled={!hasTarget}
+          onClick={() => onAction(suggestion, 'merge', targeted)}
+        >
+          <GitMerge className="h-4 w-4" />
+          Merge
+        </Button>
+        <Button
+          size="sm"
+          variant="outline"
+          disabled={!hasTarget}
+          onClick={() => onAction(suggestion, 'replace', targeted)}
+        >
+          <Split className="h-4 w-4" />
+          Replace
+        </Button>
+        <Button size="sm" variant="outline" onClick={() => onAction(suggestion, 'keep_both', governance)}>
+          <Shield className="h-4 w-4" />
+          Keep both
+        </Button>
+        <Button
+          size="sm"
+          variant="outline"
+          disabled={!hasTarget}
+          onClick={() => onAction(suggestion, 'retire', targetId ? { asset_id: targetId } : {})}
+        >
+          <AlertTriangle className="h-4 w-4" />
+          Retire stale
+        </Button>
+        <Button size="sm" variant="ghost" onClick={() => onAction(suggestion, 'reject', {})}>
+          <X className="h-4 w-4" />
+          Reject
+        </Button>
+      </div>
+    </article>
   );
 }
 

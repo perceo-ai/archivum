@@ -91,10 +91,14 @@ Add new entries with the exact command and result.
 | 2026-08-12 | Memory asset parity frontend build | `npm run build --workspace apps/frontend`: passed; Vite reported the existing warning that some chunks exceed 500 kB after minification. |
 | 2026-08-12 | Memory asset parity CLI tests | `npm test --workspace packages/archivum-cli`: 18 passed, 0 failed. |
 | 2026-08-12 | Docs staleness scan | `rg -n "scripts/[b]ootstrap\|[N]eo4j\|[y]ou@youremail\|[L]ast updated: 2026-06\|[f]eature complete" -g "*.md" -g "!node_modules/**" -g "!apps/backend/.venv/**"`: no matches. |
+| 2026-08-14 | Clean-memory strategy review fixes backend | `cd apps/backend && uv run --group dev pytest ../../tests -q`: 653 passed. Covers the `person:self` context scope, the review gate on durable promotion (all atoms get review cards, canonical writes are provisional, distilled assets start as drafts, activation/acceptance stamps `approved_by`/`reviewed_at`), targeted merge/replace/retire with scope/visibility overrides, per-scope token/item budgets and pending-review exclusion in context packages, the automatic retention sweep, and the hybrid LLM evaluator with strategy-aligned semantic types. |
+| 2026-08-14 | Clean-memory strategy review fixes frontend | `npm test --workspace apps/frontend`: 16 files, 89 tests passed. `npm run build --workspace apps/frontend`: passed. Review cards now support edit-then-accept, scope picker, visibility picker, and merge/replace/retire target selection. |
+| 2026-08-14 | Clean-memory strategy review fixes CLI | `npm test --workspace packages/archivum-cli`: 18 passed, 0 failed. |
+| 2026-08-14 | Conflict detection and librarian feedback | `cd apps/backend && uv run --group dev pytest ../../tests -q`: 660 passed. `npm test --workspace apps/frontend`: 89 passed; build passed. Distillation now flags token-overlap duplicates and polarity-flip conflicts against existing canonical atoms on review cards; merge/replace/retire resolve implicit targets by filtering to registered assets; distill reports include `conflicts_flagged`/`sentences_scanned` and Home shows a librarian-style capture summary. |
 
 ## Known Gaps
 
-- Distillation runs on demand through `POST /api/memory/distill` or the `distill_source` MCP tool. There is no background worker that distils captured sessions automatically.
+- Distillation runs on demand through `POST /api/memory/distill` or the `distill_source` MCP tool. There is no background worker that distils captured sessions automatically. (A background retention sweep does now expire stale review candidates automatically.)
 - The Tools → Memory and Tools → Audit surfaces have backend and server-render coverage but still need browser click-through smoke.
 - Cataloguing existing pages, sources, and code graphs into the asset registry is an explicit action (`POST /api/memory/catalog`, the `catalog_memory_assets` MCP tool, or the Tools → Memory button). Nothing registers them automatically on write.
 

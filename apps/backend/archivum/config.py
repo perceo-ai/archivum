@@ -101,11 +101,19 @@ class Settings(BaseSettings):
 
     # ── Background workers ────────────────────────────────────────────────
     page_write_worker_enabled: bool = False
+    # Periodic retention sweep: expires stale review candidates automatically.
+    retention_sweep_enabled: bool = True
+    retention_sweep_interval_seconds: int = 3600
 
     # ── Memory distillation ───────────────────────────────────────────────
-    # Distillation is deterministic and LLM-free. Atoms at or above the
-    # threshold are written to canonical memory; weaker atoms go to review.
+    # Distillation has a deterministic skeleton that works without model
+    # APIs. Atoms at or above the threshold are written to canonical memory
+    # as provisional records; every atom still gets a review card.
     memory_atom_confidence_threshold: float = 0.7
+    # Optional LLM-assisted evaluator pass (hybrid scoring, semantic typing,
+    # additional candidate proposals). Uses llm_extraction_provider; any
+    # failure falls back to deterministic scoring.
+    memory_llm_evaluator_enabled: bool = False
     # How many distinct sessions a statement must recur in before it is
     # promoted into the L3 owner persona.
     memory_persona_min_sessions: int = 2

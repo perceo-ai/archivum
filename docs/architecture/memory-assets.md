@@ -2,7 +2,11 @@
 
 Markdown stays the human editing surface and canonical knowledge stays the source of truth. Memory assets add the missing governance layer: every durable unit of memory is typed, owned, versioned, reviewable, and equippable by a named agent.
 
-Nothing in this pipeline calls an LLM. Extraction is rule-based, summaries are assembled from the records they cite, and graph analysis is a deterministic algorithm. Re-running any of it produces the same result.
+The pipeline's skeleton is deterministic and works without model APIs: extraction is rule-based, summaries are assembled from the records they cite, and graph analysis is a deterministic algorithm. An optional LLM-assisted evaluator pass (`MEMORY_LLM_EVALUATOR_ENABLED`) re-scores extracted atoms on the strategy's dimensions, assigns semantic types (profile, preference, decision, principle, fact, procedure, skill, relationship, source_summary, code_insight), and proposes additional candidates — all routed to review cards, never written directly. Any evaluator failure falls back to deterministic scoring.
+
+Promotion is review-gated: every atom gets a review card, above-threshold atoms are written to canonical knowledge only as provisional records (`review_state: pending`), distilled assets register as drafts, and context packages exclude pending-review records.
+
+The `person:self` scope is a deployment-wide singleton by design: Archivum models one human, and owner-role accounts across wikis curate that same personal memory. Collaborator accounts can neither read the `person:self` context scope nor promote objects into it. Hosting multiple distinct humans on one deployment is not supported; it would require namespacing the person scope per owner.
 
 ## Layers
 

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { Archive, CheckCircle2, CircleAlert, Network, RefreshCw, Search, Send, Sparkles } from 'lucide-react';
 import {
   captureConversation,
@@ -19,6 +20,19 @@ import { Button } from '../components/ui/Button';
 import { Textarea } from '../components/ui/Textarea';
 
 const HOME_SCOPE = 'person:self';
+
+function librarianSummary(report: DistillReport): string {
+  const parts = [
+    `Scanned ${report.sentences_scanned} sentence${report.sentences_scanned === 1 ? '' : 's'}`,
+    `proposed ${report.atoms_pending_review} durable update${report.atoms_pending_review === 1 ? '' : 's'} for review`,
+  ];
+  const refused = Math.max(report.sentences_scanned - report.atoms_total, 0);
+  if (refused > 0) parts.push(`left ${refused} as raw capture only`);
+  if (report.conflicts_flagged > 0) {
+    parts.push(`flagged ${report.conflicts_flagged} potential conflict${report.conflicts_flagged === 1 ? '' : 's'}`);
+  }
+  return `${parts.join(', ')}.`;
+}
 
 export default function HomePage() {
   const dispatch = useAppDispatch();
@@ -79,10 +93,9 @@ export default function HomePage() {
         });
       }
       setCaptureText('');
-      const reviewCount = report?.atoms_pending_review ?? 0;
       setStatus(
-        distillAfterCapture
-          ? `Captured raw source ${captured.source_id}; ${reviewCount} update${reviewCount === 1 ? '' : 's'} pending review.`
+        distillAfterCapture && report
+          ? librarianSummary(report)
           : `Captured raw source ${captured.source_id}.`,
       );
       await refreshHome();
@@ -241,25 +254,22 @@ export default function HomePage() {
                   {suggestion.proposed_markdown || suggestion.target_id}
                 </p>
                 <p className="mt-2 text-xs text-zinc-500">{suggestion.citations.length} source citations</p>
-                <div className="mt-3 flex flex-wrap gap-2">
+                <div className="mt-3 flex flex-wrap items-center gap-2">
                   <Button size="sm" variant="outline" onClick={() => handleReviewAction(suggestion, 'accept')}>
                     Accept
-                  </Button>
-                  <Button size="sm" variant="outline" onClick={() => handleReviewAction(suggestion, 'merge')}>
-                    Merge
-                  </Button>
-                  <Button size="sm" variant="outline" onClick={() => handleReviewAction(suggestion, 'replace')}>
-                    Replace
                   </Button>
                   <Button size="sm" variant="outline" onClick={() => handleReviewAction(suggestion, 'keep_both')}>
                     Keep both
                   </Button>
-                  <Button size="sm" variant="outline" onClick={() => handleReviewAction(suggestion, 'retire')}>
-                    Retire
-                  </Button>
                   <Button size="sm" variant="ghost" onClick={() => handleReviewAction(suggestion, 'reject')}>
                     Reject
                   </Button>
+                  <Link
+                    to="/review"
+                    className="text-xs font-medium text-violet-300 underline-offset-2 hover:underline"
+                  >
+                    Edit, merge &amp; scope in Review
+                  </Link>
                 </div>
               </div>
             ))}

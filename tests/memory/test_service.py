@@ -64,13 +64,16 @@ async def test_distillation_writes_cited_atoms_and_a_chat_asset(env):
     report = await _distill(settings, result.source_id)
     assert report.atoms_total == 2
     assert report.atoms_accepted == 2
-    assert report.atoms_pending_review == 0
+    assert report.atoms_pending_review == 2
 
     async with sqlite_mod.get_db() as conn:
         repo = KnowledgeRepository(conn)
         atoms = await repo.list_objects(kind="memory_atom", scope="wiki:default")
         chat = await repo.get_object(f"memory:chat:{result.source_id}")
         owner_edges = await repo.list_relationships(node_id=SELF_ID)
+        pending = await SuggestionRepository(conn).list_suggestions(
+            target_id="wiki:default"
+        )
 
     assert {atom.properties["atom_type"] for atom in atoms} == {
         "preference",
@@ -79,6 +82,9 @@ async def test_distillation_writes_cited_atoms_and_a_chat_asset(env):
     for atom in atoms:
         assert atom.citations and atom.citations[0].quote
         assert atom.extraction_method == "EXTRACTED"
+        # Direct canonical writes are provisional until a human reviews them.
+        assert atom.properties["review_state"] == "pending"
+    assert len(pending) == 2
     assert chat is not None
     assert chat.properties["session_id"] == "s1"
     assert "remembers" in {edge.rel_type for edge in owner_edges}
@@ -130,6 +136,168 @@ async def test_weak_atoms_go_to_review_instead_of_canonical_memory(env):
 
 
 @pytest.mark.asyncio
+async def test_distilled_assets_start_as_drafts_pending_review(env):
+    settings, store = env
+    result = await store.capture(_conversation())
+    report = await _distill(settings, result.source_id, scenario_key="archivum")
+
+    async with sqlite_mod.get_db() as conn:
+        registry = MemoryAssetRegistry(conn)
+        assets = [await registry.get_asset(asset_id) for asset_id in report.asset_ids]
+    # Nothing distillation produces is agent-loadable until a human activates it.
+    assert assets and all(asset.status == "draft" for asset in assets)
+    assert all(asset.approved_by is None for asset in assets)
+
+
+@pytest.mark.asyncio
+async def test_reviewed_atoms_are_not_suggested_again(env):
+    settings, store = env
+    result = await store.capture(_conversation(session_id="s1"))
+    await _distill(settings, result.source_id)
+
+    async with sqlite_mod.get_db() as conn:
+        repo = KnowledgeRepository(conn)
+        suggestions = SuggestionRepository(conn)
+        for suggestion in await suggestions.list_suggestions(target_id="wiki:default"):
+            await suggestions.accept_suggestion(suggestion.id)
+        # Simulate the review effect marking the canonical atom as accepted.
+        for atom in await repo.list_objects(kind="memory_atom"):
+            atom.properties["review_state"] = "accepted"
+            await repo.upsert_object(atom)
+
+    second = await store.capture(_conversation(session_id="s2"))
+    report = await _distill(settings, second.source_id)
+
+    assert report.atoms_pending_review == 0
+    async with sqlite_mod.get_db() as conn:
+        pending = await SuggestionRepository(conn).list_suggestions(
+            target_id="wiki:default"
+        )
+        atoms = await KnowledgeRepository(conn).list_objects(kind="memory_atom")
+    assert pending == []
+    assert all(atom.properties["review_state"] == "accepted" for atom in atoms)
+
+
+@pytest.mark.asyncio
+async def test_derived_memory_stays_out_of_context_until_activated(env):
+    from archivum.retrieval.context import ContextRequest, build_context_package
+
+    settings, store = env
+    result = await store.capture(_conversation())
+    report = await _distill(settings, result.source_id, scenario_key="archivum")
+    chat_id = f"memory:chat:{result.source_id}"
+
+    async with sqlite_mod.get_db() as conn:
+        repo = KnowledgeRepository(conn)
+        request = ContextRequest(
+            query="",
+            scope="wiki:default",
+            wiki_id="default",
+            seed_ids=[chat_id, report.scenario_id],
+            max_nodes=20,
+            depth=0,
+        )
+        before = await build_context_package(repo, request)
+        await activate_asset(conn, repo, chat_id, approved_by="owner")
+        after = await build_context_package(repo, request)
+
+    assert chat_id not in {node.id for node in before.nodes}
+    assert before.exclusion_explanations[chat_id] == "Excluded pending human review."
+    assert chat_id in {node.id for node in after.nodes}
+    # The scenario is still unreviewed and stays excluded.
+    assert report.scenario_id not in {node.id for node in after.nodes}
+
+
+@pytest.mark.asyncio
+async def test_contradicting_capture_flags_a_conflict_review_card(env):
+    settings, store = env
+    first = await store.capture(
+        _conversation(session_id="s1", texts=["I always use tabs for indentation."])
+    )
+    await _distill(settings, first.source_id)
+
+    second = await store.capture(
+        _conversation(session_id="s2", texts=["I never use tabs for indentation."])
+    )
+    report = await _distill(settings, second.source_id)
+
+    assert report.conflicts_flagged == 1
+    async with sqlite_mod.get_db() as conn:
+        pending = await SuggestionRepository(conn).list_suggestions(
+            target_id="wiki:default"
+        )
+    conflicted = [s for s in pending if s.conflicts]
+    assert len(conflicted) == 1
+    assert conflicted[0].conflicts[0].startswith("memory:atom:")
+
+
+@pytest.mark.asyncio
+async def test_report_counts_scanned_sentences(env):
+    settings, store = env
+    result = await store.capture(_conversation())
+    report = await _distill(settings, result.source_id)
+    # "I prefer uv over pip." and "Never commit secrets." are two sentences.
+    assert report.sentences_scanned == 2
+
+
+@pytest.mark.asyncio
+async def test_llm_evaluation_types_atoms_and_routes_proposals_to_review(
+    env, monkeypatch
+):
+    from unittest.mock import AsyncMock
+
+    from archivum.memory import service as service_mod
+    from archivum.memory.evaluator import (
+        AtomEvaluation,
+        EvaluationResult,
+        ProposedAtom,
+    )
+
+    settings, store = env
+    result = await store.capture(_conversation())
+    evaluation = EvaluationResult(
+        evaluations={
+            0: AtomEvaluation(
+                keep=True,
+                semantic_type="preference",
+                scores={"human_relevance": 0.9, "durability": 0.9},
+                rationale="Restated tooling preference.",
+                durability_estimate="long",
+            )
+        },
+        proposed=[
+            ProposedAtom(
+                text="Secret hygiene is a hard rule for the owner.",
+                semantic_type="principle",
+                turn_index=0,
+                rationale="Generalizes the stated constraint.",
+            )
+        ],
+    )
+    monkeypatch.setattr(
+        service_mod, "_maybe_evaluate", AsyncMock(return_value=evaluation)
+    )
+
+    report = await _distill(settings, result.source_id)
+
+    # 2 deterministic atoms + 1 LLM proposal, all review-gated.
+    assert report.atoms_pending_review == 3
+    async with sqlite_mod.get_db() as conn:
+        pending = await SuggestionRepository(conn).list_suggestions(
+            target_id="wiki:default"
+        )
+        atoms = await KnowledgeRepository(conn).list_objects(kind="memory_atom")
+    assert len(pending) == 3
+    rationales = {s.rationale for s in pending}
+    assert "Restated tooling preference." in rationales
+    assert "Generalizes the stated constraint." in rationales
+    typed = [a for a in atoms if a.properties.get("semantic_type") == "preference"]
+    assert typed
+    # The proposal itself never reaches canonical memory without review.
+    assert all("hard rule" not in atom.properties["text"] for atom in atoms)
+
+
+@pytest.mark.asyncio
 async def test_persona_appears_only_after_the_statement_recurs(env):
     settings, store = env
     first = await store.capture(_conversation(session_id="s1"))
@@ -163,7 +331,7 @@ async def test_scenario_memory_is_registered_as_an_l2_asset(env):
             node_id=report.scenario_id
         )
     assert asset.layer == "L2"
-    assert asset.status == "active"
+    assert asset.status == "draft"  # durable promotion requires review
     assert "contains_atom" in {edge.rel_type for edge in edges}
 
 
@@ -218,9 +386,11 @@ async def test_activating_an_asset_links_it_to_the_owner(env):
 
     async with sqlite_mod.get_db() as conn:
         repo = KnowledgeRepository(conn)
-        asset = await activate_asset(conn, repo, report.skill_id)
+        asset = await activate_asset(conn, repo, report.skill_id, approved_by="owner")
         edges = await repo.list_relationships(node_id=SELF_ID)
     assert asset.status == "active"
+    assert asset.approved_by == "owner"
+    assert asset.reviewed_at is not None
     assert any(
         edge.rel_type == "learned_skill" and edge.dst_id == report.skill_id
         for edge in edges
@@ -240,9 +410,14 @@ async def test_distillation_is_idempotent_for_the_same_source(env):
         versions = await MemoryAssetRegistry(conn).list_versions(
             f"memory:chat:{result.source_id}"
         )
+        pending = await SuggestionRepository(conn).list_suggestions(
+            target_id="wiki:default"
+        )
     assert len(atoms) == 2
     # Same evidence, same content: no version churn on re-distillation.
     assert [v.version for v in versions] == [1]
+    # Re-distilling the same source must not duplicate review cards.
+    assert len(pending) == 2
 
 
 @pytest.mark.asyncio

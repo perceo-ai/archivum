@@ -115,6 +115,8 @@ class DistillResponse(BaseModel):
     atoms_total: int
     atoms_accepted: int
     atoms_pending_review: int
+    conflicts_flagged: int
+    sentences_scanned: int
     asset_ids: list[str]
     scenario_id: str | None
     persona_updated: bool
@@ -232,7 +234,12 @@ async def set_asset_status(
         await _require_asset(registry, asset_id, current_user.wiki_id)
         try:
             if body.status == "active":
-                return await activate_asset(conn, KnowledgeRepository(conn), asset_id)
+                return await activate_asset(
+                    conn,
+                    KnowledgeRepository(conn),
+                    asset_id,
+                    approved_by=current_user.username,
+                )
             return await registry.set_status(asset_id, body.status)
         except ValueError as exc:
             raise _bad_request(str(exc), "invalid_asset_status") from exc
@@ -423,6 +430,8 @@ def _to_distill_response(report: DistillationReport) -> DistillResponse:
         atoms_total=report.atoms_total,
         atoms_accepted=report.atoms_accepted,
         atoms_pending_review=report.atoms_pending_review,
+        conflicts_flagged=report.conflicts_flagged,
+        sentences_scanned=report.sentences_scanned,
         asset_ids=report.asset_ids,
         scenario_id=report.scenario_id,
         persona_updated=report.persona_updated,
