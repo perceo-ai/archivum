@@ -6,6 +6,8 @@ The pipeline's skeleton is deterministic and works without model APIs: extractio
 
 Promotion is review-gated: every atom gets a review card, above-threshold atoms are written to canonical knowledge only as provisional records (`review_state: pending`), distilled assets register as drafts, and context packages exclude pending-review records.
 
+The `person:self` scope is a deployment-wide singleton by design: Archivum models one human, and owner-role accounts across wikis curate that same personal memory. Collaborator accounts can neither read the `person:self` context scope nor promote objects into it. Hosting multiple distinct humans on one deployment is not supported; it would require namespacing the person scope per owner.
+
 ## Layers
 
 | Layer | What it holds | Where it lives |

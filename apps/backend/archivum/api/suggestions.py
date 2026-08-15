@@ -376,6 +376,10 @@ async def _promote_proposed_objects(
     repo = KnowledgeRepository(conn)
     allowed_scopes = {f"wiki:{current_user.wiki_id}"}
     if current_user.role == "owner":
+        # person:self is a deployment-wide singleton: Archivum models one
+        # human, and every owner-role account curates that same personal
+        # memory across wikis. Supporting multiple distinct humans would
+        # require namespacing the person scope, not a check here.
         allowed_scopes.add("person:self")
     for raw in suggestion.proposed_objects:
         if not isinstance(raw, dict):
