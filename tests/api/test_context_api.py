@@ -123,6 +123,26 @@ async def test_context_package_allows_person_self_scope(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_context_package_denies_person_self_scope_to_collaborators(monkeypatch):
+    @asynccontextmanager
+    async def fake_db():
+        yield object()
+
+    build = AsyncMock()
+    monkeypatch.setattr(context_api.sqlite, "get_db", fake_db)
+    monkeypatch.setattr(context_api, "build_context_package", build)
+
+    with pytest.raises(HTTPException) as error:
+        await context_api.context_package(
+            context_api.ContextPackageRequest(query="Alpha", scope="person:self"),
+            CurrentUser(username="helper", role="collaborator", wiki_id="owner"),
+        )
+
+    assert error.value.status_code == 403
+    build.assert_not_awaited()
+
+
+@pytest.mark.asyncio
 async def test_context_package_rejects_other_wiki_scope(monkeypatch):
     @asynccontextmanager
     async def fake_db():
