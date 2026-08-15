@@ -28,10 +28,11 @@ class ContextPackageRequest(BaseModel):
     relations: list[str] | None = None
     seed_ids: list[str] | None = None
 
-    def to_context_request(self, scope: str) -> ContextRequest:
+    def to_context_request(self, scope: str, wiki_id: str) -> ContextRequest:
         return ContextRequest(
             query=self.query,
             scope=scope,
+            wiki_id=wiki_id,
             source_type=self.source_type,
             depth=self.depth,
             max_nodes=self.max_nodes,
@@ -147,7 +148,9 @@ def _context_request_for_user(
                 "code": "unauthorized_context_scope",
             },
         )
-    return body.to_context_request(requested_scope or default_scope)
+    return body.to_context_request(
+        requested_scope or default_scope, current_user.wiki_id
+    )
 
 
 def _evidence_citations(hit) -> tuple[Citation, ...]:

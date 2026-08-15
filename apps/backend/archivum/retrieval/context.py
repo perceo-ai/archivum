@@ -36,6 +36,8 @@ class ScopeBudget:
 class ContextRequest:
     query: str
     scope: str | None
+    # Budgets are per-wiki configuration; without a wiki there is no budget.
+    wiki_id: str | None = None
     source_type: str | None = None
     depth: int = 2
     max_nodes: int = 10
@@ -53,7 +55,7 @@ async def build_context_package(
     are still pending human review are excluded, and per-scope token/item
     budgets from the memory scope registry bound the result.
     """
-    budget = await _load_scope_budget(repo._conn, request.scope)
+    budget = await _load_scope_budget(repo._conn, request.scope, request.wiki_id)
     all_objects = await repo.list_objects(
         scope=request.scope, limit=_OBJECT_SCAN_LIMIT
     )
@@ -226,10 +228,12 @@ def _build_canonical_code_fallback(
 
 
 async def _load_scope_budget(
-    connection: aiosqlite.Connection, scope: str | None
+    connection: aiosqlite.Connection, scope: str | None, wiki_id: str | None
 ) -> ScopeBudget | None:
-    """Read the scope's configured budget; tolerate stores without the table."""
-    if scope is None:
+    """Read the wiki's configured budget for a scope; tolerate stores without
+    the table. Budgets never cross wiki boundaries, so an anonymous request
+    gets none."""
+    if scope is None or wiki_id is None:
         return None
     async with connection.execute(
         "SELECT 1 FROM sqlite_master WHERE type='table' AND name='memory_scopes'"
@@ -237,8 +241,9 @@ async def _load_scope_budget(
         if await cursor.fetchone() is None:
             return None
     async with connection.execute(
-        "SELECT budget_tokens, budget_items FROM memory_scopes WHERE id=? LIMIT 1",
-        (scope,),
+        "SELECT budget_tokens, budget_items FROM memory_scopes "
+        "WHERE id=? AND wiki_id=? LIMIT 1",
+        (scope, wiki_id),
     ) as cursor:
         row = await cursor.fetchone()
     if row is None:

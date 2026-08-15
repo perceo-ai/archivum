@@ -16,9 +16,9 @@ async def _connect():
     return conn
 
 
-async def _seed(conn, *, expires_at=None, created_days_ago=0):
+async def _seed(conn, *, expires_at=None, created_days_ago=0, target_id="wiki:default"):
     suggestion = await SuggestionRepository(conn).create_suggestion(
-        target_id="wiki:default",
+        target_id=target_id,
         suggestion_type="memory_atom",
         proposed_markdown="- candidate",
         proposed_objects=[],
@@ -72,6 +72,36 @@ async def test_sweep_expires_pending_candidates_older_than_the_scope_ttl():
         assert report.expired_over_ttl == 1
         assert (await repo.get_suggestion(stale.id)).status == "expired"
         assert (await repo.get_suggestion(recent.id)).status == "pending"
+    finally:
+        await conn.close()
+
+
+@pytest.mark.asyncio
+async def test_ttl_policies_do_not_cross_wiki_boundaries():
+    conn = await _connect()
+    try:
+        # Wiki "alpha" configures a tight TTL; wiki "beta" has no policy and
+        # must keep the 30-day default.
+        await MemoryAssetRegistry(conn).upsert_scope(
+            id="person:self",
+            wiki_id="alpha",
+            scope_type="human",
+            name="Self",
+            retention_policy={"candidate_ttl_days": 7},
+        )
+        alpha_stale = await _seed(
+            conn, created_days_ago=10, target_id="wiki:alpha"
+        )
+        beta_same_age = await _seed(
+            conn, created_days_ago=10, target_id="page:beta:notes"
+        )
+
+        report = await run_retention_sweep(conn, now=datetime.now(UTC))
+
+        repo = SuggestionRepository(conn)
+        assert report.expired_over_ttl == 1
+        assert (await repo.get_suggestion(alpha_stale.id)).status == "expired"
+        assert (await repo.get_suggestion(beta_same_age.id)).status == "pending"
     finally:
         await conn.close()
 

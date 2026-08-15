@@ -401,6 +401,77 @@ def test_merge_reconciles_referenced_memory_assets(tmp_path, monkeypatch):
     assert merged.body == "Merged canonical memory."
 
 
+def test_accept_only_promotes_objects_scoped_to_the_acting_wiki(tmp_path, monkeypatch):
+    from archivum.knowledge.repository import (
+        KnowledgeRepository,
+        init_knowledge_schema,
+    )
+
+    db_path = tmp_path / "suggestions.db"
+    _patch_suggestion_db(monkeypatch, db_path)
+    client = _client_for_wiki("alpha")
+
+    def _proposed(object_id: str, scope: str) -> dict:
+        return {
+            "id": object_id,
+            "kind": "memory_atom",
+            "label": f"atom {object_id}",
+            "scope": scope,
+            "confidence": 0.8,
+            "extraction_method": "EXTRACTED",
+            "citations": [
+                {
+                    "source_id": "source:seed",
+                    "chunk_id": "chunk:seed",
+                    "span_start": 0,
+                    "span_end": 4,
+                    "quote": "seed",
+                }
+            ],
+            "properties": {"text": object_id},
+        }
+
+    async def seed():
+        async with aiosqlite.connect(str(db_path)) as conn:
+            conn.row_factory = aiosqlite.Row
+            await init_knowledge_schema(conn)
+            await init_memory_schema(conn)
+            await init_suggestion_schema(conn)
+            return await SuggestionRepository(conn).create_suggestion(
+                target_id="wiki:alpha",
+                suggestion_type="memory_atom",
+                proposed_markdown="- mixed scopes",
+                proposed_objects=[
+                    _proposed("memory:atom:ours", "wiki:alpha"),
+                    _proposed("memory:atom:owner", "person:self"),
+                    _proposed("memory:atom:theirs", "wiki:other"),
+                ],
+                citations=[],
+            )
+
+    suggestion = asyncio.run(seed())
+    response = client.post(
+        f"/api/suggestions/{suggestion.id}/review", json={"action": "accept"}
+    )
+    assert response.status_code == 200
+
+    async def load_objects():
+        async with aiosqlite.connect(str(db_path)) as conn:
+            conn.row_factory = aiosqlite.Row
+            repo = KnowledgeRepository(conn)
+            return (
+                await repo.get_object("memory:atom:ours"),
+                await repo.get_object("memory:atom:owner"),
+                await repo.get_object("memory:atom:theirs"),
+            )
+
+    ours, owner, theirs = asyncio.run(load_objects())
+    assert ours is not None and ours.properties["review_state"] == "accepted"
+    assert owner is not None
+    # Foreign-scoped proposals never cross the wiki boundary.
+    assert theirs is None
+
+
 def test_review_actions_reject_cross_wiki_asset_targets(tmp_path, monkeypatch):
     db_path = tmp_path / "suggestions.db"
     _patch_suggestion_db(monkeypatch, db_path)

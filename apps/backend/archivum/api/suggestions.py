@@ -361,14 +361,25 @@ async def _promote_proposed_objects(
     suggestion: MemorySuggestion,
     current_user: CurrentUser,
 ) -> None:
-    """Write reviewed proposed objects into canonical knowledge as accepted."""
+    """Write reviewed proposed objects into canonical knowledge as accepted.
+
+    Promotion never crosses wiki boundaries: a proposed object is only
+    written when both its own scope and any existing canonical object it
+    would overwrite belong to the acting wiki (or the owner scope).
+    """
     repo = KnowledgeRepository(conn)
+    allowed_scopes = {f"wiki:{current_user.wiki_id}", "person:self"}
     for raw in suggestion.proposed_objects:
         if not isinstance(raw, dict):
             continue
         try:
             obj = KnowledgeObject.model_validate(raw)
         except ValidationError:
+            continue
+        if obj.scope not in allowed_scopes:
+            continue
+        existing = await repo.get_object(obj.id)
+        if existing is not None and existing.scope not in allowed_scopes:
             continue
         obj.properties["review_state"] = "accepted"
         obj.properties["approved_by"] = current_user.username

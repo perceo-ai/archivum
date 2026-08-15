@@ -179,6 +179,36 @@ async def test_reviewed_atoms_are_not_suggested_again(env):
 
 
 @pytest.mark.asyncio
+async def test_derived_memory_stays_out_of_context_until_activated(env):
+    from archivum.retrieval.context import ContextRequest, build_context_package
+
+    settings, store = env
+    result = await store.capture(_conversation())
+    report = await _distill(settings, result.source_id, scenario_key="archivum")
+    chat_id = f"memory:chat:{result.source_id}"
+
+    async with sqlite_mod.get_db() as conn:
+        repo = KnowledgeRepository(conn)
+        request = ContextRequest(
+            query="",
+            scope="wiki:default",
+            wiki_id="default",
+            seed_ids=[chat_id, report.scenario_id],
+            max_nodes=20,
+            depth=0,
+        )
+        before = await build_context_package(repo, request)
+        await activate_asset(conn, repo, chat_id, approved_by="owner")
+        after = await build_context_package(repo, request)
+
+    assert chat_id not in {node.id for node in before.nodes}
+    assert before.exclusion_explanations[chat_id] == "Excluded pending human review."
+    assert chat_id in {node.id for node in after.nodes}
+    # The scenario is still unreviewed and stays excluded.
+    assert report.scenario_id not in {node.id for node in after.nodes}
+
+
+@pytest.mark.asyncio
 async def test_contradicting_capture_flags_a_conflict_review_card(env):
     settings, store = env
     first = await store.capture(

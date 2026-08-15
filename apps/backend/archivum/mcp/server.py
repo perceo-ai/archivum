@@ -276,6 +276,7 @@ async def build_context_package(
     request = ContextRequest(
         query=query,
         scope=scope or "wiki:default",
+        wiki_id="default",
         depth=max(depth, 0),
         max_nodes=min(max(max_nodes, 1), 50),
         relations=relations,

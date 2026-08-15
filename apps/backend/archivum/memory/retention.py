@@ -38,38 +38,55 @@ class RetentionReport:
 async def run_retention_sweep(
     conn: aiosqlite.Connection, *, now: datetime | None = None
 ) -> RetentionReport:
-    """Expire due and over-TTL pending candidates in one pass."""
+    """Expire due and over-TTL pending candidates in one pass.
+
+    TTLs are per-wiki: each wiki with a configured `person:self` retention
+    policy gets its own horizon; candidates from unconfigured wikis fall back
+    to the default TTL.
+    """
     moment = (now or datetime.now(UTC)).isoformat()
     suggestions = SuggestionRepository(conn)
     expired_due = await suggestions.expire_due_candidates(moment)
-    ttl_days = await _candidate_ttl_days(conn)
-    expired_over_ttl = await suggestions.expire_stale_candidates(
-        moment, ttl_days=ttl_days
+    ttls = await _candidate_ttls_by_wiki(conn)
+    expired_over_ttl = 0
+    for wiki_id, ttl_days in ttls.items():
+        expired_over_ttl += len(
+            await suggestions.expire_stale_candidates(
+                moment, ttl_days=ttl_days, wiki_id=wiki_id
+            )
+        )
+    expired_over_ttl += len(
+        await suggestions.expire_stale_candidates(
+            moment,
+            ttl_days=DEFAULT_CANDIDATE_TTL_DAYS,
+            exclude_wiki_ids=sorted(ttls),
+        )
     )
     return RetentionReport(
-        expired_due=len(expired_due), expired_over_ttl=len(expired_over_ttl)
+        expired_due=len(expired_due), expired_over_ttl=expired_over_ttl
     )
 
 
-async def _candidate_ttl_days(conn: aiosqlite.Connection) -> int:
-    """Read the owner's candidate TTL; fall back when unset or unparseable."""
+async def _candidate_ttls_by_wiki(conn: aiosqlite.Connection) -> dict[str, int]:
+    """Read each wiki's candidate TTL; skip unset or unparseable policies."""
     async with conn.execute(
         "SELECT 1 FROM sqlite_master WHERE type='table' AND name='memory_scopes'"
     ) as cursor:
         if await cursor.fetchone() is None:
-            return DEFAULT_CANDIDATE_TTL_DAYS
+            return {}
     async with conn.execute(
-        "SELECT retention_policy FROM memory_scopes WHERE id='person:self' LIMIT 1"
+        "SELECT wiki_id, retention_policy FROM memory_scopes WHERE id='person:self'"
     ) as cursor:
-        row = await cursor.fetchone()
-    if row is None:
-        return DEFAULT_CANDIDATE_TTL_DAYS
-    try:
-        policy = json.loads(row["retention_policy"])
-        ttl = int(policy.get("candidate_ttl_days", DEFAULT_CANDIDATE_TTL_DAYS))
-    except (ValueError, TypeError, json.JSONDecodeError):
-        return DEFAULT_CANDIDATE_TTL_DAYS
-    return ttl if ttl > 0 else DEFAULT_CANDIDATE_TTL_DAYS
+        rows = await cursor.fetchall()
+    ttls: dict[str, int] = {}
+    for row in rows:
+        try:
+            policy = json.loads(row["retention_policy"])
+            ttl = int(policy.get("candidate_ttl_days", DEFAULT_CANDIDATE_TTL_DAYS))
+        except (ValueError, TypeError, json.JSONDecodeError):
+            continue
+        ttls[row["wiki_id"]] = ttl if ttl > 0 else DEFAULT_CANDIDATE_TTL_DAYS
+    return ttls
 
 
 async def run_retention_worker(settings: Settings) -> None:

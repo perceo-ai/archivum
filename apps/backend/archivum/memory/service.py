@@ -254,14 +254,16 @@ async def distill_conversation(
     # ── L2 asset: scenario memory ──
     key = scenario_key or _default_scenario_key(conversation)
     if key:
+        prior_scenario = await repo.get_object(distill.scenario_id(scope, key))
         scenario = distill.build_scenario(
             records,
             scope=scope,
             key=key,
             name=scenario_name or f"Scenario memory — {key}",
-            prior=await repo.get_object(distill.scenario_id(scope, key)),
+            prior=prior_scenario,
         )
         if scenario is not None:
+            scenario.properties["review_state"] = _derived_review_state(prior_scenario)
             await repo.upsert_object(scenario)
             await link_to_self(
                 repo, scenario.id, "remembers", citation=scenario.citations[0]
@@ -469,6 +471,13 @@ async def _load_prior_atoms(
     return prior
 
 
+def _derived_review_state(prior: KnowledgeObject | None) -> str:
+    """Derived memory summaries stay provisional until their asset is activated."""
+    if prior is not None and prior.properties.get("review_state") == "accepted":
+        return "accepted"
+    return "pending"
+
+
 def _default_scenario_key(conversation: Conversation) -> str | None:
     """Prefer an explicit project key; otherwise group by capture interface."""
     metadata = conversation.metadata or {}
@@ -507,6 +516,7 @@ async def _register_chat_memory(
         )
     ]
     object_id = f"memory:chat:{loaded.source_id}"
+    prior_chat = await repo.get_object(object_id)
     obj = KnowledgeObject(
         id=object_id,
         kind="memory_chat",
@@ -523,6 +533,7 @@ async def _register_chat_memory(
             "atom_ids": sorted({record.object.id for record in records}),
             "accepted": report.atoms_accepted,
             "pending_review": report.atoms_pending_review,
+            "review_state": _derived_review_state(prior_chat),
         },
     )
     await repo.upsert_object(obj)
@@ -563,14 +574,16 @@ async def _rebuild_persona(
     report: DistillationReport,
 ) -> MemoryAsset | None:
     atom_objects = await repo.list_objects(kind="memory_atom", scope=scope, limit=10_000)
+    prior_persona = await repo.get_object(distill.PERSONA_ID)
     persona = distill.build_persona(
         atom_objects,
         scope=scope,
         min_sessions=min_sessions,
-        prior=await repo.get_object(distill.PERSONA_ID),
+        prior=prior_persona,
     )
     if persona is None:
         return None
+    persona.properties["review_state"] = _derived_review_state(prior_persona)
     await repo.upsert_object(persona)
     await link_to_self(
         repo, persona.id, "describes_self", citation=persona.citations[0]
@@ -639,6 +652,7 @@ async def register_skill_draft(
         for step in draft.steps[:20]
     )
     object_id = f"memory:skill:{draft.slug}"
+    prior_skill = await repo.get_object(object_id)
     obj = KnowledgeObject(
         id=object_id,
         kind="memory_skill",
@@ -648,6 +662,7 @@ async def register_skill_draft(
         extraction_method="EXTRACTED",
         citations=citations,
         properties={
+            "review_state": _derived_review_state(prior_skill),
             "layer": "L2",
             "slug": draft.slug,
             "trigger": draft.trigger,
@@ -815,8 +830,12 @@ async def activate_asset(
     if approved_by is not None:
         asset = await registry.mark_reviewed(asset_id, approved_by=approved_by)
     relationship = _ASSET_RELATIONSHIPS.get(asset.asset_type, "owns_asset")
-    if asset.citations:
-        obj = await repo.get_object(asset.id)
-        if obj is not None:
+    obj = await repo.get_object(asset.id)
+    if obj is not None:
+        # Activation is the review decision: the canonical record it governs
+        # becomes accepted and context-visible together with the asset.
+        obj.properties["review_state"] = "accepted"
+        await repo.upsert_object(obj)
+        if asset.citations:
             await link_to_self(repo, asset.id, relationship, citation=asset.citations[0])
     return asset

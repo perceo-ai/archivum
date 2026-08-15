@@ -61,6 +61,7 @@ async def test_scope_item_budget_bounds_the_context_package():
             ContextRequest(
                 query="",
                 scope="person:self",
+                wiki_id="default",
                 seed_ids=["memory:alpha", "memory:beta"],
                 max_nodes=10,
                 depth=0,
@@ -98,6 +99,7 @@ async def test_scope_token_budget_trims_but_keeps_the_first_node():
             ContextRequest(
                 query="",
                 scope="person:self",
+                wiki_id="default",
                 seed_ids=["memory:alpha", "memory:beta"],
                 max_nodes=10,
                 depth=0,
@@ -109,6 +111,40 @@ async def test_scope_token_budget_trims_but_keeps_the_first_node():
             package.exclusion_explanations["memory:beta"]
             == "Excluded by scope token budget."
         )
+    finally:
+        await conn.close()
+
+
+@pytest.mark.asyncio
+async def test_scope_budgets_do_not_cross_wiki_boundaries():
+    conn = await _connect()
+    try:
+        repo = KnowledgeRepository(conn)
+        # Another wiki's tight budget must not throttle this wiki's context.
+        await MemoryAssetRegistry(conn).upsert_scope(
+            id="person:self",
+            wiki_id="other",
+            scope_type="human",
+            name="Self",
+            budget_tokens=1,
+            budget_items=1,
+        )
+        await repo.upsert_object(_object("memory:alpha", "Alpha"))
+        await repo.upsert_object(_object("memory:beta", "Beta"))
+
+        package = await build_context_package(
+            repo,
+            ContextRequest(
+                query="",
+                scope="person:self",
+                wiki_id="missing-wiki",
+                seed_ids=["memory:alpha", "memory:beta"],
+                max_nodes=10,
+                depth=0,
+            ),
+        )
+
+        assert [node.id for node in package.nodes] == ["memory:alpha", "memory:beta"]
     finally:
         await conn.close()
 
@@ -126,6 +162,7 @@ async def test_pending_review_memory_stays_out_of_context_packages():
             ContextRequest(
                 query="",
                 scope="person:self",
+                wiki_id="default",
                 seed_ids=["memory:accepted", "memory:pending"],
                 max_nodes=10,
                 depth=0,

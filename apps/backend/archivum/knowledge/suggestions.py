@@ -326,20 +326,49 @@ class SuggestionRepository:
         return await self._expire_rows(rows)
 
     async def expire_stale_candidates(
-        self, now: str, *, ttl_days: int
+        self,
+        now: str,
+        *,
+        ttl_days: int,
+        wiki_id: str | None = None,
+        exclude_wiki_ids: list[str] | None = None,
     ) -> list[MemorySuggestion]:
-        """Expire pending candidates with no explicit expiry past the scope TTL."""
+        """Expire pending candidates with no explicit expiry past the scope TTL.
+
+        Retention policy is per-wiki: pass `wiki_id` to expire only that
+        wiki's candidates, or `exclude_wiki_ids` to sweep the remainder with
+        a default TTL without touching wikis that configured their own.
+        """
+        clauses = [
+            "status='pending'",
+            "expires_at IS NULL",
+            "datetime(created_at) <= datetime(?, ?)",
+        ]
+        params: list[str] = [now, f"-{int(ttl_days)} days"]
+        if wiki_id is not None:
+            clauses.append(
+                "(target_id = ? OR target_id LIKE ? OR target_id LIKE ?)"
+            )
+            params.extend(self._wiki_target_patterns(wiki_id))
+        for excluded in exclude_wiki_ids or []:
+            clauses.append(
+                "NOT (target_id = ? OR target_id LIKE ? OR target_id LIKE ?)"
+            )
+            params.extend(self._wiki_target_patterns(excluded))
         async with self._conn.execute(
-            """
+            f"""
             SELECT id FROM memory_suggestions
-            WHERE status='pending' AND expires_at IS NULL
-              AND datetime(created_at) <= datetime(?, ?)
+            WHERE {' AND '.join(clauses)}
             ORDER BY created_at ASC, id ASC
             """,
-            (now, f"-{int(ttl_days)} days"),
+            params,
         ) as cursor:
             rows = await cursor.fetchall()
         return await self._expire_rows(rows)
+
+    @staticmethod
+    def _wiki_target_patterns(wiki_id: str) -> tuple[str, str, str]:
+        return (f"wiki:{wiki_id}", f"wiki:{wiki_id}:%", f"page:{wiki_id}:%")
 
     async def _expire_rows(self, rows) -> list[MemorySuggestion]:
         expired: list[MemorySuggestion] = []
