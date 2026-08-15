@@ -16,9 +16,9 @@ from archivum.main import create_app
 from archivum.memory.registry import MemoryAssetRegistry, init_memory_schema
 
 
-def _client_for_wiki(wiki_id: str) -> TestClient:
+def _client_for_wiki(wiki_id: str, role: str = "owner") -> TestClient:
     settings = get_settings()
-    token = create_access_token("owner", "owner", wiki_id, settings)
+    token = create_access_token("owner", role, wiki_id, settings)
     with (
         patch("archivum.main.sqlite.init_db", new=AsyncMock()),
         patch("archivum.main.qdrant.init_collection", new=AsyncMock()),
@@ -470,6 +470,64 @@ def test_accept_only_promotes_objects_scoped_to_the_acting_wiki(tmp_path, monkey
     assert owner is not None
     # Foreign-scoped proposals never cross the wiki boundary.
     assert theirs is None
+
+
+def test_collaborators_cannot_promote_owner_scope_objects(tmp_path, monkeypatch):
+    from archivum.knowledge.repository import (
+        KnowledgeRepository,
+        init_knowledge_schema,
+    )
+
+    db_path = tmp_path / "suggestions.db"
+    _patch_suggestion_db(monkeypatch, db_path)
+    client = _client_for_wiki("alpha", role="collaborator")
+
+    async def seed():
+        async with aiosqlite.connect(str(db_path)) as conn:
+            conn.row_factory = aiosqlite.Row
+            await init_knowledge_schema(conn)
+            await init_memory_schema(conn)
+            await init_suggestion_schema(conn)
+            return await SuggestionRepository(conn).create_suggestion(
+                target_id="wiki:alpha",
+                suggestion_type="memory_atom",
+                proposed_markdown="- owner memory",
+                proposed_objects=[
+                    {
+                        "id": "memory:atom:owner-only",
+                        "kind": "memory_atom",
+                        "label": "atom owner-only",
+                        "scope": "person:self",
+                        "confidence": 0.8,
+                        "extraction_method": "EXTRACTED",
+                        "citations": [
+                            {
+                                "source_id": "source:seed",
+                                "chunk_id": "chunk:seed",
+                                "span_start": 0,
+                                "span_end": 4,
+                                "quote": "seed",
+                            }
+                        ],
+                        "properties": {"text": "owner memory"},
+                    }
+                ],
+                citations=[],
+            )
+
+    suggestion = asyncio.run(seed())
+    response = client.post(
+        f"/api/suggestions/{suggestion.id}/review", json={"action": "accept"}
+    )
+    assert response.status_code == 200
+
+    async def load_object():
+        async with aiosqlite.connect(str(db_path)) as conn:
+            conn.row_factory = aiosqlite.Row
+            return await KnowledgeRepository(conn).get_object("memory:atom:owner-only")
+
+    # The card is accepted, but the owner-scope object is never written.
+    assert asyncio.run(load_object()) is None
 
 
 def test_review_actions_reject_cross_wiki_asset_targets(tmp_path, monkeypatch):

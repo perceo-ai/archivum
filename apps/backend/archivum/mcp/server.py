@@ -269,14 +269,15 @@ async def build_context_package(
     depth: int = 2,
     max_nodes: int = 10,
     relations: list[str] | None = None,
+    wiki_id: str = "default",
 ) -> dict[str, Any]:
     """Build a bounded cited graph context without returning page bodies."""
     _require_key()
     set_trace_id(new_trace_id("mcp-context"))
     request = ContextRequest(
         query=query,
-        scope=scope or "wiki:default",
-        wiki_id="default",
+        scope=scope or f"wiki:{wiki_id}",
+        wiki_id=wiki_id,
         depth=max(depth, 0),
         max_nodes=min(max(max_nodes, 1), 50),
         relations=relations,

@@ -365,14 +365,18 @@ async def _promote_proposed_objects(
 
     Promotion never crosses wiki boundaries: a proposed object is only
     written when both its own scope and any existing canonical object it
-    would overwrite belong to the acting wiki (or the owner scope).
+    would overwrite belong to the acting wiki. The owner scope
+    (`person:self`) is personal memory, so only the owner can promote
+    into or over it.
 
     Must run inside the caller's open transaction (`_review_suggestion`
     holds BEGIN IMMEDIATE); every upsert here uses commit=False so the
     review transition and canonical writes commit atomically.
     """
     repo = KnowledgeRepository(conn)
-    allowed_scopes = {f"wiki:{current_user.wiki_id}", "person:self"}
+    allowed_scopes = {f"wiki:{current_user.wiki_id}"}
+    if current_user.role == "owner":
+        allowed_scopes.add("person:self")
     for raw in suggestion.proposed_objects:
         if not isinstance(raw, dict):
             continue
