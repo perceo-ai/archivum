@@ -326,7 +326,7 @@ async def get_me(
         scope = await registry.get_scope(SELF_SCOPE, wiki_id)
         counts = await registry.asset_counts(wiki_id=wiki_id)
         agents = await registry.list_agents(wiki_id)
-        suggestion_counts = await SuggestionRepository(conn).suggestion_counts()
+        suggestion_counts = await SuggestionRepository(conn).suggestion_counts(wiki_id=wiki_id)
 
     pages = await sqlite.list_pages(wiki_id)
     # The schema seeds person:self with the placeholder name "Self", so treat

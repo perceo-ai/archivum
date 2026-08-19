@@ -110,3 +110,69 @@ async def test_suggestions_expose_timestamps(env):
 
     listed = client.get("/api/suggestions").json()
     assert listed[0]["created_at"] == created["created_at"]
+
+
+async def test_activity_does_not_leak_other_wikis(env):
+    """Suggestions are keyed by a target id embedding the wiki.
+
+    `list_suggestions` only applies tenancy when target filters are supplied, so
+    an unfiltered aggregate would serialise another wiki's proposed markdown and
+    rationale into this feed.
+    """
+    client = env
+    await sqlite_mod.upsert_page("notes/mine", "Mine", "body", [], "user", "default")
+
+    async with sqlite_mod.get_db() as conn:
+        from archivum.knowledge.suggestions import SuggestionRepository
+
+        await SuggestionRepository(conn).create_suggestion(
+            target_id="page:other-wiki:notes/theirs",
+            suggestion_type="edit",
+            proposed_markdown="A secret from another tenant.",
+            proposed_objects=[],
+            citations=[],
+        )
+
+    feed = client.get("/api/activity").json()
+    bodies = [item["title"] for item in feed["items"]]
+    assert not any("secret" in body.lower() for body in bodies)
+    assert feed["pending_review"] == 0
+
+    entries = client.get("/api/entries").json()
+    assert all(not entry["needs_review"] for entry in entries["entries"])
+
+    stats = client.get("/api/memory/stats").json()
+    assert stats["suggestions_total"] == 0
+
+    assert client.get("/api/me").json()["pending_review"] == 0
+
+
+async def test_activity_cursor_keeps_records_tied_on_timestamp(env):
+    """A timestamp-only cursor skips every record sharing the boundary second.
+
+    Batch writes make ties the norm, not the exception.
+    """
+    client = env
+    tied_at = "2026-08-19T09:00:00+00:00"
+    async with sqlite_mod.get_db() as conn:
+        for i in range(6):
+            await conn.execute(
+                "INSERT INTO pages (wiki_id, slug, title, content, tags, authored_by, "
+                "created_at, updated_at) VALUES (?,?,?,?,?,?,?,?)",
+                ("default", f"notes/tied-{i}", f"Tied {i}", "body", "[]", "user", tied_at, tied_at),
+            )
+        await conn.commit()
+
+    seen: list[str] = []
+    cursor = None
+    for _ in range(6):
+        suffix = f"&before={cursor}" if cursor else ""
+        page = client.get(f"/api/activity?limit=2{suffix}").json()
+        seen.extend(item["id"] for item in page["items"])
+        cursor = page["next_before"]
+        if not cursor:
+            break
+
+    assert len(seen) == len(set(seen)), "pagination repeated a record"
+    tied = [item_id for item_id in seen if "notes/tied-" in item_id]
+    assert len(tied) == 6, f"cursor dropped tied records: got {len(tied)} of 6"

@@ -193,7 +193,9 @@ async def memory_stats(
     current_user: CurrentUser = Depends(get_current_user),
 ) -> MemoryStats:
     async with sqlite.get_db() as conn:
-        suggestion_counts = await SuggestionRepository(conn).suggestion_counts()
+        suggestion_counts = await SuggestionRepository(conn).suggestion_counts(
+            wiki_id=current_user.wiki_id
+        )
         asset_counts = await MemoryAssetRegistry(conn).asset_counts(
             wiki_id=current_user.wiki_id
         )

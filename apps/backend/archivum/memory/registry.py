@@ -393,6 +393,7 @@ class MemoryAssetRegistry:
         status: str | None = None,
         scope: str | None = None,
         page_slug: str | None = None,
+        before_inclusive: str | None = None,
         limit: int = _ASSET_LIST_LIMIT,
     ) -> list[MemoryAsset]:
         clauses = ["wiki_id=?"]
@@ -412,6 +413,9 @@ class MemoryAssetRegistry:
         if page_slug is not None:
             clauses.append("page_slug=?")
             params.append(page_slug)
+        if before_inclusive:
+            clauses.append("updated_at <= ?")
+            params.append(before_inclusive)
         params.append(max(limit, 0))
         async with self._conn.execute(
             f"SELECT * FROM memory_assets WHERE {' AND '.join(clauses)} "

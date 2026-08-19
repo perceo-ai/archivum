@@ -319,24 +319,33 @@ async def list_pages(wiki_id: str = "default") -> list[dict[str, Any]]:
 async def list_recent_pages(
     wiki_id: str = "default",
     limit: int = 50,
-    before: str | None = None,
+    before_inclusive: str | None = None,
+    before_slug: str | None = None,
 ) -> list[dict[str, Any]]:
     """Pages ordered by last touch, newest first, for the activity stream.
 
-    `before` is an ISO timestamp cursor; only pages touched strictly before it
-    are returned, so the stream can page backwards without re-reading the vault.
+    `before_inclusive` is an ISO timestamp cursor. It is deliberately inclusive:
+    the caller orders by (timestamp, id) and needs rows tied with the cursor
+    timestamp so it can compare the full key. Filtering them out here would
+    silently drop every page sharing that second.
     """
     clauses = ["wiki_id=?"]
     params: list[Any] = [wiki_id]
-    if before:
-        clauses.append("updated_at < ?")
-        params.append(before)
+    if before_inclusive:
+        # Row-value comparison: rows tied on the timestamp are resolved by slug,
+        # which matches the order the caller merges on.
+        if before_slug:
+            clauses.append("(updated_at < ? OR (updated_at = ? AND slug < ?))")
+            params.extend([before_inclusive, before_inclusive, before_slug])
+        else:
+            clauses.append("updated_at <= ?")
+            params.append(before_inclusive)
     params.append(max(limit, 0))
     async with get_db() as db:
         async with db.execute(
             "SELECT id, wiki_id, slug, title, tags, created_at, updated_at, authored_by "
             f"FROM pages WHERE {' AND '.join(clauses)} "
-            "ORDER BY updated_at DESC LIMIT ?",
+            "ORDER BY updated_at DESC, slug DESC LIMIT ?",
             params,
         ) as cur:
             rows = await cur.fetchall()
@@ -797,11 +806,22 @@ async def update_ingest_log(
         await db.commit()
 
 
-async def list_ingest_logs(wiki_id: str = "default", limit: int = 50) -> list[dict[str, Any]]:
+async def list_ingest_logs(
+    wiki_id: str = "default",
+    limit: int = 50,
+    before_inclusive: str | None = None,
+) -> list[dict[str, Any]]:
+    clauses = ["wiki_id=?"]
+    params: list[Any] = [wiki_id]
+    if before_inclusive:
+        clauses.append("created_at <= ?")
+        params.append(before_inclusive)
+    params.append(limit)
     async with get_db() as db:
         async with db.execute(
-            "SELECT * FROM ingest_log WHERE wiki_id=? ORDER BY created_at DESC LIMIT ?",
-            (wiki_id, limit),
+            f"SELECT * FROM ingest_log WHERE {' AND '.join(clauses)} "
+            "ORDER BY created_at DESC, id DESC LIMIT ?",
+            params,
         ) as cur:
             rows = await cur.fetchall()
             return [dict(r) for r in rows]

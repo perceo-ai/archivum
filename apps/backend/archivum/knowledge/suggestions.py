@@ -55,6 +55,32 @@ _STATUS_SQL = (
 )
 
 
+def page_target_prefix(wiki_id: str) -> str:
+    return f"page:{wiki_id}:"
+
+
+def wiki_target_id(wiki_id: str) -> str:
+    return f"wiki:{wiki_id}"
+
+
+def wiki_target_prefix(wiki_id: str) -> str:
+    return f"wiki:{wiki_id}:"
+
+
+def wiki_scope(wiki_id: str) -> dict[str, list[str]]:
+    """Target filters that restrict a suggestion query to one wiki.
+
+    Suggestions are keyed by a target id that embeds the wiki, and
+    `list_suggestions` only applies tenancy when target filters are supplied —
+    so an unfiltered call returns every wiki's rows. Any aggregate over
+    suggestions must pass these filters.
+    """
+    return {
+        "target_ids": [wiki_target_id(wiki_id)],
+        "target_prefixes": [page_target_prefix(wiki_id), wiki_target_prefix(wiki_id)],
+    }
+
+
 class MemorySuggestion(BaseModel):
     id: str
     target_id: str
@@ -272,6 +298,7 @@ class SuggestionRepository:
         target_ids: list[str] | None = None,
         target_prefixes: list[str] | None = None,
         status: SuggestionStatus | None = "pending",
+        before_inclusive: str | None = None,
     ) -> list[MemorySuggestion]:
         clauses: list[str] = []
         params: list[str] = []
@@ -294,6 +321,10 @@ class SuggestionRepository:
         if status is not None:
             clauses.append("status=?")
             params.append(status)
+        if before_inclusive:
+            # Inclusive: the caller resolves ties on the full ordering key.
+            clauses.append("updated_at <= ?")
+            params.append(before_inclusive)
 
         where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
         async with self._conn.execute(
@@ -304,11 +335,22 @@ class SuggestionRepository:
             rows = await cursor.fetchall()
         return [self._row_to_suggestion(row) for row in rows]
 
-    async def suggestion_counts(self) -> dict[str, int]:
-        """How many suggestions sit in each review state, all time."""
+    async def suggestion_counts(self, *, wiki_id: str) -> dict[str, int]:
+        """How many suggestions sit in each review state, for one wiki."""
+        scope = wiki_scope(wiki_id)
+        clauses = ["target_id IN ({})".format(
+            ", ".join("?" for _ in scope["target_ids"])
+        )]
+        params: list[str] = list(scope["target_ids"])
+        for prefix in scope["target_prefixes"]:
+            clauses.append("target_id LIKE ?")
+            params.append(f"{prefix}%")
+
         counts: dict[str, int] = {}
         async with self._conn.execute(
-            "SELECT status, COUNT(*) AS n FROM memory_suggestions GROUP BY status"
+            "SELECT status, COUNT(*) AS n FROM memory_suggestions "
+            f"WHERE {' OR '.join(clauses)} GROUP BY status",
+            params,
         ) as cursor:
             for row in await cursor.fetchall():
                 counts[row["status"]] = row["n"]

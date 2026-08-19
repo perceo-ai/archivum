@@ -8,6 +8,7 @@ merged here, and truncated — the client never pages four cursors by hand.
 
 from __future__ import annotations
 
+import base64
 import json
 from typing import Any, Literal
 
@@ -16,7 +17,7 @@ from pydantic import BaseModel, Field
 
 from archivum.auth import CurrentUser, get_current_user
 from archivum.db import sqlite
-from archivum.knowledge.suggestions import SuggestionRepository
+from archivum.knowledge.suggestions import SuggestionRepository, wiki_scope
 from archivum.memory.registry import MemoryAssetRegistry
 from archivum.timestamps import normalise_timestamp
 
@@ -184,6 +185,52 @@ def _memory_items(assets: list[Any]) -> list[ActivityItem]:
     return items
 
 
+# The feed is ordered by (timestamp, id) descending, so a cursor has to carry
+# both halves of that key to resume exactly where the last page stopped. It is
+# base64url-encoded because the raw key contains characters a query string
+# mangles: an ISO offset's "+" decodes back as a space.
+_CURSOR_SEP = "\x1f"
+
+
+def _page_slug_from_id(item_id: str, at: str) -> str | None:
+    """Page item ids are `page:{slug}:{timestamp}`; the SQL cursor needs the slug.
+
+    Split using the timestamp we already hold rather than by separator: an ISO
+    timestamp contains colons, so `rsplit(":")` would cut inside it and yield a
+    slug that matches nothing.
+    """
+    suffix = f":{at}"
+    if not item_id.startswith("page:") or not item_id.endswith(suffix):
+        return None
+    return item_id[len("page:") : -len(suffix)] or None
+
+
+def _key(item: ActivityItem) -> tuple[str, str]:
+    return (item.at, item.id)
+
+
+def _encode_cursor(item: ActivityItem) -> str:
+    raw = f"{item.at}{_CURSOR_SEP}{item.id}".encode()
+    return base64.urlsafe_b64encode(raw).decode().rstrip("=")
+
+
+def _decode_cursor(raw: str | None) -> tuple[str, str] | None:
+    """Decode an opaque cursor, tolerating a bare timestamp.
+
+    A plain timestamp is what older links carry, and what a human poking at the
+    API is most likely to type; it still pages, just without tie-breaking.
+    """
+    if not raw:
+        return None
+    try:
+        padded = raw + "=" * (-len(raw) % 4)
+        decoded = base64.urlsafe_b64decode(padded.encode()).decode()
+    except (ValueError, UnicodeDecodeError):
+        return (raw, "")
+    at, sep, item_id = decoded.partition(_CURSOR_SEP)
+    return (at, item_id) if sep else (at, "")
+
+
 @router.get("/activity", response_model=ActivityFeed)
 async def get_activity(
     limit: int = Query(default=40, ge=1, le=200),
@@ -192,19 +239,33 @@ async def get_activity(
 ) -> ActivityFeed:
     """Merged, reverse-chronological feed of everything that happened."""
     wiki_id = current_user.wiki_id
+    cursor = _decode_cursor(before)
     # Over-fetch each source so the merge has enough candidates to fill `limit`
     # even when one source dominates a time window.
     slice_size = min(limit * 2, 200)
 
-    pages = await sqlite.list_recent_pages(wiki_id, limit=slice_size, before=before)
-    ingests = await sqlite.list_ingest_logs(wiki_id, limit=slice_size)
+    at = cursor[0] if cursor else None
+    # Anchor every source at the cursor. Without this each one keeps returning
+    # its newest rows and pagination stalls as soon as a run of records shares a
+    # timestamp.
+    pages = await sqlite.list_recent_pages(
+        wiki_id,
+        limit=slice_size,
+        before_inclusive=at,
+        before_slug=_page_slug_from_id(cursor[1], cursor[0]) if cursor else None,
+    )
+    ingests = await sqlite.list_ingest_logs(wiki_id, limit=slice_size, before_inclusive=at)
 
     async with sqlite.get_db() as conn:
         repo = SuggestionRepository(conn)
-        suggestions = await repo.list_suggestions(status=None)
-        pending = [s for s in suggestions if s.status == "pending"]
+        # Scoped: an unfiltered listing would serialise every wiki's proposals
+        # into this feed.
+        suggestions = await repo.list_suggestions(
+            status=None, before_inclusive=at, **wiki_scope(wiki_id)
+        )
+        pending = await repo.list_suggestions(status="pending", **wiki_scope(wiki_id))
         assets = await MemoryAssetRegistry(conn).list_assets(
-            wiki_id=wiki_id, limit=slice_size
+            wiki_id=wiki_id, limit=slice_size, before_inclusive=at
         )
 
     items = (
@@ -213,12 +274,15 @@ async def get_activity(
         + _ingest_items(ingests)
         + _memory_items(assets)
     )
-    if before:
-        items = [item for item in items if item.at and item.at < before]
+    if cursor:
+        items = [item for item in items if item.at and _key(item) < cursor]
 
-    items.sort(key=lambda item: (item.at, item.id), reverse=True)
+    items.sort(key=_key, reverse=True)
     window = items[:limit]
-    next_before = window[-1].at if len(items) > limit and window else None
+    # The cursor carries the whole ordering key. A timestamp alone would skip
+    # every record tied with the boundary, and ties are common: a batch import
+    # writes many rows in the same second.
+    next_before = _encode_cursor(window[-1]) if len(items) > limit and window else None
 
     return ActivityFeed(
         items=window,

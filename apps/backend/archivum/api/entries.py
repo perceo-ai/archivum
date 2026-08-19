@@ -18,7 +18,7 @@ from pydantic import BaseModel, Field
 
 from archivum.auth import CurrentUser, get_current_user
 from archivum.db import sqlite
-from archivum.knowledge.suggestions import SuggestionRepository
+from archivum.knowledge.suggestions import SuggestionRepository, wiki_scope
 from archivum.store.repository import SourceStore
 from archivum.timestamps import normalise_timestamp
 
@@ -133,7 +133,9 @@ async def list_entries(
     pages = await sqlite.list_pages(wiki_id)
 
     async with sqlite.get_db() as conn:
-        pending = await SuggestionRepository(conn).list_suggestions(status="pending")
+        pending = await SuggestionRepository(conn).list_suggestions(
+            status="pending", **wiki_scope(wiki_id)
+        )
     sources = await SourceStore().list_sources(limit=limit)
 
     page_prefix = f"page:{wiki_id}:"
