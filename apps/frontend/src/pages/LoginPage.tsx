@@ -5,6 +5,7 @@ import { login, listPages, refreshSession } from '../api';
 import { Button } from '../components/ui/Button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/Card';
 import { Input } from '../components/ui/Input';
+import { BrandMark } from '../shell/BrandMark';
 
 export default function LoginPage() {
   const navigate = useNavigate();
@@ -60,7 +61,10 @@ export default function LoginPage() {
     <div className="h-full flex items-center justify-center bg-bg">
       <Card className="w-full max-w-sm">
         <CardHeader>
-          <CardTitle>Archivum</CardTitle>
+          <div className="flex items-center gap-2.5">
+            <BrandMark size={28} />
+            <CardTitle>Archivum</CardTitle>
+          </div>
           <CardDescription>Enter your owner password.</CardDescription>
         </CardHeader>
         <CardContent>

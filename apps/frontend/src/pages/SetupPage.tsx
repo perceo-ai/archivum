@@ -10,6 +10,7 @@ import {
 } from '../api';
 import { useToast } from '../components/ui/Toast';
 import { Icon } from '../shell/Icon';
+import { BrandMark } from '../shell/BrandMark';
 import { cn } from '../lib/cn';
 
 /**
@@ -137,7 +138,7 @@ export default function SetupPage() {
     <div className="setup">
       <aside className="rail">
         <div className="brand">
-          <span className="m">A</span>
+          <BrandMark size={28} />
           <b>Archivum</b>
         </div>
         <div className="steps">

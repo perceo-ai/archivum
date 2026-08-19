@@ -4,6 +4,7 @@ import { getOwner, listEntries, type Entry, type OwnerProfile } from '../api';
 import { useAppDispatch, useAppState } from '../store';
 import { cn } from '../lib/cn';
 import { Icon } from './Icon';
+import { BrandMark } from './BrandMark';
 import VaultTree from './VaultTree';
 import CaptureSheet from '../sheets/CaptureSheet';
 import AskSheet from '../sheets/AskSheet';
@@ -127,7 +128,7 @@ export default function AppShell() {
       <aside className="sidebar">
         <div className="sb-top">
           <div className="brand">
-            <span className="m">A</span>
+            <BrandMark size={26} />
             <b>Archivum</b>
           </div>
 
