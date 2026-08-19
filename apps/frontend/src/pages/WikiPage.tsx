@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useParams } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 import { Hash, Plus, X } from 'lucide-react';
 import { useAppDispatch } from '../store';
 import {
@@ -21,13 +21,18 @@ import { Badge } from '../components/ui/Badge';
 import { Dialog } from '../components/ui/Dialog';
 import { useToast } from '../components/ui/Toast';
 import PageActions from '../components/PageActions';
+import EntryMemory from '../surfaces/EntryMemory';
+import { Icon } from '../shell/Icon';
+import { useAppState } from '../store';
 import { mergeFrontmatterProperties, parseFrontmatter } from './frontmatter';
 import { addTag, removeTag } from './wikiMetadata';
 
 export default function WikiPage() {
   const params = useParams();
+  const navigate = useNavigate();
   const slug = params['*'];
   const dispatch = useAppDispatch();
+  const { pages } = useAppState();
   const { push } = useToast();
   const [page, setPage] = useState<Page | null>(null);
   const [loading, setLoading] = useState(false);
@@ -222,8 +227,73 @@ export default function WikiPage() {
     }
   }
 
+  const segments = slugStr.split('/');
+  const folder = segments.slice(0, -1);
+  // Siblings are the other entries in the same folder, in the order the vault
+  // lists them, so ⌥↑/↓ walks the folder rather than the whole vault.
+  const siblings = pages
+    .filter((candidate) => {
+      const parts = candidate.slug.split('/');
+      return parts.slice(0, -1).join('/') === folder.join('/');
+    })
+    .sort((a, b) => a.slug.localeCompare(b.slug));
+  const position = siblings.findIndex((candidate) => candidate.slug === slugStr);
+
+  function goToSibling(delta: number) {
+    if (position < 0) return;
+    const next = siblings[position + delta];
+    if (next) navigate(`/wiki/${next.slug}`);
+  }
+
   return (
-    <div className="wiki-document-surface flex h-full min-h-0 w-full flex-col bg-transparent">
+    <div className="surface on entry-doc">
+      <div className="entry-top">
+        <button
+          type="button"
+          className="btn btn-icon"
+          title="Back to the stream"
+          onClick={() => navigate('/')}
+        >
+          <Icon name="chevronRight" className="rotate-180" />
+        </button>
+        <div className="crumbs">
+          {folder.map((segment, index) => (
+            <span key={segment + index} style={{ display: 'contents' }}>
+              <button type="button" onClick={() => navigate('/entries')}>
+                {segment}
+              </button>
+              <span className="sep">/</span>
+            </span>
+          ))}
+          <span className="now">{titleDraft || segments[segments.length - 1]}</span>
+        </div>
+        {siblings.length > 1 && position >= 0 && (
+          <div className="sibs">
+            <button
+              type="button"
+              className="btn btn-icon btn-sm"
+              title="Previous in this folder"
+              disabled={position === 0}
+              onClick={() => goToSibling(-1)}
+            >
+              <Icon name="chevronDown" className="rotate-180" />
+            </button>
+            <button
+              type="button"
+              className="btn btn-icon btn-sm"
+              title="Next in this folder"
+              disabled={position === siblings.length - 1}
+              onClick={() => goToSibling(1)}
+            >
+              <Icon name="chevronDown" />
+            </button>
+            <span className="pos">
+              {position + 1} of {siblings.length} in {folder[folder.length - 1] ?? 'the vault'}
+            </span>
+          </div>
+        )}
+      </div>
+
       <div className="wiki-document-gutter group/document shrink-0 pb-2 pt-7">
         <div className="flex w-full items-start gap-4">
           <div className="min-w-0 flex-1">
@@ -326,6 +396,10 @@ export default function WikiPage() {
             onRejectSuggestion={handleRejectSuggestion}
           />
         )}
+      </div>
+
+      <div className="col" style={{ paddingBottom: '20vh' }}>
+        <EntryMemory slug={slugStr} />
       </div>
 
       <Dialog

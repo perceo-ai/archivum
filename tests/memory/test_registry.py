@@ -221,7 +221,13 @@ async def test_memory_scopes_round_trip_budget_and_retention_policy():
             budget_tokens=6_000,
             budget_items=24,
             retention_policy={"candidate_ttl_days": 30, "archive_raw_after_days": 180},
+            created_at=scope.created_at,
+            updated_at=scope.updated_at,
         )
+        # Timestamps are stored on the row and must survive the round trip: the
+        # owner profile dates "since" off the person:self scope.
+        assert scope.created_at
+        assert scope.updated_at
         assert await registry.get_scope("project:archivum", "default") == scope
         assert [item.id for item in await registry.list_scopes("default", "project")] == [
             "project:archivum"

@@ -316,6 +316,33 @@ async def list_pages(wiki_id: str = "default") -> list[dict[str, Any]]:
             return [dict(r) for r in rows]
 
 
+async def list_recent_pages(
+    wiki_id: str = "default",
+    limit: int = 50,
+    before: str | None = None,
+) -> list[dict[str, Any]]:
+    """Pages ordered by last touch, newest first, for the activity stream.
+
+    `before` is an ISO timestamp cursor; only pages touched strictly before it
+    are returned, so the stream can page backwards without re-reading the vault.
+    """
+    clauses = ["wiki_id=?"]
+    params: list[Any] = [wiki_id]
+    if before:
+        clauses.append("updated_at < ?")
+        params.append(before)
+    params.append(max(limit, 0))
+    async with get_db() as db:
+        async with db.execute(
+            "SELECT id, wiki_id, slug, title, tags, created_at, updated_at, authored_by "
+            f"FROM pages WHERE {' AND '.join(clauses)} "
+            "ORDER BY updated_at DESC LIMIT ?",
+            params,
+        ) as cur:
+            rows = await cur.fetchall()
+            return [dict(r) for r in rows]
+
+
 async def get_page(slug: str, wiki_id: str = "default") -> dict[str, Any] | None:
     async with get_db() as db:
         async with db.execute(
@@ -386,10 +413,16 @@ async def upsert_page(
             await db.commit()
             return row["id"], False
         else:
+            # Write the timestamps explicitly rather than leaning on the column
+            # defaults: SQLite's datetime('now') is space-separated and naive,
+            # while every UPDATE writes ISO-8601 with a timezone. Mixing the two
+            # in one column breaks lexicographic ordering, which the activity
+            # stream depends on.
             cur = await db.execute(
-                "INSERT INTO pages (wiki_id, slug, title, content, tags, authored_by) "
-                "VALUES (?,?,?,?,?,?)",
-                (wiki_id, slug, title, content, tags_json, authored_by),
+                "INSERT INTO pages "
+                "(wiki_id, slug, title, content, tags, authored_by, created_at, updated_at) "
+                "VALUES (?,?,?,?,?,?,?,?)",
+                (wiki_id, slug, title, content, tags_json, authored_by, now, now),
             )
             await db.commit()
             return cur.lastrowid, True  # type: ignore[return-value]

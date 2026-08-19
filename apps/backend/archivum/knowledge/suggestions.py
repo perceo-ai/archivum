@@ -72,6 +72,10 @@ class MemorySuggestion(BaseModel):
     estimated_durability: str = ""
     expires_at: str | None = None
     status: SuggestionStatus
+    # Written by SQLite defaults on insert/update. Exposed so the activity
+    # stream can order suggestions against page edits and ingest logs.
+    created_at: str = ""
+    updated_at: str = ""
 
 
 async def init_suggestion_schema(conn: aiosqlite.Connection) -> None:
@@ -250,7 +254,9 @@ class SuggestionRepository:
             ),
         )
         await self._conn.commit()
-        return suggestion
+        # Re-read so created_at/updated_at come back with the values SQLite
+        # defaulted them to, rather than the empty strings on the draft above.
+        return await self.get_suggestion(suggestion.id) or suggestion
 
     async def get_suggestion(self, suggestion_id: str) -> MemorySuggestion | None:
         async with self._conn.execute(
@@ -297,6 +303,16 @@ class SuggestionRepository:
         ) as cursor:
             rows = await cursor.fetchall()
         return [self._row_to_suggestion(row) for row in rows]
+
+    async def suggestion_counts(self) -> dict[str, int]:
+        """How many suggestions sit in each review state, all time."""
+        counts: dict[str, int] = {}
+        async with self._conn.execute(
+            "SELECT status, COUNT(*) AS n FROM memory_suggestions GROUP BY status"
+        ) as cursor:
+            for row in await cursor.fetchall():
+                counts[row["status"]] = row["n"]
+        return counts
 
     async def accept_suggestion(self, suggestion_id: str) -> None:
         await self._transition(suggestion_id, "accepted")
@@ -434,4 +450,6 @@ class SuggestionRepository:
             estimated_durability=row["estimated_durability"],
             expires_at=row["expires_at"],
             status=row["status"],
+            created_at=row["created_at"] or "",
+            updated_at=row["updated_at"] or "",
         )

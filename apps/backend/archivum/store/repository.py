@@ -83,6 +83,16 @@ class SourceStore:
             )
             await db.commit()
 
+    async def list_sources(self, *, limit: int = 200) -> list[Source]:
+        """Most recently ingested sources first."""
+        async with get_db() as db:
+            async with db.execute(
+                "SELECT * FROM sources ORDER BY ingested_at DESC, id ASC LIMIT ?",
+                (max(limit, 0),),
+            ) as cursor:
+                rows = await cursor.fetchall()
+        return [_row_to_source(row) for row in rows]
+
     async def get_source(self, source_id: str) -> Source | None:
         async with get_db() as db:
             async with db.execute(

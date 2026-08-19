@@ -206,3 +206,27 @@ describe('graph audit client', () => {
     );
   });
 });
+
+describe('memory asset filters', () => {
+  it('scopes assets to a single owner scope', async () => {
+    fetchMock.mockResolvedValueOnce(jsonResponse([asset]));
+
+    await listMemoryAssets({ scope: 'person:self' });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/memory/assets?scope=person%3Aself',
+      expect.anything(),
+    );
+  });
+
+  it('scopes assets to the page they were distilled from', async () => {
+    fetchMock.mockResolvedValueOnce(jsonResponse([asset]));
+
+    await listMemoryAssets({ page_slug: 'topics/retrieval/design' });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/memory/assets?page_slug=topics%2Fretrieval%2Fdesign',
+      expect.anything(),
+    );
+  });
+});

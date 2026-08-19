@@ -348,6 +348,42 @@ class MemoryAssetRegistry:
             row = await cursor.fetchone()
         return _row_to_asset(row) if row else None
 
+    async def asset_counts(self, *, wiki_id: str) -> dict[str, Any]:
+        """Aggregate asset counts for the memory pipeline view.
+
+        Returned as raw counts rather than percentages so the caller decides how
+        to present the funnel.
+        """
+        counts: dict[str, Any] = {
+            "total": 0,
+            "by_status": {},
+            "by_layer": {},
+            "disputed": 0,
+        }
+        async with self._conn.execute(
+            "SELECT status, COUNT(*) AS n FROM memory_assets WHERE wiki_id=? GROUP BY status",
+            (wiki_id,),
+        ) as cursor:
+            for row in await cursor.fetchall():
+                counts["by_status"][row["status"]] = row["n"]
+                counts["total"] += row["n"]
+        async with self._conn.execute(
+            "SELECT layer, COUNT(*) AS n FROM memory_assets WHERE wiki_id=? GROUP BY layer",
+            (wiki_id,),
+        ) as cursor:
+            for row in await cursor.fetchall():
+                counts["by_layer"][row["layer"]] = row["n"]
+        # "Disputed" is derived, not stored: an asset carrying conflict lineage
+        # is one the system knows two sources disagree about.
+        async with self._conn.execute(
+            "SELECT COUNT(*) AS n FROM memory_assets "
+            "WHERE wiki_id=? AND conflict_lineage NOT IN ('', '[]')",
+            (wiki_id,),
+        ) as cursor:
+            row = await cursor.fetchone()
+            counts["disputed"] = row["n"] if row else 0
+        return counts
+
     async def list_assets(
         self,
         *,
@@ -356,6 +392,7 @@ class MemoryAssetRegistry:
         layer: str | None = None,
         status: str | None = None,
         scope: str | None = None,
+        page_slug: str | None = None,
         limit: int = _ASSET_LIST_LIMIT,
     ) -> list[MemoryAsset]:
         clauses = ["wiki_id=?"]
@@ -372,6 +409,9 @@ class MemoryAssetRegistry:
         if scope is not None:
             clauses.append("scope=?")
             params.append(scope)
+        if page_slug is not None:
+            clauses.append("page_slug=?")
+            params.append(page_slug)
         params.append(max(limit, 0))
         async with self._conn.execute(
             f"SELECT * FROM memory_assets WHERE {' AND '.join(clauses)} "
@@ -670,6 +710,8 @@ def _row_to_scope(row: aiosqlite.Row) -> MemoryScope:
         budget_tokens=row["budget_tokens"],
         budget_items=row["budget_items"],
         retention_policy=json.loads(row["retention_policy"]),
+        created_at=row["created_at"] or "",
+        updated_at=row["updated_at"] or "",
     )
 
 

@@ -11,6 +11,8 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 
+from archivum.api import activity as activity_routes
+from archivum.api import entries as entries_routes
 from archivum.api import auth as auth_routes
 from archivum.api import export as export_routes
 from archivum.api import folders as folders_routes
@@ -26,6 +28,7 @@ from archivum.api.context import router as context_router
 from archivum.api.query import router as query_router
 from archivum.api.search import router as search_router
 from archivum.api.capture import router as capture_router
+from archivum.api.capture_preview import router as capture_preview_router
 from archivum.api.sources import router as sources_router
 from archivum.api.system import router as system_router
 from archivum.config import Settings, get_settings
@@ -156,6 +159,8 @@ def create_app() -> FastAPI:
     )
 
     # Routes
+    app.include_router(activity_routes.router)
+    app.include_router(entries_routes.router)
     app.include_router(auth_routes.router)
     app.include_router(export_routes.router)
     app.include_router(folders_routes.router)
@@ -170,6 +175,7 @@ def create_app() -> FastAPI:
     app.include_router(graph_router)
     app.include_router(sources_router)
     app.include_router(capture_router)
+    app.include_router(capture_preview_router)
     app.include_router(system_router)
     app.include_router(share_routes.router)
     app.include_router(share_routes.mgmt_router)

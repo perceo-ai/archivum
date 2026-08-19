@@ -318,7 +318,13 @@ export async function search(query: string): Promise<SearchResult[]> {
   return res.json();
 }
 
-export async function getGraph(): Promise<{ nodes: GraphNode[]; edges: GraphEdge[] }> {
+export async function getGraph(): Promise<{
+  nodes: GraphNode[];
+  edges: GraphEdge[];
+  // 'demo' means the graph store was unreachable and this is fixture data.
+  // Surface it: an unlabelled fake graph is indistinguishable from a real one.
+  source?: 'live' | 'demo';
+}> {
   const res = await apiFetch('/api/graph');
   return res.json();
 }
@@ -669,12 +675,20 @@ export type DistillReport = {
 };
 
 export async function listMemoryAssets(
-  filters: { asset_type?: string; layer?: string; status?: string } = {},
+  filters: {
+    asset_type?: string;
+    layer?: string;
+    status?: string;
+    scope?: string;
+    page_slug?: string;
+  } = {},
 ): Promise<MemoryAsset[]> {
   const params = new URLSearchParams();
   if (filters.asset_type) params.set('asset_type', filters.asset_type);
   if (filters.layer) params.set('layer', filters.layer);
   if (filters.status) params.set('status', filters.status);
+  if (filters.scope) params.set('scope', filters.scope);
+  if (filters.page_slug) params.set('page_slug', filters.page_slug);
   const suffix = params.toString() ? `?${params.toString()}` : '';
   const res = await apiFetch(`/api/memory/assets${suffix}`);
   return res.json();
@@ -1268,4 +1282,175 @@ export async function query(
       onCitations(event.citations);
     }
   });
+}
+
+// ── Redesign surfaces ───────────────────────────────────────────────────────
+// The stream, the entry list, the owner profile, and the memory pipeline view
+// each read from one endpoint rather than stitching several client-side.
+
+export type ActivityKind =
+  | 'page_created'
+  | 'page_edited'
+  | 'suggestion'
+  | 'ingest'
+  | 'memory';
+
+export type ActivityActor = 'you' | 'agent' | 'system';
+
+export type ActivityItem = {
+  id: string;
+  kind: ActivityKind;
+  at: string;
+  title: string;
+  summary: string;
+  actor: ActivityActor;
+  slug: string | null;
+  needs_review: boolean;
+  payload: Record<string, unknown>;
+};
+
+export type ActivityFeed = {
+  items: ActivityItem[];
+  next_before: string | null;
+  pending_review: number;
+};
+
+export async function getActivity(
+  options: { limit?: number; before?: string } = {},
+): Promise<ActivityFeed> {
+  const params = new URLSearchParams();
+  if (options.limit) params.set('limit', String(options.limit));
+  if (options.before) params.set('before', options.before);
+  const suffix = params.toString() ? `?${params.toString()}` : '';
+  const res = await apiFetch(`/api/activity${suffix}`);
+  return res.json();
+}
+
+export type EntryKind =
+  | 'note'
+  | 'thought'
+  | 'source'
+  | 'conversation'
+  | 'person'
+  | 'decision'
+  | 'daily';
+
+export type Entry = {
+  id: string;
+  kind: EntryKind;
+  title: string;
+  slug: string | null;
+  folder: string;
+  updated_at: string;
+  created_at: string;
+  actor: 'you' | 'agent';
+  needs_review: boolean;
+  tags: string[];
+  detail: string;
+};
+
+export type EntryList = {
+  entries: Entry[];
+  counts: Record<string, number>;
+  total: number;
+};
+
+export async function listEntries(
+  options: { kind?: string; needsReview?: boolean; limit?: number } = {},
+): Promise<EntryList> {
+  const params = new URLSearchParams();
+  if (options.kind) params.set('kind', options.kind);
+  if (options.needsReview) params.set('needs_review', 'true');
+  if (options.limit) params.set('limit', String(options.limit));
+  const suffix = params.toString() ? `?${params.toString()}` : '';
+  const res = await apiFetch(`/api/entries${suffix}`);
+  return res.json();
+}
+
+export type OwnerProfile = {
+  wiki_id: string;
+  scope_id: string;
+  name: string;
+  initials: string;
+  role: string;
+  since: string | null;
+  needs_setup: boolean;
+  pages: number;
+  memories_active: number;
+  memories_total: number;
+  agents: number;
+  pending_review: number;
+};
+
+export async function getOwner(): Promise<OwnerProfile> {
+  const res = await apiFetch('/api/me');
+  return res.json();
+}
+
+export type MemoryStats = {
+  suggestions_total: number;
+  suggestions_pending: number;
+  suggestions_kept: number;
+  suggestions_dropped: number;
+  suggestions_by_status: Record<string, number>;
+  assets_total: number;
+  assets_active: number;
+  assets_draft: number;
+  assets_archived: number;
+  assets_disputed: number;
+  assets_by_layer: Record<string, number>;
+};
+
+export async function getMemoryStats(): Promise<MemoryStats> {
+  const res = await apiFetch('/api/memory/stats');
+  return res.json();
+}
+
+export type CapturePreview = {
+  kind: EntryKind;
+  folder: string;
+  links: { slug: string; title: string }[];
+  tags: string[];
+  reason: string;
+};
+
+export async function previewCapture(text: string): Promise<CapturePreview> {
+  const res = await apiFetch('/api/capture/preview', {
+    method: 'POST',
+    body: JSON.stringify({ text }),
+  });
+  return res.json();
+}
+
+export type GraphCommunitiesResponse = {
+  communities: GraphCommunity[];
+};
+
+export async function getGraphCommunities(): Promise<GraphCommunity[]> {
+  const res = await apiFetch('/api/graph/communities');
+  const body = await res.json();
+  return Array.isArray(body) ? body : (body.communities ?? []);
+}
+
+export type RegisterMemoryAssetInput = {
+  id: string;
+  asset_type: MemoryAssetType;
+  layer?: MemoryLayer;
+  name: string;
+  summary?: string;
+  body?: string;
+  page_slug?: string | null;
+  tags?: string[];
+  status?: MemoryAsset['status'];
+  visibility?: MemoryAsset['visibility'];
+};
+
+export async function registerMemoryAsset(
+  input: RegisterMemoryAssetInput,
+): Promise<MemoryAsset> {
+  const res = await apiFetch('/api/memory/assets', {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+  return res.json();
 }

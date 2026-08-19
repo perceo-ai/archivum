@@ -15,12 +15,15 @@ from importlib.util import find_spec
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
 
-from archivum.auth import CurrentUser, require_owner
+from archivum.auth import CurrentUser, get_current_user, require_owner
 from archivum.config import Settings, get_settings
 from archivum.db import graph, qdrant_client as qdrant, sqlite
 from archivum.ingest.agent import slugify
 from archivum.knowledge.projections import rebuild_knowledge_projections
 from archivum.knowledge.repository import KnowledgeRepository, init_knowledge_schema
+from archivum.knowledge.personal_root import SELF_SCOPE
+from archivum.knowledge.suggestions import SuggestionRepository
+from archivum.memory.registry import MemoryAssetRegistry
 from archivum.linting import WIKILINK_RE, analyze_wiki_pages, normalize_wikilink_target
 from archivum.llm.cli_client import (
     CliModelError,
@@ -274,6 +277,78 @@ async def install_audio_support() -> dict[str, Any]:
         "actions": actions,
         "status": status,
     }
+
+
+class OwnerProfile(BaseModel):
+    """Who the vault belongs to, plus the counts the profile page shows.
+
+    Archivum models one human. The display name lives on the `person:self`
+    memory scope rather than in a second identity table, so renaming yourself is
+    the same operation as renaming any other scope.
+    """
+
+    wiki_id: str
+    scope_id: str = SELF_SCOPE
+    name: str
+    initials: str
+    role: str
+    since: str | None = None
+    # True while person:self still carries the schema's placeholder name, i.e.
+    # the owner has never introduced themselves. Drives the setup flow.
+    needs_setup: bool = False
+    pages: int = 0
+    memories_active: int = 0
+    memories_total: int = 0
+    agents: int = 0
+    pending_review: int = 0
+
+
+_PLACEHOLDER_SELF_NAMES = {"", "Self"}
+
+
+def _initials(name: str) -> str:
+    parts = [part for part in re.split(r"[\s._-]+", name.strip()) if part]
+    if not parts:
+        return "?"
+    if len(parts) == 1:
+        return parts[0][:2].upper()
+    return (parts[0][0] + parts[-1][0]).upper()
+
+
+@router.get("/me", response_model=OwnerProfile)
+async def get_me(
+    current_user: CurrentUser = Depends(get_current_user),
+    settings: Settings = Depends(get_settings),
+) -> OwnerProfile:
+    wiki_id = current_user.wiki_id
+    async with sqlite.get_db() as conn:
+        registry = MemoryAssetRegistry(conn)
+        scope = await registry.get_scope(SELF_SCOPE, wiki_id)
+        counts = await registry.asset_counts(wiki_id=wiki_id)
+        agents = await registry.list_agents(wiki_id)
+        suggestion_counts = await SuggestionRepository(conn).suggestion_counts()
+
+    pages = await sqlite.list_pages(wiki_id)
+    # The schema seeds person:self with the placeholder name "Self", so treat
+    # that as unnamed and fall back to the configured owner until setup renames it.
+    scope_name = (scope.name if scope else "").strip()
+    if scope_name in _PLACEHOLDER_SELF_NAMES:
+        scope_name = ""
+    name = scope_name or settings.owner_username or "You"
+
+    return OwnerProfile(
+        wiki_id=wiki_id,
+        needs_setup=not scope_name,
+        name=name,
+        initials=_initials(name),
+        role=current_user.role,
+        since=scope.created_at if scope else None,
+        pages=len(pages),
+        memories_active=counts["by_status"].get("active", 0),
+        memories_total=counts["total"],
+        agents=len(agents),
+        pending_review=suggestion_counts.get("pending", 0),
+    )
 
 
 @router.get("/audio-support")
