@@ -10,6 +10,7 @@ from pathlib import Path
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
 
+from archivum.db import sqlite
 from archivum.auth import CurrentUser, require_writer
 from archivum.capture.importers import connector_for
 from archivum.capture.importers import chatgpt as _chatgpt  # noqa: F401 (self-register)
@@ -101,6 +102,9 @@ async def capture_endpoint(
 ) -> CaptureResponse:
     store = CaptureStore(settings=settings)
     res = await store.capture(_build_conversation(body))
+    # Distillation may call a model, so it happens on the queue. Capture stays
+    # instant and works whether or not a model is reachable.
+    await sqlite.enqueue_distillation(res.source_id, current_user.wiki_id)
     return _to_response(res)
 
 

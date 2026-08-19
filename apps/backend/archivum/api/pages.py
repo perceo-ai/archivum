@@ -9,7 +9,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from archivum.auth import CurrentUser, get_current_user, require_writer
 from archivum.config import Settings, get_settings
@@ -17,6 +17,7 @@ from archivum.db import sqlite, qdrant_client as qdrant, graph
 from archivum.ingest.agent import slugify
 from archivum.knowledge.repository import KnowledgeRepository
 from archivum.knowledge.suggestions import init_suggestion_schema
+from archivum.indexing import reconcile_vault, reindex_page, repoint_page
 from archivum.linting import WIKILINK_RE, normalize_wikilink_target
 from archivum.pages_to_knowledge import (
     remove_page_from_knowledge,
@@ -284,6 +285,7 @@ async def move_page_to_slug(
         new_path.write_text(existing["content"], encoding="utf-8")
 
     await sqlite.update_page_slug(old_slug, new_slug, wiki_id)
+    await repoint_page(old_slug=old_slug, new_slug=new_slug, wiki_id=wiki_id)
     await _rename_page_knowledge(
         old_slug, new_slug, existing["title"], existing["content"], wiki_id
     )
@@ -336,6 +338,44 @@ async def duplicate_page_to_slug(
 
 
 # ── Routes ────────────────────────────────────────────────────────────────────
+
+class ReindexResponse(BaseModel):
+    """What a reindex did, including anything it could not reach."""
+
+    slug: str | None = None
+    action: str
+    degraded: list[str] = Field(default_factory=list)
+    pages: int = 0
+
+
+@router.post("/{slug:path}/reindex", response_model=ReindexResponse)
+async def reindex_one_page(
+    slug: str,
+    current_user: CurrentUser = Depends(require_writer),
+    settings: Settings = Depends(get_settings),
+) -> ReindexResponse:
+    """Re-read this page from disk and rebuild everything derived from it.
+
+    The vault is editable by hand, so this is the manual counterpart to the
+    watcher: the file is the truth and the indexes are told to catch up.
+    """
+    slug = _validate_slug(slug)
+    result = await reindex_page(
+        slug,
+        wiki_id=current_user.wiki_id,
+        settings=settings,
+        force=True,
+        reason="manual",
+    )
+    if result.action == "missing":
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"detail": f"No markdown file for '{slug}'", "code": "page_not_found"},
+        )
+    return ReindexResponse(
+        slug=result.slug, action=result.action, degraded=result.degraded
+    )
+
 
 @router.get("", response_model=list[PageSummary])
 async def list_pages(

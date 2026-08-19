@@ -103,6 +103,17 @@ class Settings(BaseSettings):
     page_write_worker_enabled: bool = False
     # Periodic retention sweep: expires stale review candidates automatically.
     retention_sweep_enabled: bool = True
+
+    # The vault is meant to be edited by hand, so the app watches it rather than
+    # assuming every change came through the API.
+    vault_watch_enabled: bool = True
+    vault_watch_interval_seconds: int = 5
+    # Reconcile at startup catches whatever changed while the app was down.
+    vault_reconcile_on_start: bool = True
+
+    # Capture enqueues; this worker does the slow, possibly LLM-backed half.
+    distill_worker_enabled: bool = True
+    distill_worker_interval_seconds: int = 10
     retention_sweep_interval_seconds: int = 3600
 
     # ── Memory distillation ───────────────────────────────────────────────

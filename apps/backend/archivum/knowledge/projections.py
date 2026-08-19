@@ -29,11 +29,11 @@ logger = logging.getLogger(__name__)
 
 @dataclass(frozen=True)
 class ProjectionReport:
-    objects: int
-    relationships: int
-    kuzu_nodes: int
-    kuzu_edges: int
-    qdrant_indexed: int
+    objects: int = 0
+    relationships: int = 0
+    kuzu_nodes: int = 0
+    kuzu_edges: int = 0
+    qdrant_indexed: int = 0
 
 
 def _citations_payload(citations: list[Citation]) -> list[dict[str, Any]]:
@@ -61,6 +61,65 @@ async def _project_kuzu(operation, *args) -> bool:
     except Exception as exc:
         logger.warning("Kuzu projection operation failed: %s", exc)
         return False
+
+
+async def project_page(
+    repo: KnowledgeRepository, *, page_id: str, wiki_id: str
+) -> ProjectionReport:
+    """Project one page's canonical record into the graph, incrementally.
+
+    The full rebuild is the repair path; this is what keeps the projection
+    current between rebuilds. It writes the same two views the rebuild does —
+    the knowledge node and the page-centric legacy node — so an incrementally
+    maintained graph and a rebuilt one agree. They disagreed before precisely
+    because writes only ever updated the legacy half.
+    """
+    object_ = await repo.get_object(page_id)
+    if object_ is None:
+        return ProjectionReport()
+
+    # The report is frozen, so tally first and construct once.
+    kuzu_nodes = 0
+    kuzu_edges = 0
+    projected = await _project_kuzu(
+        upsert_knowledge_node,
+        object_.id,
+        object_.label,
+        object_.kind,
+        object_.scope,
+        object_.confidence,
+        object_.extraction_method,
+        _citations_payload(object_.citations),
+        wiki_id,
+    )
+    kuzu_nodes += int(projected)
+    await _project_kuzu(upsert_page, _page_slug(object_), object_.label, wiki_id)
+
+    relationships = [
+        relationship
+        for relationship in await repo.list_relationships(scope=object_.scope)
+        if relationship.src_id == page_id
+    ]
+    for relationship in relationships:
+        edge_projected = await _project_kuzu(
+            add_knowledge_relationship,
+            relationship.src_id,
+            relationship.dst_id,
+            relationship.id,
+            relationship.rel_type,
+            relationship.scope,
+            relationship.confidence,
+            relationship.extraction_method,
+            _citations_payload(relationship.citations),
+        )
+        kuzu_edges += int(edge_projected)
+
+    return ProjectionReport(
+        objects=1,
+        relationships=len(relationships),
+        kuzu_nodes=kuzu_nodes,
+        kuzu_edges=kuzu_edges,
+    )
 
 
 async def rebuild_knowledge_projections(

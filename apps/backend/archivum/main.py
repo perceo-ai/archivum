@@ -40,6 +40,9 @@ from archivum.logging_config import setup_logging
 from archivum.observability import new_trace_id, set_trace_id
 from archivum.memory.retention import run_retention_worker
 from archivum.page_write_queue import run_page_write_worker
+from archivum.distillation import run_distill_worker
+from archivum.indexing import reconcile_vault
+from archivum.vault_watch import run_vault_watcher
 from archivum.rate_limit import RateLimitMiddleware
 
 logger = logging.getLogger(__name__)
@@ -120,6 +123,27 @@ async def lifespan(app: FastAPI):
     owner_pw = settings.owner_password or secrets.token_urlsafe(24)
     await sqlite.ensure_owner_exists(settings.owner_username, hash_password(owner_pw))
 
+    # Catch up on anything edited while the app was down, before serving.
+    if settings.vault_reconcile_on_start:
+        try:
+            results = await reconcile_vault(wiki_id="default", settings=settings)
+            touched = [r for r in results if r.action != "unchanged"]
+            if touched:
+                logger.info(
+                    "Reconciled vault at startup",
+                    extra={"changed": len(touched), "total": len(results)},
+                )
+        except Exception as exc:  # noqa: BLE001 - never block startup on this
+            logger.warning("Vault reconcile at startup failed: %s", exc)
+
+    vault_watch_task: asyncio.Task[None] | None = None
+    if settings.vault_watch_enabled:
+        vault_watch_task = asyncio.create_task(run_vault_watcher(settings))
+
+    distill_task: asyncio.Task[None] | None = None
+    if settings.distill_worker_enabled:
+        distill_task = asyncio.create_task(run_distill_worker(settings))
+
     write_worker_task: asyncio.Task[None] | None = None
     if settings.page_write_worker_enabled:
         write_worker_task = asyncio.create_task(run_page_write_worker(settings))
@@ -131,7 +155,7 @@ async def lifespan(app: FastAPI):
     try:
         yield
     finally:
-        for task in (write_worker_task, retention_task):
+        for task in (write_worker_task, retention_task, vault_watch_task, distill_task):
             if task:
                 task.cancel()
                 try:

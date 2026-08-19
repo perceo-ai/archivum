@@ -346,6 +346,38 @@ class SuggestionRepository:
             rows = await cursor.fetchall()
         return [self._row_to_suggestion(row) for row in rows]
 
+    async def repoint_page(
+        self, *, wiki_id: str, old_slug: str, new_slug: str
+    ) -> int:
+        """Follow a renamed page so pending review items stay actionable."""
+        old_target = f"{page_target_prefix(wiki_id)}{old_slug}"
+        new_target = f"{page_target_prefix(wiki_id)}{new_slug}"
+        async with self._conn.execute(
+            "UPDATE memory_suggestions SET target_id=?, updated_at=datetime('now') "
+            "WHERE target_id=?",
+            (new_target, old_target),
+        ) as cursor:
+            moved = cursor.rowcount or 0
+        await self._conn.commit()
+        return moved
+
+    async def expire_for_page(self, *, wiki_id: str, slug: str) -> int:
+        """Retire suggestions against a page that no longer exists.
+
+        A pending suggestion targeting a deleted page can never be accepted, so
+        leaving it pending would keep an un-actionable item in the review queue
+        forever.
+        """
+        target = f"{page_target_prefix(wiki_id)}{slug}"
+        async with self._conn.execute(
+            "UPDATE memory_suggestions SET status='expired', updated_at=datetime('now') "
+            "WHERE target_id=? AND status='pending'",
+            (target,),
+        ) as cursor:
+            expired = cursor.rowcount or 0
+        await self._conn.commit()
+        return expired
+
     async def suggestion_counts(self, *, wiki_id: str) -> dict[str, int]:
         """How many suggestions sit in each review state, for one wiki."""
         scope = wiki_scope(wiki_id)

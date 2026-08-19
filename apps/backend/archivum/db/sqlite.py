@@ -117,6 +117,22 @@ CREATE TABLE IF NOT EXISTS share_links (
     revoked     INTEGER NOT NULL DEFAULT 0
 );
 
+CREATE TABLE IF NOT EXISTS distill_queue (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    wiki_id     TEXT    NOT NULL DEFAULT 'default',
+    source_id   TEXT    NOT NULL,
+    status      TEXT    NOT NULL DEFAULT 'pending'
+                CHECK (status IN ('pending', 'running', 'done', 'error')),
+    attempts    INTEGER NOT NULL DEFAULT 0,
+    error       TEXT,
+    created_at  TEXT    NOT NULL DEFAULT (datetime('now')),
+    updated_at  TEXT    NOT NULL DEFAULT (datetime('now')),
+    UNIQUE(wiki_id, source_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_distill_queue_status
+    ON distill_queue(status, id);
+
 CREATE TABLE IF NOT EXISTS ingest_log (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
     wiki_id         TEXT    NOT NULL DEFAULT 'default',
@@ -1009,3 +1025,67 @@ async def list_invite_tokens(wiki_id: str = "default") -> list[dict[str, Any]]:
         ) as cur:
             rows = await cur.fetchall()
             return [dict(r) for r in rows]
+
+
+# ── Distillation queue ───────────────────────────────────────────────────────
+
+async def enqueue_distillation(source_id: str, wiki_id: str = "default") -> None:
+    """Mark a captured source as needing distillation.
+
+    Idempotent: re-capturing the same source resets it to pending rather than
+    queueing it twice, so a retry is just another enqueue.
+    """
+    now = datetime.now(UTC).isoformat()
+    async with get_db() as db:
+        await db.execute(
+            """
+            INSERT INTO distill_queue (wiki_id, source_id, status, created_at, updated_at)
+            VALUES (?,?, 'pending', ?, ?)
+            ON CONFLICT(wiki_id, source_id) DO UPDATE SET
+                status='pending', error=NULL, updated_at=excluded.updated_at
+            """,
+            (wiki_id, source_id, now, now),
+        )
+        await db.commit()
+
+
+async def claim_distillation() -> dict[str, Any] | None:
+    """Take the oldest pending job, marking it running so it is claimed once."""
+    now = datetime.now(UTC).isoformat()
+    async with get_db() as db:
+        async with db.execute(
+            "SELECT * FROM distill_queue WHERE status='pending' ORDER BY id ASC LIMIT 1"
+        ) as cur:
+            row = await cur.fetchone()
+        if row is None:
+            return None
+        await db.execute(
+            "UPDATE distill_queue SET status='running', attempts=attempts+1, updated_at=? "
+            "WHERE id=? AND status='pending'",
+            (now, row["id"]),
+        )
+        await db.commit()
+        return dict(row)
+
+
+async def finish_distillation(
+    job_id: int, *, status: str, error: str | None = None
+) -> None:
+    now = datetime.now(UTC).isoformat()
+    async with get_db() as db:
+        await db.execute(
+            "UPDATE distill_queue SET status=?, error=?, updated_at=? WHERE id=?",
+            (status, error, now, job_id),
+        )
+        await db.commit()
+
+
+async def list_distillation_jobs(
+    wiki_id: str = "default", limit: int = 50
+) -> list[dict[str, Any]]:
+    async with get_db() as db:
+        async with db.execute(
+            "SELECT * FROM distill_queue WHERE wiki_id=? ORDER BY id DESC LIMIT ?",
+            (wiki_id, limit),
+        ) as cur:
+            return [dict(r) for r in await cur.fetchall()]

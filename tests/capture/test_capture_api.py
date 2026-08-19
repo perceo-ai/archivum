@@ -12,11 +12,14 @@ async def client(tmp_path, monkeypatch):
     monkeypatch.setattr("archivum.api.capture.get_settings", lambda: settings)
 
     from archivum.api.capture import router
-    from archivum.auth import require_writer
+    from archivum.auth import CurrentUser, require_writer
     from fastapi import FastAPI
 
     app = FastAPI()
-    app.dependency_overrides[require_writer] = lambda: {"username": "admin", "role": "owner"}
+    # A real CurrentUser: the endpoint is typed for one and reads wiki_id off it.
+    app.dependency_overrides[require_writer] = lambda: CurrentUser(
+        username="admin", role="owner", wiki_id="default"
+    )
     app.dependency_overrides[get_settings] = lambda: settings
     app.include_router(router)
     return TestClient(app, raise_server_exceptions=True)

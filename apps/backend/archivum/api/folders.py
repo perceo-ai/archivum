@@ -9,6 +9,7 @@ from pydantic import BaseModel
 
 from archivum.auth import CurrentUser, get_current_user, require_writer
 from archivum.config import Settings, get_settings
+from archivum.indexing import repoint_page
 from archivum.db import graph, qdrant_client as qdrant, sqlite
 from archivum.security.markdown import sanitize_markdown
 
@@ -178,6 +179,7 @@ async def move_folder_tree(
         if page:
             await qdrant.upsert_page(new_slug, page["title"], page["content"], wiki_id, settings)
         await graph.rename_page_node(old_slug, new_slug, wiki_id)
+        await repoint_page(old_slug=old_slug, new_slug=new_slug, wiki_id=wiki_id)
         if page:
             await graph.upsert_page(new_slug, page["title"], wiki_id)
 

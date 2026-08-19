@@ -15,10 +15,11 @@ from importlib.util import find_spec
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
 
-from archivum.auth import CurrentUser, get_current_user, require_owner
+from archivum.auth import CurrentUser, get_current_user, require_owner, require_writer
 from archivum.config import Settings, get_settings
 from archivum.db import graph, qdrant_client as qdrant, sqlite
 from archivum.ingest.agent import slugify
+from archivum.indexing import reconcile_vault
 from archivum.knowledge.projections import rebuild_knowledge_projections
 from archivum.knowledge.repository import KnowledgeRepository, init_knowledge_schema
 from archivum.knowledge.personal_root import SELF_SCOPE
@@ -525,6 +526,33 @@ async def rebuild_indexes(
         "qdrant_indexed": projection.qdrant_indexed,
         "kuzu_nodes": projection.kuzu_nodes,
         "kuzu_edges": projection.kuzu_edges,
+    }
+
+
+@router.post("/reindex")
+async def reindex_vault(
+    force: bool = False,
+    current_user: CurrentUser = Depends(require_writer),
+    settings: Settings = Depends(get_settings),
+) -> dict[str, Any]:
+    """Re-read the whole vault from disk and rebuild what derives from it.
+
+    Files are the truth: anything added, edited or deleted outside the app is
+    picked up here. `force` re-indexes even unchanged pages, which is the repair
+    path when a projection was lost rather than the content changed.
+    """
+    results = await reconcile_vault(
+        wiki_id=current_user.wiki_id, settings=settings, force=force
+    )
+    counts: dict[str, int] = {}
+    degraded: set[str] = set()
+    for result in results:
+        counts[result.action] = counts.get(result.action, 0) + 1
+        degraded.update(result.degraded)
+    return {
+        "pages": len(results),
+        "actions": counts,
+        "degraded": sorted(degraded),
     }
 
 

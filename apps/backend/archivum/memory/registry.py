@@ -348,6 +348,37 @@ class MemoryAssetRegistry:
             row = await cursor.fetchone()
         return _row_to_asset(row) if row else None
 
+    async def repoint_page(
+        self, *, wiki_id: str, old_slug: str, new_slug: str
+    ) -> int:
+        """Follow a renamed page. Returns how many assets moved."""
+        async with self._conn.execute(
+            "UPDATE memory_assets SET page_slug=?, updated_at=? "
+            "WHERE wiki_id=? AND page_slug=?",
+            (new_slug, _now(), wiki_id, old_slug),
+        ) as cursor:
+            moved = cursor.rowcount or 0
+        if self._autocommit:
+            await self._conn.commit()
+        return moved
+
+    async def detach_page(self, *, wiki_id: str, slug: str) -> int:
+        """Unhook memory from a deleted page without deleting the memory.
+
+        What was learned survives the page it was learned from — the citation
+        would be a lie either way, but silently dropping reviewed memory because
+        a file moved would be worse.
+        """
+        async with self._conn.execute(
+            "UPDATE memory_assets SET page_slug=NULL, updated_at=? "
+            "WHERE wiki_id=? AND page_slug=?",
+            (_now(), wiki_id, slug),
+        ) as cursor:
+            detached = cursor.rowcount or 0
+        if self._autocommit:
+            await self._conn.commit()
+        return detached
+
     async def asset_counts(self, *, wiki_id: str) -> dict[str, Any]:
         """Aggregate asset counts for the memory pipeline view.
 

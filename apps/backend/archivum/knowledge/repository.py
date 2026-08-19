@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import json
 
+from typing import Any
+
 import aiosqlite
 
 from archivum.knowledge.models import Citation, KnowledgeObject, KnowledgeRelationship
@@ -242,6 +244,45 @@ class KnowledgeRepository:
         except Exception:
             await self._conn.rollback()
             raise
+
+    async def list_objects_from_source(
+        self, source_id: str, *, scope: str | None = None, limit: int = 200
+    ) -> list[KnowledgeObject]:
+        """Everything whose provenance points at one source.
+
+        Ingest already cites the source on every record it derives, so the
+        source-to-page link has existed all along — it simply had no query, and
+        so no way to answer "what did this PDF actually produce?".
+        """
+        clauses = ["c.knowledge_type='object'", "c.source_id=?"]
+        params: list[Any] = [source_id]
+        if scope is not None:
+            clauses.append("o.scope=?")
+            params.append(scope)
+        params.append(max(limit, 0))
+
+        async with self._conn.execute(
+            f"""
+            SELECT DISTINCT o.id
+            FROM knowledge_citations AS c
+            JOIN knowledge_objects AS o ON o.id = c.knowledge_id
+            WHERE {' AND '.join(clauses)}
+            ORDER BY o.id ASC
+            LIMIT ?
+            """,
+            params,
+        ) as cursor:
+            rows = await cursor.fetchall()
+
+        objects: list[KnowledgeObject] = []
+        for row in rows:
+            # Skip the source's own record: it cites itself.
+            if row["id"] == source_id:
+                continue
+            obj = await self.get_object(row["id"])
+            if obj is not None:
+                objects.append(obj)
+        return objects
 
     async def delete_records_with_only_citations_in(
         self, *, scope: str, chunk_ids: set[str]

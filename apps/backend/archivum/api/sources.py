@@ -10,10 +10,12 @@ import httpx
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
 
-from archivum.auth import CurrentUser, require_writer
+from archivum.auth import CurrentUser, get_current_user, require_writer
 from archivum.config import Settings, get_settings
 from archivum.store.ingest import ingest_source
 from archivum.store.models import IngestResult, Source
+from archivum.db import sqlite
+from archivum.knowledge.repository import KnowledgeRepository
 from archivum.store.repository import SourceStore
 
 logger = logging.getLogger(__name__)
@@ -36,6 +38,20 @@ class SourceResponse(BaseModel):
     scope: str
     deduplicated: bool
     chunk_count: int
+
+
+class DerivedRecord(BaseModel):
+    id: str
+    kind: str
+    label: str
+    slug: str | None = None
+    confidence: float = 0.0
+
+
+class DerivedResponse(BaseModel):
+    source_id: str
+    records: list[DerivedRecord]
+    pages: int = 0
 
 
 class SourceDetailResponse(BaseModel):
@@ -89,6 +105,40 @@ async def ingest_endpoint(
         settings=settings,
     )
     return _to_response(result)
+
+
+@router.get("/{source_id:path}/derived", response_model=DerivedResponse)
+async def source_derived(
+    source_id: str,
+    current_user: CurrentUser = Depends(get_current_user),
+) -> DerivedResponse:
+    """What this source actually produced.
+
+    Sources and pages looked unrelated because nothing joined them, even though
+    ingest cites the source on every record it derives. This walks that
+    provenance, so a source can answer for its own output.
+    """
+    scope = f"wiki:{current_user.wiki_id}"
+    async with sqlite.get_db() as conn:
+        objects = await KnowledgeRepository(conn).list_objects_from_source(
+            source_id, scope=scope
+        )
+
+    records = [
+        DerivedRecord(
+            id=obj.id,
+            kind=obj.kind,
+            label=obj.label,
+            slug=str(obj.properties.get("slug")) if obj.properties.get("slug") else None,
+            confidence=obj.confidence,
+        )
+        for obj in objects
+    ]
+    return DerivedResponse(
+        source_id=source_id,
+        records=records,
+        pages=sum(1 for record in records if record.kind == "page"),
+    )
 
 
 @router.get("/{source_id}", response_model=SourceDetailResponse)
