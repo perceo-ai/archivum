@@ -90,7 +90,7 @@ export default function PublicWikiPage() {
           </div>
         </aside>
         <main className="p-6 overflow-y-auto">
-          {loading && <div className="text-sm text-muted-foreground">Loading...</div>}
+          {loading && <div className="text-sm text-muted-foreground">Loading public wiki...</div>}
           {!loading && error && (
             <div className="rounded-lg p-3 border border-red-400/25 bg-red-500/10 text-sm text-red-300">
               {error}

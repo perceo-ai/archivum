@@ -60,7 +60,7 @@ export default function ProjectsPage() {
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-xl font-semibold text-white">Projects</h1>
         <Button onClick={refresh} variant="outline" size="sm" disabled={loading}>
-          {loading ? 'Loading...' : 'Refresh'}
+          {loading ? 'Refreshing...' : 'Refresh'}
         </Button>
       </div>
 
@@ -103,7 +103,9 @@ export default function ProjectsPage() {
       </div>
 
       {!loading && projects.length === 0 && (
-        <div className="text-center py-12 text-text-secondary text-sm">No projects yet.</div>
+        <div className="text-center py-12 text-muted-foreground text-sm">
+          No projects yet. Create one when a body of work needs its own notes and tasks.
+        </div>
       )}
     </div>
   );

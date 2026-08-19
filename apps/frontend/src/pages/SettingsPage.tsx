@@ -1,24 +1,55 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Bot, Check, Copy, Mic, RefreshCw, Save, X } from 'lucide-react';
+import type { ReactNode } from 'react';
+import {
+  Bot,
+  Check,
+  Copy,
+  KeyRound,
+  Mic,
+  PlugZap,
+  RefreshCw,
+  Save,
+  Share2,
+  ShieldCheck,
+  X,
+} from 'lucide-react';
 import {
   createInvite,
+  getCodexAuthStatus,
   getAudioSupport,
   getLlmSettings,
+  getMcpSettings,
+  installAudioSupport,
   listInvites,
+  startCodexDeviceLogin,
   updateLlmSettings,
+  type AudioSupportInstallResult,
   type AudioSupportStatus,
+  type CodexAuthStatus,
+  type CodexDeviceLogin,
   type InviteToken,
   type LlmSettings,
+  type McpSettings,
 } from '../api';
 import { Button } from '../components/ui/Button';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/Card';
 import { Badge } from '../components/ui/Badge';
 import { Input } from '../components/ui/Input';
 
+const PROVIDER_HELP: Record<string, string> = {
+  anthropic: 'Direct Anthropic API calls. Best default when you have an API key configured.',
+  openrouter: 'Use OpenRouter to switch between hosted models from one account.',
+  openai_compat: 'Use any OpenAI-compatible endpoint such as OpenAI, Together, Fireworks, or Azure.',
+  ollama: 'Use a local or self-hosted Ollama endpoint. Best for private, lower-cost local runs.',
+  codex_cli: 'Use Codex CLI on this server for answer generation.',
+  claude_cli: 'Use Claude Code on this server for answer generation.',
+};
+
 export default function SettingsPage() {
   const [invites, setInvites] = useState<InviteToken[]>([]);
   const [audioSupport, setAudioSupport] = useState<AudioSupportStatus | null>(null);
   const [llmSettings, setLlmSettings] = useState<LlmSettings | null>(null);
+  const [mcpSettings, setMcpSettings] = useState<McpSettings | null>(null);
   const [llmDraft, setLlmDraft] = useState({
     llm_extraction_provider: 'ollama',
     llm_synthesis_provider: 'ollama',
@@ -29,26 +60,35 @@ export default function SettingsPage() {
   });
   const [loading, setLoading] = useState(true);
   const [audioLoading, setAudioLoading] = useState(true);
+  const [audioInstalling, setAudioInstalling] = useState(false);
+  const [audioInstallResult, setAudioInstallResult] =
+    useState<AudioSupportInstallResult | null>(null);
   const [llmLoading, setLlmLoading] = useState(true);
+  const [mcpLoading, setMcpLoading] = useState(true);
   const [llmSaving, setLlmSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [audioError, setAudioError] = useState<string | null>(null);
   const [llmError, setLlmError] = useState<string | null>(null);
+  const [mcpError, setMcpError] = useState<string | null>(null);
   const [llmSaved, setLlmSaved] = useState(false);
+  const [mcpCopied, setMcpCopied] = useState(false);
+  const [codexAuth, setCodexAuth] = useState<CodexAuthStatus | null>(null);
+  const [codexLogin, setCodexLogin] = useState<CodexDeviceLogin | null>(null);
+  const [codexAuthLoading, setCodexAuthLoading] = useState(false);
+  const [codexAuthError, setCodexAuthError] = useState<string | null>(null);
 
   const [role, setRole] = useState<'viewer' | 'collaborator'>('viewer');
   const [expiryDays, setExpiryDays] = useState<number | null>(7);
   const [generating, setGenerating] = useState(false);
   const [generatedUrl, setGeneratedUrl] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
-  const [copiedAudioCommand, setCopiedAudioCommand] = useState<string | null>(null);
 
   const fetchInvites = useCallback(async () => {
     try {
       const data = await listInvites();
       setInvites(data);
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to load invites');
+      setError(e instanceof Error ? e.message : 'Failed to load invite links');
     } finally {
       setLoading(false);
     }
@@ -61,7 +101,7 @@ export default function SettingsPage() {
       const data = await getAudioSupport();
       setAudioSupport(data);
     } catch (e) {
-      setAudioError(e instanceof Error ? e.message : 'Failed to load audio support status');
+      setAudioError(e instanceof Error ? e.message : 'Failed to check media import support');
     } finally {
       setAudioLoading(false);
     }
@@ -71,8 +111,12 @@ export default function SettingsPage() {
     setLlmLoading(true);
     setLlmError(null);
     try {
-      const data = await getLlmSettings();
+      const [data, auth] = await Promise.all([
+        getLlmSettings(),
+        getCodexAuthStatus().catch(() => null),
+      ]);
       setLlmSettings(data);
+      setCodexAuth(auth);
       setLlmDraft({
         llm_extraction_provider: data.llm_extraction_provider,
         llm_synthesis_provider: data.llm_synthesis_provider,
@@ -82,9 +126,35 @@ export default function SettingsPage() {
         ollama_api_key: '',
       });
     } catch (e) {
-      setLlmError(e instanceof Error ? e.message : 'Failed to load LLM settings');
+      setLlmError(e instanceof Error ? e.message : 'Failed to load model settings');
     } finally {
       setLlmLoading(false);
+    }
+  }, []);
+
+  async function handleStartCodexAuth() {
+    setCodexAuthLoading(true);
+    setCodexAuthError(null);
+    setCodexLogin(null);
+    try {
+      const login = await startCodexDeviceLogin();
+      setCodexLogin(login);
+    } catch (e) {
+      setCodexAuthError(e instanceof Error ? e.message : 'Failed to start Codex sign-in');
+    } finally {
+      setCodexAuthLoading(false);
+    }
+  }
+
+  const fetchMcpSettings = useCallback(async () => {
+    setMcpLoading(true);
+    setMcpError(null);
+    try {
+      setMcpSettings(await getMcpSettings());
+    } catch (e) {
+      setMcpError(e instanceof Error ? e.message : 'Failed to load agent access settings');
+    } finally {
+      setMcpLoading(false);
     }
   }, []);
 
@@ -92,7 +162,8 @@ export default function SettingsPage() {
     fetchInvites();
     fetchAudioSupport();
     fetchLlmSettings();
-  }, [fetchAudioSupport, fetchInvites, fetchLlmSettings]);
+    fetchMcpSettings();
+  }, [fetchAudioSupport, fetchInvites, fetchLlmSettings, fetchMcpSettings]);
 
   async function handleGenerate() {
     setGenerating(true);
@@ -104,7 +175,7 @@ export default function SettingsPage() {
       setGeneratedUrl(url);
       await fetchInvites();
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to generate invite');
+      setError(e instanceof Error ? e.message : 'Failed to create invite link');
     } finally {
       setGenerating(false);
     }
@@ -117,10 +188,11 @@ export default function SettingsPage() {
     setTimeout(() => setCopied(false), 2000);
   }
 
-  async function copyAudioCommand(key: string, value: string) {
-    await navigator.clipboard.writeText(value);
-    setCopiedAudioCommand(key);
-    setTimeout(() => setCopiedAudioCommand(null), 2000);
+  async function handleCopyMcpConfig() {
+    if (!mcpSettings) return;
+    await navigator.clipboard.writeText(JSON.stringify(mcpSettings.client_config, null, 2));
+    setMcpCopied(true);
+    setTimeout(() => setMcpCopied(false), 2000);
   }
 
   async function handleSaveLlmSettings() {
@@ -141,9 +213,24 @@ export default function SettingsPage() {
       setLlmSaved(true);
       setTimeout(() => setLlmSaved(false), 2400);
     } catch (e) {
-      setLlmError(e instanceof Error ? e.message : 'Failed to save LLM settings');
+      setLlmError(e instanceof Error ? e.message : 'Failed to save model settings');
     } finally {
       setLlmSaving(false);
+    }
+  }
+
+  async function handleInstallAudioSupport() {
+    setAudioInstalling(true);
+    setAudioError(null);
+    setAudioInstallResult(null);
+    try {
+      const result = await installAudioSupport();
+      setAudioInstallResult(result);
+      setAudioSupport(result.status);
+    } catch (e) {
+      setAudioError(e instanceof Error ? e.message : 'Failed to enable media transcription');
+    } finally {
+      setAudioInstalling(false);
     }
   }
 
@@ -165,286 +252,390 @@ export default function SettingsPage() {
     return new Date(iso) < new Date();
   }
 
+  const mediaStatus = audioSupport?.video_available
+    ? 'Audio and video imports are ready.'
+    : audioSupport?.audio_available
+      ? 'Audio imports are ready. Video still needs ffmpeg.'
+      : 'Text, docs, code, data, email, and archives are ready. Media transcription is optional.';
+
   return (
-    <div className="w-full flex-1 overflow-y-auto p-4">
-      <h1 className="mb-5 text-xl font-semibold text-white">Settings</h1>
-
-      <Card className="mb-6">
-        <CardHeader>
-          <div className="flex items-start justify-between gap-3">
-            <div>
-              <CardTitle className="text-base flex items-center gap-2">
-                <Bot className="h-4 w-4" />
-                LLM Provider
-              </CardTitle>
-              <p className="mt-1 text-xs text-text-secondary">
-                Configure extraction and cited-answer synthesis providers.
-              </p>
-            </div>
-            {llmSettings?.ollama_api_key_configured && (
-              <Badge variant="success" className="text-xs">
-                Key {llmSettings.ollama_api_key_masked}
-              </Badge>
-            )}
+    <div className="page-frame bg-transparent">
+      <div className="page-header">
+        <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
+          Settings
+        </p>
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+          <div className="min-w-0">
+            <h1 className="text-3xl font-semibold tracking-tight text-foreground">Workspace Settings</h1>
+            <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
+              Configure the parts that affect daily use: models, media import, agent access, and sharing.
+            </p>
           </div>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          {llmLoading ? (
-            <p className="text-sm text-text-secondary">Loading LLM settings...</p>
-          ) : (
-            <>
-              <div className="grid gap-4 md:grid-cols-2">
-                <ProviderField
-                  label="Extraction provider"
-                  value={llmDraft.llm_extraction_provider}
-                  onChange={(value) => setLlmDraft((draft) => ({ ...draft, llm_extraction_provider: value }))}
-                />
-                <ProviderField
-                  label="Synthesis provider"
-                  value={llmDraft.llm_synthesis_provider}
-                  onChange={(value) => setLlmDraft((draft) => ({ ...draft, llm_synthesis_provider: value }))}
-                />
-              </div>
-
-              <div className="grid gap-4 md:grid-cols-2">
-                <TextField
-                  label="Extraction model"
-                  value={llmDraft.llm_model}
-                  onChange={(value) => setLlmDraft((draft) => ({ ...draft, llm_model: value }))}
-                />
-                <TextField
-                  label="Synthesis model"
-                  value={llmDraft.llm_synthesis_model}
-                  onChange={(value) => setLlmDraft((draft) => ({ ...draft, llm_synthesis_model: value }))}
-                />
-              </div>
-
-              <TextField
-                label="Ollama base URL"
-                value={llmDraft.ollama_base_url}
-                onChange={(value) => setLlmDraft((draft) => ({ ...draft, ollama_base_url: value }))}
-              />
-
-              <TextField
-                label="Ollama API key"
-                value={llmDraft.ollama_api_key}
-                type="password"
-                placeholder={llmSettings?.ollama_api_key_configured ? 'Leave blank to keep existing key' : ''}
-                onChange={(value) => setLlmDraft((draft) => ({ ...draft, ollama_api_key: value }))}
-              />
-
-              {llmError && <p className="text-xs text-destructive">{llmError}</p>}
-              {llmSaved && <p className="text-xs text-green-600">LLM settings saved.</p>}
-
-              <Button onClick={handleSaveLlmSettings} disabled={llmSaving} size="sm">
-                <Save className="h-3.5 w-3.5" />
-                {llmSaving ? 'Saving...' : 'Save LLM Settings'}
-              </Button>
-            </>
-          )}
-        </CardContent>
-      </Card>
-
-      <Card className="mb-6">
-        <CardHeader>
-          <div className="flex items-start justify-between gap-3">
-            <div>
-              <CardTitle className="text-base flex items-center gap-2">
-                <Mic className="h-4 w-4" />
-                Audio Transcription
-              </CardTitle>
-              <p className="mt-1 text-xs text-text-secondary">
-                Enables local audio and video transcription for uploaded media.
-              </p>
-            </div>
-            <Button
-              onClick={fetchAudioSupport}
-              disabled={audioLoading}
-              variant="outline"
-              size="sm"
-              title="Refresh audio support status"
-            >
-              <RefreshCw className={['h-3.5 w-3.5', audioLoading ? 'animate-spin' : ''].join(' ')} />
-              Refresh
-            </Button>
+          <div className="flex flex-wrap gap-2">
+            <StatusPill label="Models" ready={Boolean(llmSettings?.llm_synthesis_model)} />
+            <StatusPill label="Agents" ready={Boolean(mcpSettings?.api_key_configured)} />
+            <StatusPill label="Media" ready={Boolean(audioSupport?.audio_available)} />
           </div>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          {audioLoading ? (
-            <p className="text-sm text-text-secondary">Checking audio support...</p>
-          ) : audioError ? (
-            <p className="text-sm text-destructive">{audioError}</p>
-          ) : audioSupport ? (
-            <>
-              <div className="flex flex-wrap items-center gap-2">
-                {audioSupport.available ? (
-                  <Badge variant="success" className="text-xs">Ready</Badge>
-                ) : (
-                  <Badge variant="secondary" className="text-xs">Setup needed</Badge>
-                )}
-                <DependencyBadge label="Whisper" ready={audioSupport.dependencies.openai_whisper} />
-                <DependencyBadge label="ffmpeg" ready={audioSupport.dependencies.ffmpeg} />
-              </div>
+        </div>
+      </div>
 
-              {!audioSupport.available && (
-                <div className="soft-border space-y-3 rounded-[8px] border bg-white/[0.035] p-3">
-                  <div>
-                    <p className="text-sm font-medium text-text-primary">Install audio support</p>
-                    <p className="mt-1 text-xs text-text-secondary">
-                      Missing: {audioSupport.missing.join(', ') || 'none'}. Default Docker images keep these packages out because Whisper/Torch are large.
-                    </p>
-                  </div>
-
-                  <CommandRow
-                    label="Local development"
-                    value={audioSupport.commands.local}
-                    copied={copiedAudioCommand === 'local'}
-                    onCopy={() => copyAudioCommand('local', audioSupport.commands.local)}
+      <div className="grid min-h-0 gap-4 overflow-y-auto xl:grid-cols-2">
+        <section className="space-y-4">
+          <SettingsCard
+            icon={<Bot className="h-4 w-4" />}
+            title="AI Models"
+            description="Choose the providers used to extract structure from sources and answer questions with citations."
+            badge={llmSettings?.ollama_api_key_configured ? `Ollama key ${llmSettings.ollama_api_key_masked}` : undefined}
+          >
+            {llmLoading ? (
+              <LoadingText>Loading model settings...</LoadingText>
+            ) : (
+              <div className="space-y-4">
+                <div className="grid gap-4 md:grid-cols-2">
+                  <ProviderField
+                    label="Extraction"
+                    value={llmDraft.llm_extraction_provider}
+                    onChange={(value) => setLlmDraft((draft) => ({ ...draft, llm_extraction_provider: value }))}
                   />
-                  <CommandRow
-                    label="Video extraction"
-                    value={audioSupport.commands.ffmpeg}
-                    copied={copiedAudioCommand === 'ffmpeg'}
-                    onCopy={() => copyAudioCommand('ffmpeg', audioSupport.commands.ffmpeg)}
-                  />
-                  <CommandRow
-                    label="Docker deployment"
-                    value={audioSupport.commands.docker}
-                    copied={copiedAudioCommand === 'docker'}
-                    onCopy={() => copyAudioCommand('docker', audioSupport.commands.docker)}
+                  <ProviderField
+                    label="Answers"
+                    value={llmDraft.llm_synthesis_provider}
+                    onChange={(value) => setLlmDraft((draft) => ({ ...draft, llm_synthesis_provider: value }))}
                   />
                 </div>
-              )}
-            </>
-          ) : null}
-        </CardContent>
-      </Card>
 
-      <Card className="mb-6">
-        <CardHeader>
-          <CardTitle className="text-base">Generate Invite Link</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="flex flex-wrap gap-4 items-end">
-            <div className="space-y-1">
-              <label className="text-xs text-text-secondary font-medium">Role</label>
-              <div className="flex gap-2">
-                {(['viewer', 'collaborator'] as const).map((r) => (
-                  <button
-                    key={r}
-                    onClick={() => setRole(r)}
-                    className={[
-                      'soft-border rounded-[5px] border px-3 py-1.5 text-xs font-medium transition-colors',
-                      role === r
-                        ? 'bg-primary text-primary-foreground border-primary'
-                        : 'bg-white/[0.035] text-text-secondary hover:bg-white/[0.08]',
-                    ].join(' ')}
-                  >
-                    {r.charAt(0).toUpperCase() + r.slice(1)}
-                  </button>
-                ))}
+                <div className="grid gap-4 md:grid-cols-2">
+                  <TextField
+                    label="Extraction model"
+                    help="Used while importing sources and proposing memory."
+                    value={llmDraft.llm_model}
+                    onChange={(value) => setLlmDraft((draft) => ({ ...draft, llm_model: value }))}
+                  />
+                  <TextField
+                    label="Answer model"
+                    help="Used for cited Q&A in Search and Query."
+                    value={llmDraft.llm_synthesis_model}
+                    onChange={(value) => setLlmDraft((draft) => ({ ...draft, llm_synthesis_model: value }))}
+                  />
+                </div>
+
+                <div className="soft-border rounded-[8px] border bg-white/[0.03] p-3">
+                  <p className="text-sm font-medium text-foreground">Local and subscription-backed providers</p>
+                  <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                    Ollama uses a local endpoint. Codex CLI and Claude Code run non-interactively on this server when installed and authenticated.
+                  </p>
+                  <div className="mt-3 grid gap-3 md:grid-cols-[minmax(0,1fr)_minmax(180px,0.65fr)]">
+                    <TextField
+                      label="Ollama base URL"
+                      value={llmDraft.ollama_base_url}
+                      onChange={(value) => setLlmDraft((draft) => ({ ...draft, ollama_base_url: value }))}
+                    />
+                    <TextField
+                      label="Ollama API key"
+                      value={llmDraft.ollama_api_key}
+                      type="password"
+                      placeholder={llmSettings?.ollama_api_key_configured ? 'Leave blank to keep existing key' : ''}
+                      onChange={(value) => setLlmDraft((draft) => ({ ...draft, ollama_api_key: value }))}
+                    />
+                  </div>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <DependencyBadge label="Codex CLI" ready={Boolean(llmSettings?.cli_providers?.codex_cli?.available)} />
+                    <DependencyBadge label="Codex signed in" ready={Boolean(codexAuth?.authenticated)} />
+                    <DependencyBadge label="Claude Code" ready={Boolean(llmSettings?.cli_providers?.claude_cli?.available)} />
+                  </div>
+                  <div className="mt-3 space-y-2">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={handleStartCodexAuth}
+                        disabled={codexAuthLoading || !llmSettings?.cli_providers?.codex_cli?.available}
+                      >
+                        <KeyRound className="h-3.5 w-3.5" />
+                        {codexAuthLoading ? 'Starting sign-in...' : 'Sign in to Codex'}
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={fetchLlmSettings}
+                        disabled={llmLoading}
+                      >
+                        <RefreshCw className="h-3.5 w-3.5" />
+                        Check sign-in
+                      </Button>
+                    </div>
+                    {codexAuth?.detail && (
+                      <p className="text-xs leading-5 text-muted-foreground">{codexAuth.detail}</p>
+                    )}
+                    {codexLogin && (
+                      <div className="soft-border rounded-[8px] border bg-white/[0.03] p-3 text-xs leading-5 text-muted-foreground">
+                        <p>
+                          Open{' '}
+                          <a
+                            className="text-primary underline-offset-2 hover:underline"
+                            href={codexLogin.url}
+                            target="_blank"
+                            rel="noreferrer"
+                          >
+                            {codexLogin.url}
+                          </a>
+                        </p>
+                        <p className="mt-1 font-mono text-sm text-foreground">{codexLogin.code}</p>
+                        <p className="mt-1">{codexLogin.detail}</p>
+                      </div>
+                    )}
+                    {codexAuthError && <InlineError>{codexAuthError}</InlineError>}
+                  </div>
+                </div>
+
+                {llmError && <InlineError>{llmError}</InlineError>}
+                {llmSaved && <InlineSuccess>Model settings saved.</InlineSuccess>}
+
+                <Button onClick={handleSaveLlmSettings} disabled={llmSaving} size="sm">
+                  <Save className="h-3.5 w-3.5" />
+                  {llmSaving ? 'Saving...' : 'Save model settings'}
+                </Button>
               </div>
-            </div>
+            )}
+          </SettingsCard>
 
-            <div className="space-y-1">
-              <label className="text-xs text-text-secondary font-medium">Expiry</label>
-              <div className="flex gap-2">
-                {[
-                  { label: '7 days', value: 7 },
-                  { label: '30 days', value: 30 },
-                  { label: 'Never', value: null },
-                ].map((opt) => (
-                  <button
-                    key={opt.label}
-                    onClick={() => setExpiryDays(opt.value)}
-                    className={[
-                      'soft-border rounded-[5px] border px-3 py-1.5 text-xs font-medium transition-colors',
-                      expiryDays === opt.value
-                        ? 'bg-primary text-primary-foreground border-primary'
-                        : 'bg-white/[0.035] text-text-secondary hover:bg-white/[0.08]',
-                    ].join(' ')}
-                  >
-                    {opt.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <Button onClick={handleGenerate} disabled={generating} size="sm">
-              {generating ? 'Generating...' : 'Generate Invite Link'}
-            </Button>
-          </div>
-
-          {error && (
-            <p className="text-xs text-destructive">{error}</p>
-          )}
-
-          {generatedUrl && (
-            <div className="flex items-center gap-2 mt-2">
-              <input
-                readOnly
-                value={generatedUrl}
-                className="soft-border h-8 flex-1 rounded-[5px] border bg-white/[0.05] px-3 font-mono text-xs text-text-secondary focus:outline-none"
-              />
-              <Button onClick={handleCopy} variant="outline" size="sm">
-                {copied ? 'Copied!' : 'Copy'}
+          <SettingsCard
+            icon={<Mic className="h-4 w-4" />}
+            title="Media Import"
+            description="Enable local transcription for audio and video. Other supported file types work without this."
+            action={
+              <Button
+                onClick={fetchAudioSupport}
+                disabled={audioLoading}
+                variant="outline"
+                size="sm"
+                title="Refresh media import status"
+              >
+                <RefreshCw className={['h-3.5 w-3.5', audioLoading ? 'animate-spin' : ''].join(' ')} />
+                Refresh
               </Button>
-            </div>
-          )}
-        </CardContent>
-      </Card>
+            }
+          >
+            {audioLoading ? (
+              <LoadingText>Checking media support...</LoadingText>
+            ) : audioError ? (
+              <InlineError>{audioError}</InlineError>
+            ) : audioSupport ? (
+              <div className="space-y-4">
+                <div className="flex flex-wrap items-center gap-2">
+                  {audioSupport.available ? (
+                    <Badge variant="success" className="text-xs">Ready</Badge>
+                  ) : (
+                    <Badge variant="secondary" className="text-xs">Optional setup</Badge>
+                  )}
+                  <DependencyBadge label="Whisper" ready={audioSupport.dependencies.openai_whisper} />
+                  <DependencyBadge label="ffmpeg" ready={audioSupport.dependencies.ffmpeg} />
+                  {audioSupport.audio_available && !audioSupport.video_available && (
+                    <Badge variant="secondary" className="text-xs">Audio only</Badge>
+                  )}
+                </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Invite Tokens</CardTitle>
-        </CardHeader>
-        <CardContent>
-          {loading ? (
-            <p className="text-sm text-text-secondary">Loading...</p>
-          ) : invites.length === 0 ? (
-            <p className="text-sm text-text-secondary">No invite tokens yet.</p>
-          ) : (
-            <div className="space-y-2">
-              {invites.map((invite) => {
-                const expired = isExpired(invite.expires_at);
-                return (
-                  <div
-                    key={invite.id}
-                    className="subtle-divider flex items-center justify-between gap-3 border-b py-2 last:border-0"
-                  >
-                    <code className="text-xs text-text-secondary font-mono">
-                      {invite.token.slice(0, 16)}…
-                    </code>
-                    <div className="flex items-center gap-2 ml-auto flex-wrap justify-end">
-                      <Badge variant="outline" className="text-xs">
-                        {invite.role}
-                      </Badge>
-                      {invite.used ? (
-                        <Badge variant="secondary" className="text-xs">Used</Badge>
-                      ) : expired ? (
-                        <Badge variant="destructive" className="text-xs">Expired</Badge>
-                      ) : (
-                        <Badge variant="success" className="text-xs">Active</Badge>
-                      )}
-                      <span className="text-xs text-text-secondary whitespace-nowrap">
-                        Expires: {formatDate(invite.expires_at)}
-                      </span>
+                <p className="text-sm leading-6 text-muted-foreground">{mediaStatus}</p>
+
+                {!audioSupport.available && (
+                  <div className="soft-border space-y-3 rounded-[8px] border bg-white/[0.03] p-3">
+                    <p className="text-sm font-medium text-foreground">
+                      Missing: {audioSupport.missing.join(', ') || 'none'}
+                    </p>
+                    <p className="text-xs leading-5 text-muted-foreground">
+                      Use this when you want uploaded audio or video to become searchable notes.
+                    </p>
+                    <Button onClick={handleInstallAudioSupport} disabled={audioInstalling} size="sm">
+                      <Mic className="h-3.5 w-3.5" />
+                      {audioInstalling ? 'Enabling...' : 'Enable media transcription'}
+                    </Button>
+                  </div>
+                )}
+
+                {audioInstallResult && (
+                  <div className="soft-border rounded-[8px] border bg-white/[0.03] p-3">
+                    <p className="text-sm font-medium text-foreground">
+                      {audioInstallResult.ok ? 'Media transcription is ready.' : 'Media transcription still needs attention.'}
+                    </p>
+                    <div className="mt-2 space-y-1">
+                      {audioInstallResult.actions.map((action) => (
+                        <div key={action.name} className="flex items-start gap-2 text-xs">
+                          <DependencyBadge label={action.name} ready={action.status !== 'failed'} />
+                          <span className="min-w-0 flex-1 break-words text-muted-foreground">
+                            {action.status === 'failed'
+                              ? action.detail
+                              : action.status === 'already_available'
+                                ? 'Already available.'
+                                : 'Installed successfully.'}
+                          </span>
+                        </div>
+                      ))}
                     </div>
                   </div>
-                );
-              })}
+                )}
+              </div>
+            ) : null}
+          </SettingsCard>
+        </section>
+
+        <section className="space-y-4">
+          <SettingsCard
+            icon={<PlugZap className="h-4 w-4" />}
+            title="Agent Access"
+            description="Copy a ready-to-use MCP configuration for local coding agents and assistants."
+            badge={mcpSettings?.api_key_configured ? 'Bearer auth on' : 'Bearer auth off'}
+          >
+            {mcpLoading ? (
+              <LoadingText>Checking agent access...</LoadingText>
+            ) : mcpError ? (
+              <InlineError>{mcpError}</InlineError>
+            ) : mcpSettings ? (
+              <div className="space-y-3">
+                <div className="soft-border rounded-[8px] border bg-white/[0.03] p-3">
+                  <p className="text-xs font-semibold uppercase tracking-[0.14em] text-zinc-500">Endpoint</p>
+                  <p className="mt-1 break-all font-mono text-xs text-muted-foreground">{mcpSettings.endpoint}</p>
+                  <p className="mt-2 text-xs leading-5 text-muted-foreground">
+                    {mcpSettings.auth_required
+                      ? 'Clients must send the configured MCP API key as a bearer token.'
+                      : 'No bearer token is required. Enable MCP_API_KEY for exposed deployments.'}
+                  </p>
+                </div>
+                <Button type="button" variant="outline" size="sm" onClick={handleCopyMcpConfig}>
+                  <Copy className="h-3.5 w-3.5" />
+                  {mcpCopied ? 'Copied config' : 'Copy agent config'}
+                </Button>
+              </div>
+            ) : null}
+          </SettingsCard>
+
+          <SettingsCard
+            icon={<Share2 className="h-4 w-4" />}
+            title="Sharing"
+            description="Create scoped links for viewers or collaborators. Existing links remain listed below."
+          >
+            <div className="space-y-4">
+              <div className="grid gap-4">
+                <SegmentedControl
+                  label="Role"
+                  value={role}
+                  options={[
+                    { label: 'Viewer', value: 'viewer' },
+                    { label: 'Collaborator', value: 'collaborator' },
+                  ]}
+                  onChange={(value) => setRole(value as 'viewer' | 'collaborator')}
+                />
+                <SegmentedControl
+                  label="Expires"
+                  value={String(expiryDays)}
+                  options={[
+                    { label: '7 days', value: '7' },
+                    { label: '30 days', value: '30' },
+                    { label: 'Never', value: 'null' },
+                  ]}
+                  onChange={(value) => setExpiryDays(value === 'null' ? null : Number(value))}
+                />
+              </div>
+
+              <Button onClick={handleGenerate} disabled={generating} size="sm">
+                <KeyRound className="h-3.5 w-3.5" />
+                {generating ? 'Creating...' : 'Create invite link'}
+              </Button>
+
+              {error && <InlineError>{error}</InlineError>}
+
+              {generatedUrl && (
+                <div className="flex items-center gap-2">
+                  <input
+                    readOnly
+                    value={generatedUrl}
+                    aria-label="Generated invite link"
+                    className="soft-border h-8 min-w-0 flex-1 rounded-[5px] border bg-white/[0.05] px-3 font-mono text-xs text-muted-foreground focus:outline-none"
+                  />
+                  <Button onClick={handleCopy} variant="outline" size="sm">
+                    {copied ? 'Copied' : 'Copy'}
+                  </Button>
+                </div>
+              )}
+
+              <InviteList
+                loading={loading}
+                invites={invites}
+                isExpired={isExpired}
+                formatDate={formatDate}
+              />
             </div>
-          )}
-        </CardContent>
-      </Card>
+          </SettingsCard>
+        </section>
+      </div>
     </div>
   );
 }
 
+function SettingsCard({
+  icon,
+  title,
+  description,
+  badge,
+  action,
+  children,
+}: {
+  icon: ReactNode;
+  title: string;
+  description: string;
+  badge?: string;
+  action?: ReactNode;
+  children: ReactNode;
+}) {
+  return (
+    <Card>
+      <CardHeader className="p-5">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <CardTitle className="flex items-center gap-2 text-base">
+              <span className="text-primary">{icon}</span>
+              {title}
+            </CardTitle>
+            <p className="mt-1 max-w-xl text-xs leading-5 text-muted-foreground">{description}</p>
+          </div>
+          {action ?? (badge ? <Badge variant="secondary" className="shrink-0 text-xs">{badge}</Badge> : null)}
+        </div>
+      </CardHeader>
+      <CardContent className="p-5 pt-0">{children}</CardContent>
+    </Card>
+  );
+}
+
+function StatusPill({ label, ready }: { label: string; ready: boolean }) {
+  return (
+    <span className="soft-border inline-flex items-center gap-2 rounded-[5px] border bg-white/[0.04] px-3 py-1.5 text-xs text-muted-foreground">
+      {ready ? <ShieldCheck className="h-3.5 w-3.5 text-emerald-300" /> : <CircleDot />}
+      {label}
+    </span>
+  );
+}
+
+function CircleDot() {
+  return <span className="h-2 w-2 rounded-full bg-zinc-500" aria-hidden="true" />;
+}
+
+function LoadingText({ children }: { children: ReactNode }) {
+  return <p className="text-sm text-muted-foreground">{children}</p>;
+}
+
+function InlineError({ children }: { children: ReactNode }) {
+  return <p className="text-xs leading-5 text-destructive">{children}</p>;
+}
+
+function InlineSuccess({ children }: { children: ReactNode }) {
+  return <p className="text-xs leading-5 text-emerald-300">{children}</p>;
+}
+
 function DependencyBadge({ label, ready }: { label: string; ready: boolean }) {
   return (
-    <span className="soft-border inline-flex items-center gap-1 rounded-[5px] border px-2 py-1 text-xs text-text-secondary">
-      {ready ? <Check className="h-3 w-3 text-green-500" /> : <X className="h-3 w-3 text-destructive" />}
+    <span className="soft-border inline-flex items-center gap-1 rounded-[5px] border bg-white/[0.03] px-2 py-1 text-xs text-muted-foreground">
+      {ready ? <Check className="h-3 w-3 text-emerald-300" /> : <X className="h-3 w-3 text-destructive" />}
       {label}
     </span>
   );
@@ -461,17 +652,20 @@ function ProviderField({
 }) {
   return (
     <label className="space-y-1">
-      <span className="text-xs font-medium text-text-secondary">{label}</span>
+      <span className="text-xs font-medium text-muted-foreground">{label}</span>
       <select
         value={value}
         onChange={(event) => onChange(event.target.value)}
-        className="soft-border h-9 w-full rounded-[5px] border bg-white/[0.05] px-3 text-sm text-text-primary focus:outline-none focus:ring-2 focus:ring-ring"
+        className="soft-border h-9 w-full rounded-[5px] border bg-white/[0.05] px-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
       >
-        <option value="anthropic">Anthropic</option>
+        <option value="anthropic">Anthropic API</option>
         <option value="openrouter">OpenRouter</option>
         <option value="openai_compat">OpenAI-compatible</option>
-        <option value="ollama">Ollama</option>
+        <option value="ollama">Ollama / local</option>
+        {label === 'Answers' && <option value="codex_cli">Codex CLI on server</option>}
+        {label === 'Answers' && <option value="claude_cli">Claude Code on server</option>}
       </select>
+      <p className="text-xs leading-5 text-muted-foreground">{PROVIDER_HELP[value] ?? 'Use the configured provider for this stage.'}</p>
     </label>
   );
 }
@@ -482,16 +676,18 @@ function TextField({
   onChange,
   type = 'text',
   placeholder,
+  help,
 }: {
   label: string;
   value: string;
   onChange: (value: string) => void;
   type?: string;
   placeholder?: string;
+  help?: string;
 }) {
   return (
     <label className="space-y-1">
-      <span className="text-xs font-medium text-text-secondary">{label}</span>
+      <span className="text-xs font-medium text-muted-foreground">{label}</span>
       <Input
         value={value}
         type={type}
@@ -499,33 +695,84 @@ function TextField({
         onChange={(event) => onChange(event.target.value)}
         className="h-9 text-sm"
       />
+      {help && <p className="text-xs leading-5 text-muted-foreground">{help}</p>}
     </label>
   );
 }
 
-function CommandRow({
+function SegmentedControl({
   label,
   value,
-  copied,
-  onCopy,
+  options,
+  onChange,
 }: {
   label: string;
   value: string;
-  copied: boolean;
-  onCopy: () => void;
+  options: { label: string; value: string }[];
+  onChange: (value: string) => void;
 }) {
   return (
-    <div className="flex items-center gap-2">
-      <div className="min-w-0 flex-1">
-        <p className="text-xs font-medium text-text-secondary">{label}</p>
-        <code className="soft-border mt-1 block truncate rounded-[5px] border bg-white/[0.05] px-2 py-1.5 text-xs text-text-secondary">
-          {value}
-        </code>
+    <div className="space-y-1">
+      <p className="text-xs font-medium text-muted-foreground">{label}</p>
+      <div className="section-tabs">
+        {options.map((option) => (
+          <button
+            key={option.value}
+            type="button"
+            onClick={() => onChange(option.value)}
+            className={['section-tab', value === option.value ? 'section-tab-active' : ''].join(' ')}
+          >
+            {option.label}
+          </button>
+        ))}
       </div>
-      <Button onClick={onCopy} variant="outline" size="sm">
-        <Copy className="h-3.5 w-3.5" />
-        {copied ? 'Copied' : 'Copy'}
-      </Button>
+    </div>
+  );
+}
+
+function InviteList({
+  loading,
+  invites,
+  isExpired,
+  formatDate,
+}: {
+  loading: boolean;
+  invites: InviteToken[];
+  isExpired: (iso: string | null) => boolean;
+  formatDate: (iso: string | null) => string;
+}) {
+  if (loading) return <LoadingText>Loading invite links...</LoadingText>;
+  if (invites.length === 0) {
+    return <p className="text-sm text-muted-foreground">No invite links yet.</p>;
+  }
+  return (
+    <div className="space-y-2">
+      {invites.map((invite) => {
+        const expired = isExpired(invite.expires_at);
+        return (
+          <div
+            key={invite.id}
+            className="subtle-divider flex items-center justify-between gap-3 border-b py-2 last:border-0"
+          >
+            <code className="truncate font-mono text-xs text-muted-foreground">
+              {invite.token.slice(0, 16)}...
+            </code>
+            <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
+              <Badge variant="outline" className="text-xs">{invite.role}</Badge>
+              {invite.used ? (
+                <Badge variant="secondary" className="text-xs">Used</Badge>
+              ) : expired ? (
+                <Badge variant="destructive" className="text-xs">Expired</Badge>
+              ) : (
+                <Badge variant="success" className="text-xs">Active</Badge>
+              )}
+              <span className="whitespace-nowrap text-xs text-muted-foreground">
+                Expires {formatDate(invite.expires_at)}
+              </span>
+            </div>
+          </div>
+        );
+      })}
     </div>
   );
 }

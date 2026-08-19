@@ -7,7 +7,9 @@ export default function ActivityPage() {
         <h1 className="text-xl font-semibold text-white">Activity</h1>
       </div>
       {activity.length === 0 && (
-        <div className="text-center py-12 text-text-secondary text-sm">No activity recorded.</div>
+        <div className="text-center py-12 text-muted-foreground text-sm">
+          No activity yet. Import a source, edit a note, or approve memory to start the timeline.
+        </div>
       )}
     </div>
   );

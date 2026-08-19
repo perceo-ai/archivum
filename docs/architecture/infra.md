@@ -63,13 +63,7 @@ Default embeddings use local fastembed with `BAAI/bge-small-en-v1.5`.
 
 ## Optional Heavy Capabilities
 
-The published backend and MCP images omit Whisper, Torch, and ffmpeg. Text, document, web, office, data, code, subtitle, and email parsing are included. Image parsing requires Anthropic vision. Audio/video transcription requires:
-
-```bash
-cd apps/backend
-uv sync --extra audio
-# Install ffmpeg with your OS package manager for video files.
-```
+The published backend and MCP images omit Whisper, Torch, and ffmpeg. Text, document, web, office, data, code, subtitle, and email parsing are included. Image parsing requires Anthropic vision. Audio/video transcription can be installed from Settings with the Audio Transcription install action. Installs made inside a running Docker container are temporary; use a derived audio-enabled image for durable deployments.
 
 ## Development
 

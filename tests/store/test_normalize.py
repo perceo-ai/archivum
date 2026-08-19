@@ -43,3 +43,22 @@ async def test_normalize_url_is_html():
     ):
         result = await normalize("https://example.com")
     assert result.mime == "text/html"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("doc_type", "expected_mime"),
+    [
+        ("rtf", "application/rtf"),
+        ("xml", "application/xml"),
+        ("archive", "application/zip"),
+    ],
+)
+async def test_normalize_maps_expanded_ingest_types(doc_type, expected_mime):
+    parsed = ParsedDoc(text="expanded ingest", metadata={"type": doc_type}, source="x")
+    with patch(
+        "archivum.store.normalize.parse_source",
+        new=AsyncMock(return_value=parsed),
+    ):
+        result = await normalize("file:///x")
+    assert result.mime == expected_mime

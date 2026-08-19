@@ -39,6 +39,40 @@ function encodeSlugPath(slug: string): string {
     .join('/');
 }
 
+function extractErrorMessage(body: unknown): string | null {
+  if (typeof body === 'string') return body.trim() || null;
+  if (!body || typeof body !== 'object') return null;
+
+  const detail = (body as { detail?: unknown }).detail;
+  if (typeof detail === 'string') return detail;
+  if (detail && typeof detail === 'object') {
+    const nested = detail as { detail?: unknown; message?: unknown; code?: unknown };
+    if (typeof nested.detail === 'string') return nested.detail;
+    if (typeof nested.message === 'string') return nested.message;
+    if (typeof nested.code === 'string') return nested.code.replace(/_/g, ' ');
+  }
+
+  const message = (body as { message?: unknown; error?: unknown }).message
+    ?? (body as { error?: unknown }).error;
+  if (typeof message === 'string') return message;
+  return null;
+}
+
+async function responseErrorMessage(res: Response): Promise<string> {
+  const fallback = res.statusText || `HTTP ${res.status}`;
+  const contentType = res.headers.get('content-type') ?? '';
+  try {
+    if (contentType.includes('application/json')) {
+      const json = await res.json();
+      return extractErrorMessage(json) ?? fallback;
+    }
+    const text = await res.text();
+    return extractErrorMessage(text) ?? fallback;
+  } catch {
+    return fallback;
+  }
+}
+
 async function apiFetch(path: string, init?: RequestInit): Promise<Response> {
   const method = (init?.method ?? 'GET').toUpperCase();
   const res = await fetch(`${BASE}${path}`, {
@@ -55,8 +89,7 @@ async function apiFetch(path: string, init?: RequestInit): Promise<Response> {
     },
   });
   if (!res.ok) {
-    const text = await res.text().catch(() => res.statusText);
-    throw new Error(text || `HTTP ${res.status}`);
+    throw new Error(await responseErrorMessage(res));
   }
   return res;
 }
@@ -989,8 +1022,7 @@ export async function ingestFile(
   });
 
   if (!response.ok) {
-    const text = await response.text().catch(() => response.statusText);
-    throw new Error(text || `HTTP ${response.status}`);
+    throw new Error(await responseErrorMessage(response));
   }
 
   return response.json();
@@ -1011,8 +1043,7 @@ export async function ingestUrl(
   });
 
   if (!response.ok) {
-    const text = await response.text().catch(() => response.statusText);
-    throw new Error(text || `HTTP ${response.status}`);
+    throw new Error(await responseErrorMessage(response));
   }
 
   return response.json();
@@ -1063,17 +1094,40 @@ export type LintIssue = {
 
 export type AudioSupportStatus = {
   available: boolean;
+  audio_available?: boolean;
+  video_available?: boolean;
   dependencies: {
     openai_whisper: boolean;
     ffmpeg: boolean;
   };
   missing: string[];
-  commands: {
-    local: string;
-    ffmpeg: string;
-    docker: string;
-  };
   notes: string[];
+};
+
+export type AudioInstallAction = {
+  name: string;
+  status: 'installed' | 'already_available' | 'failed';
+  detail: string;
+};
+
+export type AudioSupportInstallResult = {
+  ok: boolean;
+  actions: AudioInstallAction[];
+  status: AudioSupportStatus;
+};
+
+export type McpSettings = {
+  endpoint: string;
+  auth_required: boolean;
+  api_key_configured: boolean;
+  client_config: {
+    mcpServers: {
+      archivum: {
+        url: string;
+        headers?: Record<string, string>;
+      };
+    };
+  };
 };
 
 export async function createInvite(
@@ -1097,6 +1151,18 @@ export async function getAudioSupport(): Promise<AudioSupportStatus> {
   return res.json();
 }
 
+export async function installAudioSupport(): Promise<AudioSupportInstallResult> {
+  const res = await apiFetch('/api/audio-support/install', {
+    method: 'POST',
+  });
+  return res.json();
+}
+
+export async function getMcpSettings(): Promise<McpSettings> {
+  const res = await apiFetch('/api/settings/mcp');
+  return res.json();
+}
+
 export type LlmSettings = {
   llm_extraction_provider: string;
   llm_synthesis_provider: string;
@@ -1105,6 +1171,25 @@ export type LlmSettings = {
   ollama_base_url: string;
   ollama_api_key_configured: boolean;
   ollama_api_key_masked: string;
+  cli_providers?: Record<string, {
+    available: boolean;
+    command: string;
+    label: string;
+  }>;
+};
+
+export type CodexAuthStatus = {
+  available: boolean;
+  authenticated: boolean;
+  detail: string;
+};
+
+export type CodexDeviceLogin = {
+  started: boolean;
+  provider: string;
+  url: string;
+  code: string;
+  detail: string;
 };
 
 export type UpdateLlmSettingsInput = {
@@ -1118,6 +1203,18 @@ export type UpdateLlmSettingsInput = {
 
 export async function getLlmSettings(): Promise<LlmSettings> {
   const res = await apiFetch('/api/settings/llm');
+  return res.json();
+}
+
+export async function getCodexAuthStatus(): Promise<CodexAuthStatus> {
+  const res = await apiFetch('/api/settings/cli-auth/codex');
+  return res.json();
+}
+
+export async function startCodexDeviceLogin(): Promise<CodexDeviceLogin> {
+  const res = await apiFetch('/api/settings/cli-auth/codex/start', {
+    method: 'POST',
+  });
   return res.json();
 }
 

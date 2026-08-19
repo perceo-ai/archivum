@@ -4,6 +4,8 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 WORKDIR /app
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
+    nodejs \
+    npm \
     libgomp1 \
     libpango-1.0-0 \
     libpangocairo-1.0-0 \
@@ -12,6 +14,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 RUN pip install --no-cache-dir uv
+RUN npm install -g @openai/codex @anthropic-ai/claude-code \
+    && npm cache clean --force
 
 COPY pyproject.toml uv.lock .
 RUN uv sync --no-dev --frozen --no-cache
@@ -22,8 +26,8 @@ COPY archivum/ archivum/
 RUN useradd -m -u 10001 app
 
 # Create required data directories
-RUN mkdir -p /data/wiki /data/raw /data/kuzu \
-  && chown -R app:app /data
+RUN mkdir -p /data/wiki /data/raw /data/kuzu /home/app/.codex /home/app/.claude \
+  && chown -R app:app /data /home/app/.codex /home/app/.claude
 
 USER app
 

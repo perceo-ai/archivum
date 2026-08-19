@@ -46,7 +46,7 @@ function ProtectedRoutes() {
   if (!pagesLoaded && !isAuthenticated) {
     return (
       <div className="flex items-center justify-center h-full">
-        <div className="text-text-secondary text-sm">Loading...</div>
+        <div className="text-sm text-muted-foreground">Opening your vault...</div>
       </div>
     );
   }

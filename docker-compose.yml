@@ -23,6 +23,7 @@ services:
       - RAW_DIR=/data/raw
       - DB_PATH=/data/archivum.db
       - KUZU_PATH=/data/kuzu
+      - MCP_API_KEY=${MCP_API_KEY:-}
       - EMBED_PROVIDER=${EMBED_PROVIDER:-local}
       - EMBED_MODEL=${EMBED_MODEL:-BAAI/bge-small-en-v1.5}
       - EMBED_DIM=${EMBED_DIM:-0}
@@ -38,11 +39,14 @@ services:
       - OPENAI_COMPAT_BASE_URL=${OPENAI_COMPAT_BASE_URL:-}
       - OPENAI_COMPAT_API_KEY=${OPENAI_COMPAT_API_KEY:-}
       - OPENAI_COMPAT_AZURE_API_VERSION=${OPENAI_COMPAT_AZURE_API_VERSION:-2024-02-15-preview}
+      - MCP_PUBLIC_URL=${MCP_PUBLIC_URL:-}
     volumes:
       - wiki_data:/data/wiki
       - raw_data:/data/raw
       - db_data:/data
       - kuzu_data:/data/kuzu
+      - codex_home:/home/app/.codex
+      - claude_home:/home/app/.claude
     networks:
       - archivum-net
     depends_on:
@@ -168,6 +172,8 @@ volumes:
   ollama_data:
   caddy_data:
   caddy_config:
+  codex_home:
+  claude_home:
 
 networks:
   archivum-net:

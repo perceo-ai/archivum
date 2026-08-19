@@ -30,25 +30,26 @@ Backend parser support:
 
 | Category | Formats |
 |---|---|
-| Text | `.md`, `.txt`, `.rst`, `.text` |
+| Text | `.md`, `.txt`, `.rst`, `.text`, `.log`, `.rtf`, `.xml`, `.rss`, `.atom` |
 | Documents | `.pdf`, `.html`, `.htm`, `.epub` |
 | Office | `.docx`, `.pptx`, `.xlsx`, `.xls` |
 | Data | `.csv`, `.json`, `.jsonl` |
-| Code/config | `.py`, `.js`, `.ts`, `.go`, `.rs`, `.sh`, `.bash`, `.zsh`, `.rb`, `.java`, `.c`, `.cpp`, `.h`, `.hpp`, `.kt`, `.swift`, `.php`, `.sql`, `.yaml`, `.yml`, `.toml`, `.ini`, `.cfg` |
+| Archives | `.zip` archives containing any supported file type |
+| Code/config | `.py`, `.js`, `.ts`, `.jsx`, `.tsx`, `.go`, `.rs`, `.sh`, `.bash`, `.zsh`, `.rb`, `.java`, `.c`, `.cpp`, `.h`, `.hpp`, `.kt`, `.swift`, `.php`, `.sql`, `.yaml`, `.yml`, `.toml`, `.ini`, `.cfg`, `.jsonc`, `.css`, `.scss`, `.sass`, `.less`, `.mjs`, `.cjs`, `.vue`, `.svelte`, `.mdx` |
 | Subtitles | `.srt`, `.vtt` |
 | Email | `.eml`, `.mbox` |
 | Images | `.png`, `.jpg`, `.jpeg`, `.webp`, `.gif` |
-| Audio | `.mp3`, `.m4a`, `.wav`, `.ogg`, `.flac` |
-| Video | `.mp4`, `.mov`, `.avi`, `.mkv`, `.webm` |
-| URLs | HTML, JSON, plain text, markdown, and text fallback |
+| Audio | `.mp3`, `.m4a`, `.wav`, `.ogg`, `.flac`, `.aac`, `.aiff`, `.opus`, `.wma` |
+| Video | `.mp4`, `.mov`, `.avi`, `.mkv`, `.webm`, `.m4v`, `.mpg`, `.mpeg`, `.3gp` |
+| URLs | HTML, JSON, plain text, markdown, supported downloadable documents, and text fallback |
 
-The frontend file picker currently advertises a smaller subset. Backend support is broader than the UI hint.
+ZIP ingest parses supported members into one normalized document and reports unsupported members in the extracted text/metadata. Downloadable document URLs are saved temporarily and routed through the same file parser as uploads, so PDF/EPUB/Office/ZIP/RTF/XML links preserve parser-specific output instead of falling back to opaque response text.
 
 ## Optional Media Dependencies
 
 - Image parsing uses Anthropic vision and requires `ANTHROPIC_API_KEY`.
-- Audio parsing requires the `audio` optional dependency.
-- Video parsing requires the `audio` optional dependency and system `ffmpeg`.
+- Audio parsing requires the `audio` optional dependency and emits timestamped transcript segments when Whisper returns segment metadata.
+- Video parsing requires the `audio` optional dependency and system `ffmpeg`; missing or failed ffmpeg extraction is reported as an unsupported media parse instead of a generic ingest crash.
 - Published Docker images omit Whisper, Torch, and ffmpeg.
 
 ## Graph Edges

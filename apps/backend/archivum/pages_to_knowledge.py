@@ -8,7 +8,7 @@ from archivum.ingest.agent import slugify
 from archivum.knowledge.models import Citation, KnowledgeObject, KnowledgeRelationship
 from archivum.knowledge.personal_root import SELF_ID, ensure_personal_root, link_to_self
 from archivum.knowledge.repository import KnowledgeRepository
-from archivum.linting import WIKILINK_RE
+from archivum.linting import WIKILINK_RE, normalize_wikilink_target
 
 
 _PROJECT_FRONTMATTER_RE = re.compile(
@@ -66,7 +66,7 @@ async def sync_page_to_knowledge(
     )
 
     for target in sorted({target.strip() for target in WIKILINK_RE.findall(markdown) if target.strip()}):
-        target_slug = slugify(target)
+        target_slug = normalize_wikilink_target(target)
         if not target_slug or target_slug == slug:
             continue
         target_id = _page_id(wiki_id, target_slug)

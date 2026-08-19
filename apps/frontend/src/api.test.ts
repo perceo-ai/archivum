@@ -21,6 +21,9 @@ import {
   listLifeProjects,
   createLifeTask,
   getLlmSettings,
+  getAudioSupport,
+  getMcpSettings,
+  installAudioSupport,
   updateLlmSettings,
   listSuggestions,
   listPageSuggestions,
@@ -277,6 +280,71 @@ describe('llm settings api', () => {
       ollama_base_url: 'https://ollama.example.com/v1',
       ollama_api_key: 'secret',
     });
+  });
+});
+
+describe('audio support api', () => {
+  it('fetches current audio support status', async () => {
+    const status = {
+      available: false,
+      dependencies: { openai_whisper: false, ffmpeg: true },
+      missing: ['openai-whisper'],
+      notes: [],
+    };
+    fetchMock.mockResolvedValueOnce(apiJsonResponse(status));
+
+    await expect(getAudioSupport()).resolves.toEqual(status);
+    expect(fetchMock).toHaveBeenCalledWith('/api/audio-support', expect.objectContaining({
+      credentials: 'include',
+    }));
+  });
+
+  it('installs audio support with CSRF protection', async () => {
+    vi.stubGlobal('document', { cookie: 'csrf_token=audio-csrf' });
+    const result = {
+      ok: true,
+      actions: [{ name: 'openai-whisper', status: 'installed', detail: 'Installed' }],
+      status: {
+        available: true,
+        audio_available: true,
+        video_available: true,
+        dependencies: { openai_whisper: true, ffmpeg: true },
+        missing: [],
+        notes: [],
+      },
+    };
+    fetchMock.mockResolvedValueOnce(apiJsonResponse(result));
+
+    await expect(installAudioSupport()).resolves.toEqual(result);
+    expect(fetchMock).toHaveBeenCalledWith('/api/audio-support/install', expect.objectContaining({
+      method: 'POST',
+      credentials: 'include',
+      headers: expect.objectContaining({ 'X-CSRF-Token': 'audio-csrf' }),
+    }));
+  });
+});
+
+describe('MCP settings api', () => {
+  it('fetches MCP client settings', async () => {
+    const settings = {
+      endpoint: 'http://localhost:8001/sse',
+      auth_required: true,
+      api_key_configured: true,
+      client_config: {
+        mcpServers: {
+          archivum: {
+            url: 'http://localhost:8001/sse',
+            headers: { Authorization: 'Bearer <MCP_API_KEY>' },
+          },
+        },
+      },
+    };
+    fetchMock.mockResolvedValueOnce(apiJsonResponse(settings));
+
+    await expect(getMcpSettings()).resolves.toEqual(settings);
+    expect(fetchMock).toHaveBeenCalledWith('/api/settings/mcp', expect.objectContaining({
+      credentials: 'include',
+    }));
   });
 });
 
@@ -770,6 +838,15 @@ describe('apiFetch error handling', () => {
 
   it('throws with HTTP status when body is empty', async () => {
     fetchMock.mockResolvedValueOnce(new Response('', { status: 500, statusText: 'Internal Server Error' }));
-    await expect(getPage('oops')).rejects.toThrow('HTTP 500');
+    await expect(getPage('oops')).rejects.toThrow('Internal Server Error');
+  });
+
+  it('throws readable nested JSON errors', async () => {
+    fetchMock.mockResolvedValueOnce(new Response(
+      JSON.stringify({ detail: { detail: 'ANTHROPIC_API_KEY not configured', code: 'missing_api_key' } }),
+      { status: 400, headers: { 'Content-Type': 'application/json' } },
+    ));
+
+    await expect(getPage('oops')).rejects.toThrow('ANTHROPIC_API_KEY not configured');
   });
 });

@@ -180,6 +180,42 @@ class BacklinkIndexingTests(unittest.IsolatedAsyncioTestCase):
 
         add_reference.assert_awaited_once_with("source-page", "target-page", "default")
 
+    async def test_sync_page_graph_preserves_folder_wikilink_targets(self):
+        target = {
+            "id": 4,
+            "slug": "smoke/target-page",
+            "title": "Target Page",
+            "content": "",
+            "tags": [],
+            "created_at": "2026-01-01T00:00:00",
+            "updated_at": "2026-01-01T00:00:00",
+            "authored_by": "owner",
+        }
+
+        async def get_page(slug: str, wiki_id: str):
+            if slug == "smoke/target-page" and wiki_id == "default":
+                return target
+            return None
+
+        with (
+            patch("archivum.api.pages.graph.upsert_page", new=AsyncMock()),
+            patch("archivum.api.pages.graph.clear_references_from_page", new=AsyncMock()),
+            patch("archivum.api.pages.graph.add_reference", new=AsyncMock()) as add_reference,
+            patch("archivum.api.pages.sqlite.get_page", new=AsyncMock(side_effect=get_page)),
+        ):
+            await pages._sync_page_graph(
+                "smoke/source-page",
+                "Source Page",
+                "See [[smoke/Target Page|Target]].",
+                "default",
+            )
+
+        add_reference.assert_awaited_once_with(
+            "smoke/source-page",
+            "smoke/target-page",
+            "default",
+        )
+
     async def test_sync_page_graph_clears_stale_outgoing_references_before_reindexing(self):
         target = {
             "id": 4,

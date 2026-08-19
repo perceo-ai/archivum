@@ -84,6 +84,24 @@ class TestExportEndpoint(unittest.TestCase):
         self.assertEqual(response.headers["content-type"], "application/pdf")
         self.assertEqual(response.content, mock_pdf)
 
+    def test_export_pdf_reports_unavailable_when_native_libraries_are_missing(self):
+        """WeasyPrint can import but still fail when Pango/GObject libraries are absent."""
+        fake_page = self._fake_page()
+
+        mock_html_cls = MagicMock(side_effect=OSError("cannot load library 'libgobject-2.0-0'"))
+        import sys
+        mock_weasyprint_module = MagicMock()
+        mock_weasyprint_module.HTML = mock_html_cls
+
+        with (
+            patch("archivum.api.export.sqlite.get_page", new=AsyncMock(return_value=fake_page)),
+            patch.dict(sys.modules, {"weasyprint": mock_weasyprint_module}),
+        ):
+            response = self.client.get("/api/export?slug=my-page&format=pdf")
+
+        self.assertEqual(response.status_code, 501)
+        self.assertEqual(response.json()["detail"]["code"], "pdf_unavailable")
+
     def test_export_returns_404_when_page_missing(self):
         """GET /api/export returns 404 when the slug does not exist."""
         with patch("archivum.api.export.sqlite.get_page", new=AsyncMock(return_value=None)):

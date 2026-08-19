@@ -16,6 +16,7 @@ from archivum.ingest.events import publish
 from archivum.knowledge.models import Citation, KnowledgeObject, KnowledgeRelationship
 from archivum.knowledge.personal_root import SELF_ID, ensure_personal_root, link_to_self
 from archivum.knowledge.repository import KnowledgeRepository
+from archivum.linting import normalize_wikilink_target
 from archivum.observability import new_trace_id, set_trace_id, span
 from archivum.pages_to_knowledge import sync_page_to_knowledge
 
@@ -295,7 +296,7 @@ async def ingest(
                 final_slug = slug_map.get(page.slug, page.slug)
                 wikilinks = _extract_wikilinks(page.content)
                 for link_target in wikilinks:
-                    target_slug = slugify(link_target)
+                    target_slug = normalize_wikilink_target(link_target)
                     target_page = await sqlite.get_page(target_slug, wiki_id)
                     if target_page:
                         await graph.add_reference(final_slug, target_slug, wiki_id)

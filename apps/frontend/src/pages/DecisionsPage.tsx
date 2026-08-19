@@ -7,7 +7,9 @@ export default function DecisionsPage() {
         <h1 className="text-xl font-semibold text-white">Decisions</h1>
       </div>
       {decisions.length === 0 && (
-        <div className="text-center py-12 text-text-secondary text-sm">No decisions recorded.</div>
+        <div className="text-center py-12 text-muted-foreground text-sm">
+          No decisions yet. Capture a decision note when you want the tradeoff and context preserved.
+        </div>
       )}
     </div>
   );

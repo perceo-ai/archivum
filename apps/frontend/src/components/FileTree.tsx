@@ -304,6 +304,7 @@ export default function FileTree() {
           placeholder="Filter vault..."
           value={filter}
           onChange={(e) => setFilter(e.target.value)}
+          aria-label="Filter vault"
           className="h-10 text-sm"
         />
       </div>
@@ -311,8 +312,8 @@ export default function FileTree() {
       <ScrollArea className="flex-1 py-1">
         <div className="pb-2" onDragOver={(e) => e.preventDefault()} onDrop={(e) => dropIntoFolder('', e)}>
           {isEmpty && (
-            <div className="px-3 py-4 text-center text-muted-foreground text-xs">
-              {filter ? 'No matches' : 'No pages or folders yet'}
+            <div className="px-3 py-4 text-center text-muted-foreground text-xs leading-5">
+              {filter ? 'No matches' : 'No pages yet. Use Import files or the new-page button to start.'}
             </div>
           )}
           <TreeFolder
@@ -523,7 +524,7 @@ function TreeFolder({
           <Button
             variant="ghost"
             size="icon"
-            className="h-7 w-7 opacity-0 group-hover:opacity-100"
+            className="h-7 w-7 opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
             aria-label="Folder actions"
             onClick={(e) => {
               e.preventDefault();
