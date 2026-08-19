@@ -102,7 +102,7 @@ MCP tools exposed to agents: `ingest_source`, `search_wiki`, `list_pages`, `get_
 ## How it works
 
 1. **Editable markdown is the source of truth.** Markdown pages live in the `wiki_data` volume; original uploads land in `raw_data`. Canonical knowledge rows preserve page-authored content and its provenance, while indexes are derived and rebuildable.
-2. **Ingest normalizes sources.** File paths and URLs are parsed into wiki pages with source metadata, then chunked and indexed. Supported inputs include markdown, PDF, HTML, EPUB, DOCX/PPTX/XLSX, CSV/JSON, source code, EML/MBOX, and subtitles.
+2. **Ingest normalizes sources.** File paths and URLs are parsed into wiki pages with source metadata, then chunked and indexed. Supported inputs include markdown, PDF, HTML, EPUB, DOCX/PPTX/XLSX, CSV/JSON, ZIP archives, source code, RTF/XML, EML/MBOX, subtitles, images, and optional audio/video transcripts.
 3. **Canonical knowledge powers the vault.** Canonical knowledge rows preserve the owner profile, page-authored content, projects, thoughts, extracted entities, relationships, citations, confidence, and extraction method. Qdrant (`qdrant_data`), Kuzu (`kuzu_data`), FTS, and code lexical indexes are rebuildable projections.
 4. **Search and Q&A run over your content.** Retrieval defaults to `person:self` when the caller does not provide another seed, returns cited context and ranked excerpts, and `query` synthesizes an answer with citations back to the source pages.
 5. **Caddy fronts the app.** It terminates TLS and routes the browser UI, REST API, and MCP endpoint. Set `ARCHIVUM_HOST` and point DNS at the host for automatic HTTPS.
@@ -133,7 +133,7 @@ This command upserts those page records and reference edges. It does not remove 
 - 🚧 Wikilinks and backlinks — CodeMirror extension and backlinks API/UI exist; browser smoke pending
 - 🚧 Graph exploration — Kuzu graph API and frontend view exist; browser smoke pending
 - 🚧 Sharing, public wiki, and HTML/PDF export — code exists (`/share/{token}`, `/public`, `/api/export`); manual release smoke pending
-- 🚧 Local media transcription (Whisper/ffmpeg) — supported via `uv sync --extra audio`, omitted from published images to keep installs small
+- 🚧 Local media transcription (Whisper/ffmpeg) — installable from Settings, emits timestamped audio/video transcript text when dependencies are installed, and is omitted from published images to keep installs small
 - 🚧 Life OS workflows (daily notes, projects, tasks) — MCP tools and routes exist; early surface, not the main positioning
 
 ## Operations

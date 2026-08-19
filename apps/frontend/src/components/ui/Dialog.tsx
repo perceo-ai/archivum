@@ -24,7 +24,7 @@ export function Dialog({
         <DialogPrimitive.Overlay className="fixed inset-0 z-50 bg-black/60" />
         <DialogPrimitive.Content
           className={cn(
-            'fixed left-[50%] top-[50%] z-50 w-full max-w-lg translate-x-[-50%] translate-y-[-50%]',
+            'fixed left-[50%] top-[50%] z-50 max-h-[calc(100vh-2rem)] w-[calc(100vw-2rem)] max-w-lg translate-x-[-50%] translate-y-[-50%] overflow-y-auto',
             'rounded-lg border bg-background p-0 shadow-lg outline-none',
           )}
         >
@@ -60,4 +60,3 @@ export function Dialog({
     </DialogPrimitive.Root>
   );
 }
-

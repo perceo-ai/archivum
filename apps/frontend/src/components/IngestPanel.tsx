@@ -7,6 +7,13 @@ import { Button } from './ui/Button';
 import { Card } from './ui/Card';
 import { Input } from './ui/Input';
 import { cn } from '../lib/cn';
+import {
+  ACCEPTED_INGEST_TYPES,
+  INGEST_FORMAT_EXAMPLES,
+  INGEST_FORMAT_SUMMARY,
+} from './ingestFormats';
+
+const ACCEPTED_INGEST_TYPE_SET = new Set(ACCEPTED_INGEST_TYPES);
 
 interface FileStatus {
   ingestId?: number;
@@ -17,7 +24,24 @@ interface FileStatus {
   fromHistory?: boolean;
 }
 
-const ACCEPTED_TYPES = ['.md', '.txt', '.pdf', '.html', '.docx'];
+function fileExtension(name: string): string {
+  const lastDot = name.lastIndexOf('.');
+  return lastDot >= 0 ? name.slice(lastDot).toLowerCase() : '';
+}
+
+function isAcceptedFile(file: File): boolean {
+  return ACCEPTED_INGEST_TYPE_SET.has(fileExtension(file.name));
+}
+
+function readableIngestError(message: string): string {
+  if (message.toLowerCase().includes('audio/video transcription is not enabled')) {
+    return 'Audio and video transcription is not enabled yet. Open Tools > Settings, then run Install / Enable under Audio Transcription.';
+  }
+  if (message.toLowerCase().includes('video transcription needs ffmpeg')) {
+    return 'Video transcription needs ffmpeg. Open Tools > Settings, then run Install / Enable under Audio Transcription.';
+  }
+  return message;
+}
 
 export default function IngestPanel() {
   const dispatch = useAppDispatch();
@@ -151,28 +175,40 @@ export default function IngestPanel() {
 
   const processFiles = useCallback(
     async (files: File[]) => {
+      const accepted = files.filter(isAcceptedFile);
+      const rejected = files.filter((file) => !isAcceptedFile(file));
       setProcessing(true);
 
       // Initialize statuses
       setFileStatuses((prev) => [
         ...prev,
-        ...files.map((f) => ({
+        ...accepted.map((f) => ({
           name: f.name,
           events: [{ type: 'start' as const, file: f.name, message: 'Uploading' }],
           done: false,
           error: null,
         })),
+        ...rejected.map((f) => ({
+          name: f.name,
+          events: [{
+            type: 'error' as const,
+            file: f.name,
+            message: `Archivum cannot parse ${fileExtension(f.name) || 'this'} files yet. Supported: ${INGEST_FORMAT_SUMMARY.toLowerCase()}.`,
+          }],
+          done: true,
+          error: `Unsupported file type: ${fileExtension(f.name) || 'unknown'}`,
+        })),
       ]);
 
       await Promise.allSettled(
-        files.map(async (file) => {
+        accepted.map(async (file) => {
           try {
             await ingestFile(file);
           } catch (err) {
             updateFileStatus(file.name, {
               type: 'error',
               file: file.name,
-              message: (err as Error).message,
+              message: readableIngestError((err as Error).message),
             });
           }
         }),
@@ -209,10 +245,21 @@ export default function IngestPanel() {
     } catch (err) {
       updateFileStatus(name, {
         type: 'error',
-        message: (err as Error).message,
+        message: readableIngestError((err as Error).message),
       });
     } finally {
       setProcessing(false);
+    }
+  }
+
+  function openFilePicker() {
+    fileInputRef.current?.click();
+  }
+
+  function onDropZoneKeyDown(e: React.KeyboardEvent) {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      openFilePicker();
     }
   }
 
@@ -261,12 +308,16 @@ export default function IngestPanel() {
 
         {/* Drop zone */}
         <Card
+          role="button"
+          tabIndex={0}
+          aria-label={`Import files. Supported formats: ${INGEST_FORMAT_SUMMARY}. Examples: ${INGEST_FORMAT_EXAMPLES}.`}
           onDragOver={onDragOver}
           onDragLeave={onDragLeave}
           onDrop={onDrop}
-          onClick={() => fileInputRef.current?.click()}
+          onClick={openFilePicker}
+          onKeyDown={onDropZoneKeyDown}
           className={cn(
-            'relative min-h-[220px] cursor-pointer border-2 border-dashed p-10 text-center transition-colors',
+            'relative min-h-[220px] cursor-pointer border-2 border-dashed p-10 text-center transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
             dragOver ? 'border-primary/60 bg-primary/10' : 'soft-border',
           )}
         >
@@ -276,14 +327,18 @@ export default function IngestPanel() {
           </p>
           <p className="text-muted-foreground text-xs mt-1">or click to browse</p>
           <p className="text-muted-foreground text-xs mt-3">
-            Accepted: {ACCEPTED_TYPES.join(', ')}
+            {INGEST_FORMAT_SUMMARY}
+          </p>
+          <p className="text-muted-foreground text-xs mt-1">
+            Examples: {INGEST_FORMAT_EXAMPLES}
           </p>
           <input
             ref={fileInputRef}
             type="file"
             multiple
-            accept={ACCEPTED_TYPES.join(',')}
+            accept={ACCEPTED_INGEST_TYPES.join(',')}
             className="hidden"
+            aria-label="Choose files to import"
             onChange={(e) => e.target.files && processFiles(Array.from(e.target.files))}
           />
         </Card>
@@ -299,6 +354,7 @@ export default function IngestPanel() {
               value={urlInput}
               onChange={(e) => setUrlInput(e.target.value)}
               placeholder="https://example.com/article"
+              aria-label="URL to import"
             />
             <Button
               type="submit"
@@ -333,7 +389,7 @@ export default function IngestPanel() {
             >
               {fileStatuses.map((fs, i) => (
                 <FileStatusRow
-                  key={fs.ingestId ?? `${fs.name}-${i}`}
+                  key={`${fs.ingestId ?? 'pending'}-${fs.name}-${i}`}
                   status={fs}
                   onNavigate={(slug) => navigate(`/wiki/${slug}`)}
                 />
@@ -451,7 +507,7 @@ function EventLine({
         </p>
       );
     case 'error':
-      return <p className={`${base} text-red-400`}>Error: {event.message}</p>;
+      return <p className={`${base} text-red-400`}>Error: {readableIngestError(event.message ?? 'Unknown error')}</p>;
     default:
       return null;
   }

@@ -72,13 +72,16 @@ export default function LoginPage() {
         )}
 
         <form onSubmit={handleSubmit} className="space-y-3">
-          <Input
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            placeholder="Owner password"
-            autoFocus
-          />
+          <label className="block space-y-1">
+            <span className="text-xs font-medium text-text-secondary">Owner password</span>
+            <Input
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="Enter password"
+              autoFocus
+            />
+          </label>
           <Button
             type="submit"
             variant="primary"
@@ -90,8 +93,7 @@ export default function LoginPage() {
         </form>
 
         <p className="text-xs text-muted-foreground mt-4">
-          Set <code className="px-1 py-0.5 rounded bg-muted/60 border border-border/50">OWNER_PASSWORD</code> in{' '}
-          <code className="px-1 py-0.5 rounded bg-muted/60 border border-border/50">.env</code>.
+          Use the owner password configured for this vault.
         </p>
         </CardContent>
       </Card>

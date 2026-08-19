@@ -3,12 +3,20 @@ from __future__ import annotations
 import re
 from typing import Any
 
+from archivum.ingest.agent import slugify
+
 
 WIKILINK_RE = re.compile(r"\[\[([^\]|]+)(?:\|[^\]]+)?\]\]")
 BOOLEAN_CLAIM_RE = re.compile(
     r"\b([A-Za-z][A-Za-z0-9 _/-]{1,80}?)\s+is\s+(enabled|disabled)\b",
     re.IGNORECASE,
 )
+
+
+def normalize_wikilink_target(target: str) -> str:
+    """Normalize a wikilink target while preserving folder separators."""
+    parts = [slugify(part.strip()) for part in target.strip().split("/")]
+    return "/".join(part for part in parts if part)
 
 
 def analyze_wiki_pages(pages: list[dict[str, Any]]) -> dict[str, Any]:
@@ -23,7 +31,7 @@ def analyze_wiki_pages(pages: list[dict[str, Any]]) -> dict[str, Any]:
         slug = p["slug"]
         content = p.get("content", "") or ""
 
-        for target in (t.strip() for t in WIKILINK_RE.findall(content)):
+        for target in (normalize_wikilink_target(t) for t in WIKILINK_RE.findall(content)):
             if not target:
                 continue
             outbound[slug] = outbound.get(slug, 0) + 1

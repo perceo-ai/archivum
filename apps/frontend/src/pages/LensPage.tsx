@@ -7,17 +7,17 @@ import { Button } from '../components/ui/Button';
 const LENS_COPY: Record<string, { title: string; description: string; scopeType?: MemoryScope['scope_type'] }> = {
   topics: {
     title: 'Topics',
-    description: 'Topic-scoped memory budgets, review status, and context lenses.',
+    description: 'Themes and areas of knowledge that have enough structure to reuse.',
     scopeType: 'topic',
   },
   people: {
     title: 'People',
-    description: 'People and relationship memory connected back to person:self.',
+    description: 'People, relationships, and recurring context connected to your vault.',
     scopeType: 'person',
   },
   repos: {
     title: 'Repos',
-    description: 'Repository context, code insights, and agent-ready technical memory.',
+    description: 'Repository context, code insights, and technical memory for agents.',
     scopeType: 'repo',
   },
   sources: {
@@ -48,7 +48,7 @@ export default function LensPage({ lens }: { lens: keyof typeof LENS_COPY }) {
     <div className="page-frame bg-transparent">
       <div className="page-header">
         <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
-          person:self lens
+          Vault lens
         </p>
         <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
           <div className="min-w-0 flex-1">
@@ -64,8 +64,8 @@ export default function LensPage({ lens }: { lens: keyof typeof LENS_COPY }) {
 
       <div className="workspace-pane min-h-0 flex-1 overflow-y-auto">
         <div className="subtle-divider flex items-center justify-between border-b px-5 py-4">
-          <h2 className="text-sm font-semibold text-foreground">{config.title} lens</h2>
-          <Badge>{scopes.length} scopes</Badge>
+          <h2 className="text-sm font-semibold text-foreground">{config.title}</h2>
+          <Badge>{scopes.length} groups</Badge>
         </div>
         <div className="grid gap-3 p-5 md:grid-cols-2 xl:grid-cols-3">
           {scopes.map((scope) => (
@@ -76,14 +76,14 @@ export default function LensPage({ lens }: { lens: keyof typeof LENS_COPY }) {
               </div>
               <p className="mt-2 truncate text-xs text-muted-foreground">{scope.id}</p>
               <div className="mt-3 flex flex-wrap gap-2">
-                <Badge>{scope.budget_tokens} tokens</Badge>
+                <Badge>{scope.budget_tokens} token budget</Badge>
                 <Badge>{scope.budget_items} items</Badge>
               </div>
             </article>
           ))}
           {scopes.length === 0 && (
             <p className="text-sm text-muted-foreground">
-              No scoped records yet. Captures, review cards, and repo ingestion can populate this lens.
+              Nothing here yet. Import sources or approve memory to build this view.
             </p>
           )}
           {error && <p className="text-sm text-destructive">{error}</p>}

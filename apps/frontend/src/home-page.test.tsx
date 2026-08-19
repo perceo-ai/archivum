@@ -5,25 +5,29 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { AppProvider } from './store';
 import HomePage from './pages/HomePage';
+import { ToastProvider } from './components/ui/Toast';
 
 describe('human-centered home surface', () => {
-  it('renders person:self capture, context, review, and accepted memory sections', () => {
+  it('renders a practical owner dashboard with quick actions and status', () => {
     const html = renderToString(
       <StaticRouter location="/">
         <AppProvider>
-          <HomePage />
+          <ToastProvider>
+            <HomePage />
+          </ToastProvider>
         </AppProvider>
       </StaticRouter>,
     );
 
-    expect(html).toContain('person:self');
-    expect(html).toContain('What should Archivum remember?');
-    expect(html).toContain('Librarian response');
-    expect(html).toContain('Current active context');
-    expect(html).toContain('Context explanations');
-    expect(html).toContain('Staleness warnings');
-    expect(html).toContain('Suggested updates');
-    expect(html).toContain('Accepted memory');
+    expect(html).toContain('Today in Archivum');
+    expect(html).toContain('Use AI to draft, query, organize, and save useful knowledge into the vault.');
+    expect(html).toContain('AI Workbench');
+    expect(html).toContain('Vault Snapshot');
+    expect(html).toContain('Setup Status');
+    expect(html).toContain('Quick Capture');
+    expect(html).toContain('Review Queue');
+    expect(html).toContain('Agent Memory');
+    expect(html).not.toContain('person:self');
   });
 
   it('keeps the root route on Home instead of redirecting into wiki pages', () => {

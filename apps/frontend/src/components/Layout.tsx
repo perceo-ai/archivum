@@ -56,6 +56,7 @@ export default function Layout({ children }: LayoutProps) {
         ? 'library'
         : 'home';
   const isEditingPage = location.pathname.startsWith('/wiki/');
+  const showRightSidebar = rightOpen && isEditingPage;
 
   function isActive(item: NavItem) {
     return currentSection === item.view;
@@ -278,7 +279,7 @@ export default function Layout({ children }: LayoutProps) {
             {children}
           </main>
 
-          {rightOpen && (
+          {showRightSidebar && (
             <aside
               className={cn(
                 'hidden shrink-0 xl:flex',

@@ -1,9 +1,13 @@
 from __future__ import annotations
 
+import asyncio
+import importlib
 import json
 import os
+import platform
 import re
 import shutil
+import sys
 from pathlib import Path
 from typing import Any
 from importlib.util import find_spec
@@ -17,7 +21,13 @@ from archivum.db import graph, qdrant_client as qdrant, sqlite
 from archivum.ingest.agent import slugify
 from archivum.knowledge.projections import rebuild_knowledge_projections
 from archivum.knowledge.repository import KnowledgeRepository, init_knowledge_schema
-from archivum.linting import WIKILINK_RE, analyze_wiki_pages
+from archivum.linting import WIKILINK_RE, analyze_wiki_pages, normalize_wikilink_target
+from archivum.llm.cli_client import (
+    CliModelError,
+    cli_status,
+    codex_login_status,
+    start_codex_device_login,
+)
 from archivum.pages_to_knowledge import sync_page_to_knowledge
 
 router = APIRouter(prefix="/api", tags=["system"])
@@ -49,6 +59,7 @@ def _llm_settings_response(settings: Settings) -> dict[str, Any]:
         "ollama_base_url": settings.ollama_base_url,
         "ollama_api_key_configured": bool(ollama_api_key),
         "ollama_api_key_masked": _mask_secret(ollama_api_key),
+        "cli_providers": cli_status(),
     }
 
 
@@ -108,20 +119,160 @@ def get_audio_feature_status() -> dict[str, Any]:
 
     return {
         "available": whisper_available and ffmpeg_available,
+        "audio_available": whisper_available,
+        "video_available": whisper_available and ffmpeg_available,
         "dependencies": {
             "openai_whisper": whisper_available,
             "ffmpeg": ffmpeg_available,
         },
         "missing": missing,
-        "commands": {
-            "local": "cd apps/backend && uv sync --extra audio",
-            "ffmpeg": "Install ffmpeg with your OS package manager for video extraction.",
-            "docker": "Use a derived audio-enabled image or rebuild the backend image with the audio extra and ffmpeg.",
-        },
         "notes": [
             "The default published Docker images omit Whisper, Torch, and ffmpeg to keep installs smaller.",
             "Installing packages inside a running Docker container is not durable across upgrades.",
         ],
+    }
+
+
+def _install_action(name: str, status: str, detail: str) -> dict[str, str]:
+    return {"name": name, "status": status, "detail": detail}
+
+
+async def _run_install_command(
+    name: str,
+    args: list[str],
+    *,
+    cwd: Path | None = None,
+    timeout_seconds: int = 1800,
+) -> dict[str, str]:
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            *args,
+            cwd=str(cwd) if cwd else None,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=timeout_seconds)
+    except asyncio.TimeoutError:
+        return _install_action(name, "failed", f"Timed out after {timeout_seconds} seconds")
+    except OSError as exc:
+        return _install_action(name, "failed", str(exc))
+
+    output = "\n".join(
+        part.decode("utf-8", errors="replace").strip()
+        for part in (stdout, stderr)
+        if part
+    ).strip()
+    detail = output[-4000:] if output else "Command completed"
+    if proc.returncode == 0:
+        return _install_action(name, "installed", "Installed successfully")
+    return _install_action(
+        name,
+        "failed",
+        f"Automatic install failed. Review backend logs for {name} install details.",
+    )
+
+
+async def _install_openai_whisper() -> dict[str, str]:
+    if find_spec("whisper") is not None:
+        return _install_action(
+            "openai-whisper",
+            "already_available",
+            "Whisper is already installed",
+        )
+
+    backend_dir = Path(__file__).resolve().parents[2]
+    uv = shutil.which("uv")
+    if uv:
+        result = await _run_install_command(
+            "openai-whisper",
+            [uv, "sync", "--extra", "audio"],
+            cwd=backend_dir,
+        )
+    else:
+        result = await _run_install_command(
+            "openai-whisper",
+            [sys.executable, "-m", "pip", "install", "openai-whisper"],
+        )
+    importlib.invalidate_caches()
+    return result
+
+
+def _privileged_command(base: list[str]) -> list[str]:
+    if hasattr(os, "geteuid") and os.geteuid() == 0:
+        return base
+    sudo = shutil.which("sudo")
+    if sudo:
+        return [sudo, "-n", *base]
+    return base
+
+
+async def _install_ffmpeg() -> dict[str, str]:
+    if shutil.which("ffmpeg"):
+        return _install_action("ffmpeg", "already_available", "ffmpeg is already installed")
+
+    system = platform.system().lower()
+    brew = shutil.which("brew")
+    if system == "darwin" and brew:
+        return await _run_install_command("ffmpeg", [brew, "install", "ffmpeg"])
+
+    if shutil.which("apt-get"):
+        update = await _run_install_command(
+            "ffmpeg",
+            _privileged_command(["apt-get", "update"]),
+        )
+        if update["status"] == "failed":
+            return update
+        return await _run_install_command(
+            "ffmpeg",
+            _privileged_command(["apt-get", "install", "-y", "ffmpeg"]),
+        )
+
+    if shutil.which("apk"):
+        return await _run_install_command(
+            "ffmpeg",
+            _privileged_command(["apk", "add", "ffmpeg"]),
+        )
+
+    if shutil.which("dnf"):
+        return await _run_install_command(
+            "ffmpeg",
+            _privileged_command(["dnf", "install", "-y", "ffmpeg"]),
+        )
+
+    return _install_action(
+        "ffmpeg",
+        "failed",
+        "Automatic install is not available in this environment",
+    )
+
+
+async def install_audio_support() -> dict[str, Any]:
+    before = get_audio_feature_status()
+    actions: list[dict[str, str]] = []
+
+    if not before["dependencies"]["openai_whisper"]:
+        actions.append(await _install_openai_whisper())
+    else:
+        actions.append(
+            _install_action(
+                "openai-whisper",
+                "already_available",
+                "Whisper is already installed",
+            )
+        )
+
+    if not before["dependencies"]["ffmpeg"]:
+        actions.append(await _install_ffmpeg())
+    else:
+        actions.append(
+            _install_action("ffmpeg", "already_available", "ffmpeg is already installed")
+        )
+
+    status = get_audio_feature_status()
+    return {
+        "ok": status["available"],
+        "actions": actions,
+        "status": status,
     }
 
 
@@ -132,11 +283,62 @@ async def audio_support(
     return get_audio_feature_status()
 
 
+@router.post("/audio-support/install")
+async def install_audio_support_endpoint(
+    current_user: CurrentUser = Depends(require_owner),
+) -> dict[str, Any]:
+    return await install_audio_support()
+
+
 @router.get("/settings/llm")
 async def llm_settings(
     current_user: CurrentUser = Depends(require_owner),
 ) -> dict[str, Any]:
     return _llm_settings_response(get_settings())
+
+
+@router.get("/settings/cli-auth/codex")
+async def codex_cli_auth_status(
+    current_user: CurrentUser = Depends(require_owner),
+) -> dict[str, Any]:
+    return await codex_login_status()
+
+
+@router.post("/settings/cli-auth/codex/start")
+async def start_codex_cli_auth(
+    current_user: CurrentUser = Depends(require_owner),
+) -> dict[str, Any]:
+    try:
+        return await start_codex_device_login()
+    except CliModelError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={"detail": str(exc), "code": "cli_auth_unavailable"},
+        ) from exc
+
+
+@router.get("/settings/mcp")
+async def mcp_settings(
+    current_user: CurrentUser = Depends(require_owner),
+    settings: Settings = Depends(get_settings),
+) -> dict[str, Any]:
+    endpoint = settings.mcp_public_url.strip() or f"http://localhost:{settings.mcp_port}/sse"
+    headers = {"Authorization": "Bearer <MCP_API_KEY>"} if settings.mcp_api_key else {}
+    client_config: dict[str, Any] = {
+        "mcpServers": {
+            "archivum": {
+                "url": endpoint,
+            }
+        }
+    }
+    if headers:
+        client_config["mcpServers"]["archivum"]["headers"] = headers
+    return {
+        "endpoint": endpoint,
+        "auth_required": bool(settings.mcp_api_key),
+        "api_key_configured": bool(settings.mcp_api_key),
+        "client_config": client_config,
+    }
 
 
 @router.put("/settings/llm")
@@ -145,8 +347,9 @@ async def update_llm_settings(
     current_user: CurrentUser = Depends(require_owner),
 ) -> dict[str, Any]:
     previous = get_settings()
-    providers = {"anthropic", "openrouter", "openai_compat", "ollama"}
-    if body.llm_extraction_provider not in providers or body.llm_synthesis_provider not in providers:
+    extraction_providers = {"anthropic", "openrouter", "openai_compat", "ollama"}
+    synthesis_providers = extraction_providers | {"codex_cli", "claude_cli"}
+    if body.llm_extraction_provider not in extraction_providers or body.llm_synthesis_provider not in synthesis_providers:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail={"detail": "Unsupported LLM provider", "code": "invalid_provider"},
@@ -202,7 +405,7 @@ async def rebuild_indexes(
         # Rebuild REFERENCES edges from wikilinks
         content = p.get("content", "") or ""
         for target in WIKILINK_RE.findall(content):
-            target_slug = slugify(target.strip())
+            target_slug = normalize_wikilink_target(target)
             if not target_slug or target_slug == p["slug"]:
                 continue
             existing = await sqlite.get_page(target_slug, current_user.wiki_id)

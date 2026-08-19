@@ -20,6 +20,7 @@ from archivum.llm.openai_compat_client import (
     openai_compat_chat_completion,
     openai_compat_stream_tokens,
 )
+from archivum.llm.cli_client import cli_chat_completion
 from archivum.retrieval.hybrid import hybrid_retrieve
 from archivum.retrieval.context import ContextRequest, build_context_package
 
@@ -166,6 +167,14 @@ async def query(
                     temperature=0.2,
                 ):
                     answer_parts.append(token)
+            elif settings.llm_synthesis_provider in {"codex_cli", "claude_cli"}:
+                answer_parts.append(
+                    await cli_chat_completion(
+                        provider=settings.llm_synthesis_provider,
+                        model=settings.llm_synthesis_model,
+                        prompt=prompt,
+                    )
+                )
             else:
                 raise ValueError(f"Unsupported llm_synthesis_provider: {settings.llm_synthesis_provider}")
 

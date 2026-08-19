@@ -13,14 +13,14 @@ const buttonVariants = cva(
   {
     variants: {
       variant: {
-        default: 'bg-gradient-to-b from-[#8b5cf6] to-[#7848e6] text-white shadow-none hover:from-[#7c3aed] hover:to-[#6d28d9]',
+        default: 'bg-gradient-to-b from-[#8b5cf6] to-[#7848e6] text-white shadow-none hover:from-[#9b72ff] hover:to-[#8657f2]',
         secondary: 'soft-border border bg-white/[0.05] text-white shadow-none hover:bg-white/[0.08]',
         ghost: 'text-zinc-300 hover:bg-white/[0.08] hover:text-white',
         outline: 'soft-border border bg-transparent text-zinc-200 hover:bg-white/[0.08] hover:text-white',
         destructive: 'bg-[#f87171] text-[#161616] hover:bg-[#ef4444]',
 
         // backwards compat
-        primary: 'bg-gradient-to-b from-[#8b5cf6] to-[#7848e6] text-white shadow-none hover:from-[#7c3aed] hover:to-[#6d28d9]',
+        primary: 'bg-gradient-to-b from-[#8b5cf6] to-[#7848e6] text-white shadow-none hover:from-[#9b72ff] hover:to-[#8657f2]',
         danger: 'bg-[#f87171] text-[#161616] hover:bg-[#ef4444]',
       },
       size: {

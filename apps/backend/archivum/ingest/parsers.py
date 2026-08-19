@@ -14,9 +14,11 @@ import os
 import re
 import subprocess
 import tempfile
+import zipfile
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
+from urllib.parse import unquote, urlparse
 
 import httpx
 
@@ -38,7 +40,7 @@ def _get_whisper_model():
     global _whisper_model
     if not _whisper_available:
         raise UnsupportedFileTypeError(
-            "whisper not installed; install openai-whisper to parse audio/video files"
+            "Audio/video transcription is not enabled yet. Open Settings and run Install / Enable under Audio Transcription."
         )
     if _whisper_model is None:
         _whisper_model = _whisper_lib.load_model("base")
@@ -114,6 +116,151 @@ def _format_email_message(msg: email.message.Message) -> str:
     ).strip()
 
 
+def _compact_blank_lines(text: str) -> str:
+    return re.sub(r"\n{3,}", "\n\n", text).strip()
+
+
+def _rtf_to_text(raw: str) -> str:
+    """Best-effort RTF text extraction without adding a heavyweight dependency."""
+    text = raw.replace("\\par", "\n").replace("\\line", "\n")
+    text = re.sub(r"\\'[0-9a-fA-F]{2}", " ", text)
+    text = re.sub(r"\\[a-zA-Z]+-?\d* ?", "", text)
+    text = text.replace("{", "").replace("}", "")
+    text = text.replace("\\", "")
+    return _compact_blank_lines(re.sub(r"[ \t]+", " ", text))
+
+
+def _xml_to_text(raw: str) -> str:
+    try:
+        from bs4 import BeautifulSoup
+
+        soup = BeautifulSoup(raw, "xml")
+        return soup.get_text(separator="\n", strip=True)
+    except Exception:
+        return _html_to_text(raw)
+
+
+def _format_timestamp(seconds: Any) -> str:
+    try:
+        total = max(0, int(float(seconds)))
+    except (TypeError, ValueError):
+        total = 0
+    hours, remainder = divmod(total, 3600)
+    minutes, secs = divmod(remainder, 60)
+    return f"{hours:02d}:{minutes:02d}:{secs:02d}"
+
+
+def _format_transcription(result: dict[str, Any]) -> str:
+    segments = result.get("segments")
+    if isinstance(segments, list) and segments:
+        lines = []
+        for segment in segments:
+            if not isinstance(segment, dict):
+                continue
+            text = str(segment.get("text") or "").strip()
+            if not text:
+                continue
+            lines.append(
+                "["
+                f"{_format_timestamp(segment.get('start'))} - "
+                f"{_format_timestamp(segment.get('end'))}"
+                f"] {text}"
+            )
+        if lines:
+            return "\n".join(lines)
+    return str(result.get("text") or "").strip()
+
+
+def _transcription_metadata(result: dict[str, Any], media_type: str) -> dict[str, Any]:
+    metadata: dict[str, Any] = {"type": media_type}
+    if result.get("language"):
+        metadata["language"] = result["language"]
+    if result.get("duration") is not None:
+        metadata["duration_seconds"] = result.get("duration")
+    segments = result.get("segments")
+    if isinstance(segments, list):
+        metadata["segments"] = len(segments)
+    return metadata
+
+
+def _parse_zip_archive(path: Path) -> ParsedDoc:
+    parsed_parts: list[str] = []
+    skipped: list[str] = []
+
+    with tempfile.TemporaryDirectory(prefix="archivum-archive-") as tmp:
+        tmp_dir = Path(tmp)
+        with zipfile.ZipFile(path) as archive:
+            for info in archive.infolist():
+                member_name = info.filename
+                if (
+                    info.is_dir()
+                    or member_name.startswith("__MACOSX/")
+                    or Path(member_name).name.startswith(".")
+                ):
+                    continue
+                safe_name = Path(member_name).name
+                if not safe_name:
+                    continue
+                member_path = tmp_dir / safe_name
+                member_path.write_bytes(archive.read(info))
+                try:
+                    doc = parse_file(member_path)
+                except UnsupportedFileTypeError:
+                    skipped.append(member_name)
+                    continue
+                title = member_name
+                parsed_parts.append(f"## {title}\n\n{doc.text.strip()}")
+
+    if not parsed_parts and skipped:
+        raise UnsupportedFileTypeError(
+            f"No supported files found in archive {path.name}; skipped {len(skipped)} members"
+        )
+
+    text = "\n\n---\n\n".join(part for part in parsed_parts if part.strip())
+    if skipped:
+        text = f"{text}\n\nSkipped unsupported archive members: {', '.join(skipped[:20])}".strip()
+
+    return ParsedDoc(
+        text=text,
+        source=str(path),
+        metadata={
+            "type": "archive",
+            "format": "zip",
+            "files_parsed": len(parsed_parts),
+            "files_skipped": len(skipped),
+        },
+    )
+
+
+def _download_filename(url: str, content_type: str, content_disposition: str) -> str:
+    match = re.search(
+        r'filename\*?=(?:UTF-8\'\')?"?([^";]+)"?',
+        content_disposition,
+        flags=re.I,
+    )
+    if match:
+        return Path(unquote(match.group(1))).name
+
+    url_name = Path(unquote(urlparse(url).path)).name
+    if url_name and Path(url_name).suffix:
+        return url_name
+
+    content_type = content_type.split(";", 1)[0].strip().lower()
+    suffix_by_type = {
+        "application/pdf": ".pdf",
+        "application/epub+zip": ".epub",
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document": ".docx",
+        "application/vnd.openxmlformats-officedocument.presentationml.presentation": ".pptx",
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": ".xlsx",
+        "application/zip": ".zip",
+        "text/rtf": ".rtf",
+        "application/rtf": ".rtf",
+        "application/xml": ".xml",
+        "text/xml": ".xml",
+    }
+    return f"download{suffix_by_type.get(content_type, '.bin')}"
+
+
 # ── Extension dispatch ────────────────────────────────────────────────────────
 
 def parse_file(path: Path) -> ParsedDoc:
@@ -121,11 +268,26 @@ def parse_file(path: Path) -> ParsedDoc:
     suffix = path.suffix.lower()
 
     # ── Plain text / Markdown / RST ──────────────────────────────────────────
-    if suffix in {".md", ".txt", ".rst", ".text"}:
+    if suffix in {".md", ".txt", ".rst", ".text", ".log"}:
         text = path.read_text(encoding="utf-8", errors="replace")
         if suffix == ".rst":
             text = _strip_rst_directives(text)
         return ParsedDoc(text=text, source=str(path), metadata={"type": suffix.lstrip(".")})
+
+    # ── RTF / XML ────────────────────────────────────────────────────────────
+    if suffix == ".rtf":
+        return ParsedDoc(
+            text=_rtf_to_text(path.read_text(encoding="utf-8", errors="replace")),
+            source=str(path),
+            metadata={"type": "rtf"},
+        )
+
+    if suffix in {".xml", ".rss", ".atom"}:
+        return ParsedDoc(
+            text=_xml_to_text(path.read_text(encoding="utf-8", errors="replace")),
+            source=str(path),
+            metadata={"type": "xml"},
+        )
 
     # ── PDF ──────────────────────────────────────────────────────────────────
     if suffix == ".pdf":
@@ -264,6 +426,10 @@ def parse_file(path: Path) -> ParsedDoc:
         text = f"JSONL: {len(lines)} records\nSample (first 5):\n{json.dumps(sample, indent=2)}"
         return ParsedDoc(text=text, source=str(path), metadata={"type": "jsonl"})
 
+    # ── Archives ─────────────────────────────────────────────────────────────
+    if suffix == ".zip":
+        return _parse_zip_archive(path)
+
     # ── EPUB ─────────────────────────────────────────────────────────────────
     if suffix == ".epub":
         try:
@@ -312,6 +478,19 @@ def parse_file(path: Path) -> ParsedDoc:
         ".toml": "toml",
         ".ini": "ini",
         ".cfg": "ini",
+        ".jsonc": "jsonc",
+        ".css": "css",
+        ".scss": "scss",
+        ".sass": "sass",
+        ".less": "less",
+        ".jsx": "jsx",
+        ".tsx": "tsx",
+        ".mjs": "javascript",
+        ".cjs": "javascript",
+        ".vue": "vue",
+        ".svelte": "svelte",
+        ".mdx": "mdx",
+        ".dockerfile": "dockerfile",
     }
     if suffix in code_extensions:
         lang = code_extensions[suffix]
@@ -424,50 +603,59 @@ def parse_file(path: Path) -> ParsedDoc:
         )
 
     # ── Audio ─────────────────────────────────────────────────────────────────
-    if suffix in {".mp3", ".m4a", ".wav", ".ogg", ".flac"}:
+    if suffix in {".mp3", ".m4a", ".wav", ".ogg", ".flac", ".aac", ".aiff", ".opus", ".wma"}:
         model = _get_whisper_model()
         result = model.transcribe(str(path))
-        text = result["text"]
         return ParsedDoc(
-            text=text,
+            text=_format_transcription(result),
             source=str(path),
-            metadata={
-                "type": "audio",
-                "duration_seconds": result.get("duration"),
-            },
+            metadata=_transcription_metadata(result, "audio"),
         )
 
     # ── Video ─────────────────────────────────────────────────────────────────
-    if suffix in {".mp4", ".mov", ".avi", ".mkv", ".webm"}:
+    if suffix in {".mp4", ".mov", ".avi", ".mkv", ".webm", ".m4v", ".mpg", ".mpeg", ".3gp"}:
         model = _get_whisper_model()
         with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
             audio_path = tmp.name
         try:
-            subprocess.run(
-                [
-                    "ffmpeg", "-i", str(path),
-                    "-vn", "-acodec", "pcm_s16le",
-                    "-ar", "16000", "-ac", "1",
-                    audio_path, "-y",
-                ],
-                check=True,
-                capture_output=True,
-            )
+            try:
+                subprocess.run(
+                    [
+                        "ffmpeg", "-i", str(path),
+                        "-vn", "-acodec", "pcm_s16le",
+                        "-ar", "16000", "-ac", "1",
+                        audio_path, "-y",
+                    ],
+                    check=True,
+                    capture_output=True,
+                )
+            except FileNotFoundError as exc:
+                raise UnsupportedFileTypeError(
+                    "Video transcription needs ffmpeg. Open Settings and run Install / Enable under Audio Transcription."
+                ) from exc
+            except subprocess.CalledProcessError as exc:
+                stderr = (
+                    exc.stderr.decode("utf-8", errors="replace")
+                    if isinstance(exc.stderr, bytes)
+                    else str(exc.stderr)
+                )
+                raise UnsupportedFileTypeError(
+                    f"ffmpeg could not extract audio from {path.name}: {stderr}"
+                ) from exc
             result = model.transcribe(audio_path)
-            text = result["text"]
         finally:
             try:
                 os.unlink(audio_path)
             except OSError:
                 pass
         return ParsedDoc(
-            text=text,
+            text=_format_transcription(result),
             source=str(path),
-            metadata={"type": "video"},
+            metadata=_transcription_metadata(result, "video"),
         )
 
     raise UnsupportedFileTypeError(
-        f"Unsupported file type: {suffix!r}. Cannot parse {path.name}"
+        f"Archivum cannot parse {suffix or 'this'} files yet. Try a supported document, media, archive, code, data, email, or subtitle file."
     )
 
 
@@ -482,6 +670,7 @@ async def parse_url(url: str) -> ParsedDoc:
         response.raise_for_status()
 
     content_type = response.headers.get("content-type", "")
+    content_type_base = content_type.split(";", 1)[0].strip().lower()
 
     if "text/html" in content_type or "application/xhtml" in content_type:
         text = _html_to_text(response.text, url=url)
@@ -509,6 +698,39 @@ async def parse_url(url: str) -> ParsedDoc:
             text=response.text,
             source=url,
             metadata={"type": "text_url", "url": url},
+        )
+
+    downloadable_types = {
+        "application/pdf",
+        "application/epub+zip",
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        "application/zip",
+        "text/rtf",
+        "application/rtf",
+        "application/xml",
+        "text/xml",
+    }
+    if content_type_base in downloadable_types:
+        filename = _download_filename(
+            url,
+            content_type,
+            response.headers.get("content-disposition", ""),
+        )
+        with tempfile.TemporaryDirectory(prefix="archivum-url-") as tmp:
+            tmp_path = Path(tmp) / Path(filename).name
+            tmp_path.write_bytes(response.content)
+            doc = parse_file(tmp_path)
+        return ParsedDoc(
+            text=doc.text,
+            source=url,
+            metadata={
+                **doc.metadata,
+                "url": url,
+                "filename": filename,
+                "content_type": content_type,
+            },
         )
 
     # Fallback: try to decode as text

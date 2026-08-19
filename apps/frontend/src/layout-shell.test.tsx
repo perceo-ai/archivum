@@ -53,11 +53,12 @@ describe('app shell layout', () => {
     expect(html).toContain('grid-lines');
   });
 
-  it('uses Perceo site color and typography tokens', () => {
+  it('uses charcoal color and typography tokens', () => {
     const css = fs.readFileSync(path.resolve('src/index.css'), 'utf8');
 
     expect(css).toContain('--background: 0 0% 9%');
     expect(css).toContain('--primary: 257 90% 66%');
+    expect(css).toContain('--accent: 257 90% 66%');
     expect(css).toContain('Instrument Sans');
     expect(css).toContain('Playfair Display');
     expect(css).toContain('.grid-lines');

@@ -75,7 +75,7 @@ class Settings(BaseSettings):
     llm_model: str = "claude-haiku-4-5-20251001"
 
     # Query synthesis (answers with citations):
-    # Supported: anthropic|openrouter|openai_compat|ollama
+    # Supported: anthropic|openrouter|openai_compat|ollama|codex_cli|claude_cli
     llm_synthesis_provider: str = "anthropic"
     llm_synthesis_model: str = "claude-sonnet-4-6"
 
@@ -136,6 +136,7 @@ class Settings(BaseSettings):
     mcp_host: str = "127.0.0.1"
     mcp_port: int = 8001
     mcp_api_key: str = ""
+    mcp_public_url: str = ""
 
 
 @lru_cache(maxsize=1)

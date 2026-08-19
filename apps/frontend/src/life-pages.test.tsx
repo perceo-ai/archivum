@@ -123,15 +123,15 @@ describe('Life OS pages', () => {
     expect(html).toContain('relative min-h-0 flex-1');
   });
 
-  it('renders LLM provider settings', () => {
+  it('renders AI model settings', () => {
     const html = renderToString(
       <StaticRouter location="/tools/settings">
         <SettingsPage />
       </StaticRouter>,
     );
 
-    expect(html).toContain('LLM Provider');
-    expect(html).toContain('Loading LLM settings');
+    expect(html).toContain('AI Models');
+    expect(html).toContain('Loading model settings');
   });
 
   it('organizes root pages under Inbox instead of leaving loose root clutter', () => {

@@ -17,7 +17,7 @@ from archivum.db import sqlite, qdrant_client as qdrant, graph
 from archivum.ingest.agent import slugify
 from archivum.knowledge.repository import KnowledgeRepository
 from archivum.knowledge.suggestions import init_suggestion_schema
-from archivum.linting import WIKILINK_RE
+from archivum.linting import WIKILINK_RE, normalize_wikilink_target
 from archivum.pages_to_knowledge import (
     remove_page_from_knowledge,
     rename_page_in_knowledge,
@@ -196,7 +196,7 @@ async def _sync_page_graph(
     await graph.clear_references_from_page(slug, wiki_id)
 
     linked_targets = {
-        slugify(target.strip())
+        normalize_wikilink_target(target)
         for target in WIKILINK_RE.findall(content or "")
         if target.strip()
     }

@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import sys
 import types
+import zipfile
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -408,6 +409,56 @@ class TestParseFileJsonl:
         assert result.metadata["type"] == "jsonl"
 
 
+# ── parse_file — richer text containers ──────────────────────────────────────
+
+
+class TestParseFileStructuredText:
+    def test_parses_rtf_as_readable_text(self, tmp_path):
+        f = tmp_path / "note.rtf"
+        f.write_text(r"{\rtf1\ansi This is {\b important} text.\par Next line.}")
+
+        result = parse_file(f)
+
+        assert result.metadata["type"] == "rtf"
+        assert "This is important text." in result.text
+        assert "Next line." in result.text
+        assert r"\rtf" not in result.text
+
+    def test_parses_xml_as_readable_element_text(self, tmp_path):
+        f = tmp_path / "feed.xml"
+        f.write_text("<root><title>Launch Plan</title><body>Ship video ingest</body></root>")
+
+        result = parse_file(f)
+
+        assert result.metadata["type"] == "xml"
+        assert "Launch Plan" in result.text
+        assert "Ship video ingest" in result.text
+        assert "<title>" not in result.text
+
+
+# ── parse_file — archives ────────────────────────────────────────────────────
+
+
+class TestParseFileArchive:
+    def test_parses_zip_archive_supported_members_and_reports_skips(self, tmp_path):
+        f = tmp_path / "bundle.zip"
+        with zipfile.ZipFile(f, "w") as archive:
+            archive.writestr("notes/first.md", "# First\n\nAlpha archive note")
+            archive.writestr("data.json", json.dumps({"topic": "Archive JSON"}))
+            archive.writestr("binary.bin", b"\x00\x01\x02")
+
+        result = parse_file(f)
+
+        assert result.metadata["type"] == "archive"
+        assert result.metadata["format"] == "zip"
+        assert result.metadata["files_parsed"] == 2
+        assert result.metadata["files_skipped"] == 1
+        assert "## notes/first.md" in result.text
+        assert "Alpha archive note" in result.text
+        assert "Archive JSON" in result.text
+        assert "Skipped unsupported archive members: binary.bin" in result.text
+
+
 # ── parse_file — SRT/VTT ──────────────────────────────────────────────────────
 
 
@@ -440,6 +491,45 @@ class TestParseFileSrt:
         result = parse_file(f)
         assert "WEBVTT" not in result.text
         assert "VTT caption text" in result.text
+
+
+# ── parse_file — audio/video transcripts ─────────────────────────────────────
+
+
+class TestParseFileMedia:
+    def test_audio_transcript_includes_timestamps_language_and_duration(self, tmp_path):
+        f = tmp_path / "meeting.mp3"
+        f.write_bytes(b"fake audio")
+        fake_model = MagicMock()
+        fake_model.transcribe.return_value = {
+            "text": "Hello from the meeting.",
+            "language": "en",
+            "duration": 12.5,
+            "segments": [
+                {"start": 0.0, "end": 2.4, "text": "Hello from"},
+                {"start": 2.4, "end": 12.5, "text": "the meeting."},
+            ],
+        }
+
+        with patch("archivum.ingest.parsers._get_whisper_model", return_value=fake_model):
+            result = parse_file(f)
+
+        assert result.metadata["type"] == "audio"
+        assert result.metadata["language"] == "en"
+        assert result.metadata["duration_seconds"] == 12.5
+        assert "[00:00:00 - 00:00:02] Hello from" in result.text
+        assert "[00:00:02 - 00:00:12] the meeting." in result.text
+
+    def test_video_reports_missing_ffmpeg_as_unsupported_file_type(self, tmp_path):
+        f = tmp_path / "demo.mp4"
+        f.write_bytes(b"fake video")
+
+        with (
+            patch("archivum.ingest.parsers._get_whisper_model", return_value=MagicMock()),
+            patch("archivum.ingest.parsers.subprocess.run", side_effect=FileNotFoundError("ffmpeg")),
+        ):
+            with pytest.raises(UnsupportedFileTypeError, match="ffmpeg"):
+                parse_file(f)
 
 
 # ── parse_file — EML ──────────────────────────────────────────────────────────
@@ -578,6 +668,42 @@ class TestParseUrl:
             result = await parse_url("https://example.com/file.bin")
 
         assert result.metadata["type"] == "unknown_url"
+
+    async def test_parses_downloadable_pdf_url_with_file_parser(self):
+        mock_response = MagicMock()
+        mock_response.headers = {
+            "content-type": "application/pdf",
+            "content-disposition": 'attachment; filename="paper.pdf"',
+        }
+        mock_response.content = b"%PDF fake"
+        mock_response.text = ""
+        mock_response.raise_for_status = MagicMock()
+
+        mock_client = AsyncMock()
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=False)
+        mock_client.get = AsyncMock(return_value=mock_response)
+
+        with (
+            patch("archivum.ingest.parsers.httpx.AsyncClient", return_value=mock_client),
+            patch(
+                "archivum.ingest.parsers.parse_file",
+                return_value=ParsedDoc(
+                    text="Parsed PDF text",
+                    source="/tmp/paper.pdf",
+                    metadata={"type": "pdf", "pages": 1},
+                ),
+            ) as parse_file_mock,
+        ):
+            result = await parse_url("https://example.com/download")
+
+        parsed_path = parse_file_mock.call_args.args[0]
+        assert parsed_path.name == "paper.pdf"
+        assert result.text == "Parsed PDF text"
+        assert result.source == "https://example.com/download"
+        assert result.metadata["type"] == "pdf"
+        assert result.metadata["url"] == "https://example.com/download"
+        assert result.metadata["filename"] == "paper.pdf"
 
 
 # ── parse_source ──────────────────────────────────────────────────────────────

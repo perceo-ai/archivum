@@ -102,8 +102,53 @@ class TestAudioSupport(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         data = response.json()
         self.assertIn("available", data)
+        self.assertIn("audio_available", data)
+        self.assertIn("video_available", data)
         self.assertIn("dependencies", data)
         self.assertIsInstance(data["available"], bool)
+        self.assertNotIn("commands", data)
+
+    def test_installs_audio_support_from_settings_action(self):
+        client = _make_client(self.app, self.token, bearer=True)
+        install_result = {
+            "ok": True,
+            "actions": [
+                {"name": "openai-whisper", "status": "installed", "detail": "Installed"},
+                {"name": "ffmpeg", "status": "already_available", "detail": "Already installed"},
+            ],
+            "status": {
+                "available": True,
+                "audio_available": True,
+                "video_available": True,
+                "dependencies": {"openai_whisper": True, "ffmpeg": True},
+                "missing": [],
+                "notes": [],
+            },
+        }
+
+        with patch(
+            "archivum.api.system.install_audio_support",
+            new=AsyncMock(return_value=install_result),
+        ) as installer:
+            response = client.post("/api/audio-support/install")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json(), install_result)
+        installer.assert_awaited_once()
+
+    def test_audio_only_status_when_ffmpeg_is_missing(self):
+        with (
+            patch("archivum.api.system.find_spec", return_value=object()),
+            patch("archivum.api.system.shutil.which", return_value=None),
+        ):
+            response = self.client.get("/api/audio-support")
+
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertFalse(data["available"])
+        self.assertTrue(data["audio_available"])
+        self.assertFalse(data["video_available"])
+        self.assertEqual(data["missing"], ["ffmpeg"])
 
 
 class TestLlmSettings(unittest.TestCase):
@@ -161,6 +206,33 @@ class TestLlmSettings(unittest.TestCase):
         data = response.json()
         self.assertTrue(data["ollama_api_key_configured"])
         self.assertNotIn("new-secret", str(data))
+
+    def test_get_mcp_settings_returns_client_config_without_secret(self):
+        settings = self.settings.model_copy(
+            update={
+                "mcp_port": 8001,
+                "mcp_api_key": "mcp-secret",
+                "mcp_public_url": "https://archivum-mcp.example.com/sse",
+            }
+        )
+
+        self.app.dependency_overrides[get_settings] = lambda: settings
+        try:
+            response = self.client.get("/api/settings/mcp")
+        finally:
+            self.app.dependency_overrides.clear()
+
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(data["endpoint"], "https://archivum-mcp.example.com/sse")
+        self.assertEqual(
+            data["client_config"]["mcpServers"]["archivum"]["url"],
+            "https://archivum-mcp.example.com/sse",
+        )
+        self.assertTrue(data["auth_required"])
+        self.assertTrue(data["api_key_configured"])
+        self.assertIn("<MCP_API_KEY>", str(data))
+        self.assertNotIn("mcp-secret", str(data))
 
 
 class TestRebuildIndexes(unittest.TestCase):

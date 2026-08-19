@@ -1,6 +1,6 @@
 # Archivum Project Progress
 
-_Last updated: 2026-08-12_
+_Last updated: 2026-08-18_
 
 Archivum keeps markdown editable for humans while maintaining rebuildable semantic and graph indexes for search, citations, and agent context. Canonical knowledge is owner-centered at `person:self`; retrieval and MCP context preserve citations, confidence, and extraction method.
 
@@ -34,7 +34,7 @@ Archivum keeps markdown editable for humans while maintaining rebuildable semant
 | Markdown wiki pages | Verified | REST auth/list, ingest-created page persistence, search, and cited query were smoke-tested on 2026-07-12. |
 | Vault navigation | Partial | Folder/page APIs and file tree UI exist. Browser click-through still needs manual smoke. |
 | Wikilinks and backlinks | Partial | CodeMirror wikilink extension exists; 2026-08-12 current-code smoke preserved edited wikilinks and canonical context contained the `references` edge. Follow-up regression coverage verifies legacy graph sync slugifies display-text wikilinks before backlink indexing. Browser editor click-through still needs manual smoke. |
-| Ingest files and URLs | Partial | Backend parser support is broad; markdown file ingest was smoked. Canonical ingest now records source/page/entity/relationship evidence with `EXTRACTED` provenance. URL and full format matrix still need release smoke. |
+| Ingest files and URLs | Partial | Backend parser coverage now includes broad text/docs/Office/data/code/email/subtitle/image/media support plus ZIP archive members, RTF/XML/logs, timestamped audio/video transcripts when optional dependencies are installed, and downloadable document URLs routed through file parsers. Canonical ingest records source/page/entity/relationship evidence with `EXTRACTED` provenance. Browser release smoke has covered representative markdown file ingest; URL and full format matrix still need product-level smoke. |
 | Search | Partial | Qdrant semantic search returned freshly ingested marker text. Hybrid behavior has backend coverage across keyword/vector/graph fusion, scoped context, and insufficient-evidence handling; product-level search smoke still needs browser confirmation. |
 | Query with citations | Verified | Query SSE returned citations including the source page and answered with the marker; canonical context carries citations, confidence, and extraction method. REST and MCP query paths now share cited context preparation and return insufficient evidence instead of fabricating citations. |
 | Graph | Partial | 2026-08-12 local current-code context smoke opened a bounded package seeded at `person:self` with 4 nodes and `authored_thought`/`owns_project` edges. Legacy graph API and browser graph view still need rebuilt Docker/browser smoke. |
@@ -95,6 +95,9 @@ Add new entries with the exact command and result.
 | 2026-08-14 | Clean-memory strategy review fixes frontend | `npm test --workspace apps/frontend`: 16 files, 89 tests passed. `npm run build --workspace apps/frontend`: passed. Review cards now support edit-then-accept, scope picker, visibility picker, and merge/replace/retire target selection. |
 | 2026-08-14 | Clean-memory strategy review fixes CLI | `npm test --workspace packages/archivum-cli`: 18 passed, 0 failed. |
 | 2026-08-14 | Conflict detection and librarian feedback | `cd apps/backend && uv run --group dev pytest ../../tests -q`: 660 passed. `npm test --workspace apps/frontend`: 89 passed; build passed. Distillation now flags token-overlap duplicates and polarity-flip conflicts against existing canonical atoms on review cards; merge/replace/retire resolve implicit targets by filtering to registered assets; distill reports include `conflicts_flagged`/`sentences_scanned` and Home shows a librarian-style capture summary. |
+| 2026-08-18 | Expanded ingest parser matrix | `cd apps/backend && uv run --group dev pytest ../../tests/ingest/test_parsers.py ../../tests/store/test_normalize.py -q`: 58 passed. Added backend coverage for RTF/XML text extraction, ZIP archives with unsupported-member reporting, timestamped Whisper transcript output, graceful missing-ffmpeg video errors, downloadable PDF URLs routed through the file parser, and normalized MIME mapping for expanded ingest types. |
+| 2026-08-18 | Frontend ingest picker matrix | `npm test --workspace apps/frontend -- IngestPanel.test.tsx`: 1 passed. The file picker now advertises and accepts the broad backend ingest matrix instead of only markdown/text/PDF/HTML/DOCX. |
+| 2026-08-18 | Settings-installed audio/video support | `cd apps/backend && uv run --group dev pytest ../../tests -q`: 678 passed, with two upstream `websockets`/`uvicorn` deprecation warnings. `npm test --workspace apps/frontend`: 17 files, 92 tests passed. `npm run build --workspace apps/frontend`: passed with the existing large chunk warning. Audio/video dependencies are now installable from Settings through an owner-only API action; the UI no longer displays manual install commands. |
 
 ## Known Gaps
 
@@ -106,5 +109,5 @@ Add new entries with the exact command and result.
 
 1. Smoke page CRUD, autosave, backlinks, and vault drawer in the browser.
 2. Smoke the Settings LLM provider form in the browser.
-3. Smoke URL ingest and a representative file-format matrix.
+3. Smoke URL ingest and a representative file-format matrix in the browser/release stack.
 4. Smoke graph UI, share links, public wiki, HTML export, and PDF export.

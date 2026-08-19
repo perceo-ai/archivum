@@ -123,13 +123,16 @@ async def export_page(
         html_str = _build_html(title, content)
         try:
             from weasyprint import HTML as WeasyprintHTML  # type: ignore[import]
-        except ImportError as exc:
+            pdf_bytes: bytes = WeasyprintHTML(string=html_str).write_pdf()
+        except (ImportError, OSError) as exc:
             raise HTTPException(
                 status_code=status.HTTP_501_NOT_IMPLEMENTED,
-                detail={"detail": "PDF export requires WeasyPrint; not installed", "code": "pdf_unavailable"},
+                detail={
+                    "detail": "PDF export requires WeasyPrint and its native libraries",
+                    "code": "pdf_unavailable",
+                },
             ) from exc
 
-        pdf_bytes: bytes = WeasyprintHTML(string=html_str).write_pdf()
         return Response(
             content=pdf_bytes,
             media_type="application/pdf",

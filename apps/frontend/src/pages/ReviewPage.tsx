@@ -86,13 +86,13 @@ export default function ReviewPage() {
     <div className="page-frame bg-transparent">
       <div className="page-header">
         <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
-          person:self
+          Owner review
         </p>
         <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
           <div className="min-w-0 flex-1">
             <h1 className="text-3xl font-semibold tracking-tight text-foreground">Review</h1>
             <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
-              Promote, edit, merge, replace, scope, or retire proposed durable memory.
+              Approve, edit, merge, or retire suggested memory before agents can use it.
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
@@ -300,8 +300,18 @@ function SuggestionCard({
         </label>
       </div>
 
+      <p className="mt-3 text-xs leading-5 text-muted-foreground">
+        Accept creates reviewed memory. Merge or Replace updates the selected target.
+        Keep both preserves this card as separate memory. Retire stale archives the selected target.
+      </p>
+
       <div className="mt-4 flex flex-wrap gap-2">
-        <Button size="sm" variant="outline" onClick={() => onAction(suggestion, 'accept', governance)}>
+        <Button
+          size="sm"
+          variant="outline"
+          title="Create reviewed memory from this card"
+          onClick={() => onAction(suggestion, 'accept', governance)}
+        >
           <Check className="h-4 w-4" />
           Accept
         </Button>
@@ -313,6 +323,7 @@ function SuggestionCard({
           size="sm"
           variant="outline"
           disabled={!hasTarget}
+          title={hasTarget ? 'Blend this card into the selected existing memory' : 'Choose a target memory first'}
           onClick={() => onAction(suggestion, 'merge', targeted)}
         >
           <GitMerge className="h-4 w-4" />
@@ -322,12 +333,18 @@ function SuggestionCard({
           size="sm"
           variant="outline"
           disabled={!hasTarget}
+          title={hasTarget ? 'Replace the selected existing memory with this card' : 'Choose a target memory first'}
           onClick={() => onAction(suggestion, 'replace', targeted)}
         >
           <Split className="h-4 w-4" />
           Replace
         </Button>
-        <Button size="sm" variant="outline" onClick={() => onAction(suggestion, 'keep_both', governance)}>
+        <Button
+          size="sm"
+          variant="outline"
+          title="Keep this as separate reviewed memory"
+          onClick={() => onAction(suggestion, 'keep_both', governance)}
+        >
           <Shield className="h-4 w-4" />
           Keep both
         </Button>
@@ -335,12 +352,18 @@ function SuggestionCard({
           size="sm"
           variant="outline"
           disabled={!hasTarget}
+          title={hasTarget ? 'Archive the selected target as stale' : 'Choose a target memory first'}
           onClick={() => onAction(suggestion, 'retire', targetId ? { asset_id: targetId } : {})}
         >
           <AlertTriangle className="h-4 w-4" />
           Retire stale
         </Button>
-        <Button size="sm" variant="ghost" onClick={() => onAction(suggestion, 'reject', {})}>
+        <Button
+          size="sm"
+          variant="ghost"
+          title="Dismiss this suggestion without saving it"
+          onClick={() => onAction(suggestion, 'reject', {})}
+        >
           <X className="h-4 w-4" />
           Reject
         </Button>
