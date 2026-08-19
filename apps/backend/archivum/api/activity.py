@@ -222,11 +222,8 @@ def _source_anchor(
 def _source_id_from_item(item_id: str, prefix: str, at: str) -> str | None:
     """Recover the store's own id from an activity id."""
     body = item_id[len(prefix) :]
-    if prefix == "memory:":
-        # "memory:{asset_id}:{version}"
-        return body.rsplit(":", 1)[0] or None
-    if prefix == "suggestion:":
-        return body or None
+    # Return the key the source's SQL compares on, which is the whole tail of
+    # the activity id — for memory that includes the version suffix.
     return body or None
 
 

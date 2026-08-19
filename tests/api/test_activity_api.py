@@ -216,3 +216,43 @@ async def test_activity_keeps_memory_records_tied_on_timestamp(env):
     memories = [item_id for item_id in seen if "memory:atom:" in item_id]
     assert len(memories) == 6, f"cursor dropped tied memory records: {len(memories)} of 6"
     assert len(seen) == len(set(seen))
+
+
+async def test_activity_handles_prefix_related_memory_ids(env):
+    """Asset ids where one is a prefix of another sort differently once the
+    version suffix is appended: "role:1" vs "role2:1" reverses the raw order.
+    The SQL cursor has to compare the same key the feed sorts by.
+    """
+    client = env
+    tied_at = "2026-08-19T09:00:00+00:00"
+    ids = ["memory:persona:role", "memory:persona:role2", "memory:persona:role10"]
+    async with sqlite_mod.get_db() as conn:
+        for asset_id in ids:
+            await conn.execute(
+                "INSERT INTO memory_assets (id, wiki_id, asset_type, layer, name, owner, "
+                "scope, status, visibility, version, summary, body, tags, metadata, "
+                "citations, supersedes, superseded_by, conflict_lineage, created_at, updated_at) "
+                "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                (
+                    asset_id, "default", "persona", "L3", asset_id, "person:self",
+                    "person:self", "active", "private", 1, asset_id, "", "[]", "{}",
+                    "[]", "[]", "[]", "[]", tied_at, tied_at,
+                ),
+            )
+        await conn.commit()
+
+    seen: list[str] = []
+    cursor = None
+    for _ in range(6):
+        suffix = f"&before={cursor}" if cursor else ""
+        page = client.get(f"/api/activity?limit=1{suffix}").json()
+        seen.extend(item["id"] for item in page["items"])
+        cursor = page["next_before"]
+        if not cursor:
+            break
+
+    for asset_id in ids:
+        assert any(item_id.startswith(f"memory:{asset_id}:") for item_id in seen), (
+            f"{asset_id} was dropped by the cursor"
+        )
+    assert len(seen) == len(set(seen))

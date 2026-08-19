@@ -419,7 +419,14 @@ class MemoryAssetRegistry:
             # Row-value comparison so a capped slice can walk through a run of
             # records sharing updated_at instead of returning the same top rows.
             if before_id:
-                clauses.append("(updated_at < ? OR (updated_at = ? AND id < ?))")
+                # Compare on id||':'||version, which is exactly the tail of the
+                # activity id the feed orders by. Comparing the raw id would
+                # disagree whenever one asset id is a prefix of another
+                # ("memory:persona:role" vs "memory:persona:role2").
+                clauses.append(
+                    "(updated_at < ? OR (updated_at = ? "
+                    "AND (id || ':' || CAST(version AS TEXT)) < ?))"
+                )
                 params.extend([before_inclusive, before_inclusive, before_id])
             elif exclude_tied:
                 clauses.append("updated_at < ?")
@@ -430,10 +437,10 @@ class MemoryAssetRegistry:
         params.append(max(limit, 0))
         async with self._conn.execute(
             f"SELECT * FROM memory_assets WHERE {' AND '.join(clauses)} "
-            # Tie-break descending so a capped slice of records sharing an
-            # updated_at returns the same rows the activity feed orders first;
-            # ascending here would strand the rest behind the cursor.
-            "ORDER BY updated_at DESC, id DESC LIMIT ?",
+            # Tie-break on the same key the activity feed sorts by, descending,
+            # so a capped slice of records sharing an updated_at returns the rows
+            # the feed would order first.
+            "ORDER BY updated_at DESC, (id || ':' || CAST(version AS TEXT)) DESC LIMIT ?",
             params,
         ) as cursor:
             rows = await cursor.fetchall()

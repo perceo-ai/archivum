@@ -12,7 +12,7 @@ import aiosqlite
 
 from archivum.config import Settings, get_settings
 from archivum.knowledge.suggestions import init_suggestion_schema
-from archivum.memory.schema import MEMORY_SCHEMA
+from archivum.memory.registry import init_memory_schema
 from archivum.store.schema import EVIDENCE_SCHEMA
 
 # ── Schema ────────────────────────────────────────────────────────────────────
@@ -256,7 +256,12 @@ async def init_db(settings: Settings) -> None:
     async with get_db() as db:
         await db.executescript(_SCHEMA)
         await db.executescript(EVIDENCE_SCHEMA)
-        await db.executescript(MEMORY_SCHEMA)
+        # init_memory_schema, not a bare MEMORY_SCHEMA executescript: the
+        # script only creates missing tables, while the columns added since the
+        # first release (conflict_lineage, supersedes, approved_by, ...) arrive
+        # through ALTER TABLE. A database created before those columns existed
+        # would otherwise run without them and fail at query time.
+        await init_memory_schema(db)
         await init_suggestion_schema(db)
         await db.commit()
 
@@ -821,7 +826,12 @@ async def list_ingest_logs(
     params: list[Any] = [wiki_id]
     if before_inclusive:
         if before_id:
-            clauses.append("(created_at < ? OR (created_at = ? AND id < ?))")
+            # CAST: the activity id embeds this row id as text, so the feed
+            # compares "ingest:9" against "ingest:10" as strings. An integer
+            # comparison here would order them the other way round.
+            clauses.append(
+                "(created_at < ? OR (created_at = ? AND CAST(id AS TEXT) < ?))"
+            )
             params.extend([before_inclusive, before_inclusive, before_id])
         elif exclude_tied:
             clauses.append("created_at < ?")
@@ -833,7 +843,7 @@ async def list_ingest_logs(
     async with get_db() as db:
         async with db.execute(
             f"SELECT * FROM ingest_log WHERE {' AND '.join(clauses)} "
-            "ORDER BY created_at DESC, id DESC LIMIT ?",
+            "ORDER BY created_at DESC, CAST(id AS TEXT) DESC LIMIT ?",
             params,
         ) as cur:
             rows = await cur.fetchall()
