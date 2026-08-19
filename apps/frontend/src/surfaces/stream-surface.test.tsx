@@ -20,6 +20,17 @@ describe('the stream is home', () => {
     vi.clearAllMocks();
   });
 
+  it('sends a vault that has never been set up to the setup flow', () => {
+    const source = fs.readFileSync(path.resolve('src/App.tsx'), 'utf8');
+
+    // Without this the first run of a fresh install lands on an empty stream
+    // with no person:self to hang anything off.
+    expect(source).toContain('owner.needs_setup');
+    expect(source).toContain("navigate('/setup', { replace: true })");
+    // Setup writes through to the API, so it lives behind auth.
+    expect(source).toMatch(/ProtectedRoutes[\s\S]*path="\/setup"/);
+  });
+
   it('opens on the stream, not a dashboard', () => {
     const source = fs.readFileSync(path.resolve('src/App.tsx'), 'utf8');
 

@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { BrowserRouter, Routes, Route, Navigate, useNavigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { AppProvider, applyTheme, useAppState, useAppDispatch } from './store';
 import { ToastProvider } from './components/ui/Toast';
 import AppShell from './shell/AppShell';
@@ -15,12 +15,13 @@ import PublicWikiPage from './pages/PublicWikiPage';
 import SettingsPage from './pages/SettingsPage';
 import IngestPanel from './components/IngestPanel';
 import SetupPage from './pages/SetupPage';
-import { listPages, refreshSession } from './api';
+import { getOwner, listPages, refreshSession } from './api';
 
 function ProtectedRoutes() {
   const { isAuthenticated, pagesLoaded, theme } = useAppState();
   const dispatch = useAppDispatch();
   const navigate = useNavigate();
+  const location = useLocation();
 
   useEffect(() => {
     applyTheme(theme);
@@ -48,6 +49,25 @@ function ProtectedRoutes() {
     loadPages();
   }, [dispatch, navigate]);
 
+  // A vault whose person:self has never been named has nothing to show and no
+  // root to hang anything off, so send the owner to setup rather than to an
+  // empty stream. Once they name themselves the flag flips and this stops.
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    if (location.pathname.startsWith('/setup')) return;
+    let cancelled = false;
+    getOwner()
+      .then((owner) => {
+        if (!cancelled && owner.needs_setup) navigate('/setup', { replace: true });
+      })
+      .catch(() => {
+        // Never block the app on this check.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [isAuthenticated, location.pathname, navigate]);
+
   if (!pagesLoaded && !isAuthenticated) {
     return (
       <div className="flex items-center justify-center h-full">
@@ -58,6 +78,9 @@ function ProtectedRoutes() {
 
   return (
     <Routes>
+      {/* Full-screen, outside the shell: setup has no vault to show yet. */}
+      <Route path="/setup" element={<SetupPage />} />
+
       <Route element={<AppShell />}>
         <Route path="/" element={<StreamSurface />} />
         <Route path="/entries" element={<EverythingSurface />} />
@@ -115,7 +138,6 @@ function AppRoutes() {
       <Route path="/share/:token" element={<SharePage />} />
       <Route path="/public" element={<PublicWikiPage />} />
       <Route path="/public/wiki/*" element={<PublicWikiPage />} />
-      <Route path="/setup" element={<SetupPage />} />
       <Route path="/*" element={<ProtectedRoutes />} />
     </Routes>
   );
