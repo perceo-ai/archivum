@@ -110,6 +110,33 @@ def _tags_from(markdown: str) -> list[str]:
     return []
 
 
+def ensure_frontmatter(markdown: str, *, title: str, tags: list[str] | None = None) -> str:
+    """Make the file carry its own title and tags.
+
+    The API takes metadata from the request body while the vault is edited by
+    hand, so without this the title would live only in SQLite: hand-edit the
+    file afterwards and a reindex, deriving from the file, would rename the page
+    out from under you. Writing it into frontmatter keeps one source of truth —
+    the file — which is the whole premise of a vault you own.
+
+    Existing frontmatter is respected: it is the file already speaking for
+    itself, and silently rewriting someone's YAML would be worse than the
+    problem.
+    """
+    tags = tags or []
+    body = markdown.lstrip("\n")
+    if body.lstrip().startswith("---"):
+        return markdown
+
+    lines = [f"title: {title}"] if title else []
+    if tags:
+        rendered = ", ".join(tags)
+        lines.append(f"tags: [{rendered}]")
+    if not lines:
+        return markdown
+    return "---\n" + "\n".join(lines) + "\n---\n\n" + markdown.lstrip("\n")
+
+
 async def _project_graph(
     result: ReindexResult, operation, *args: Any, label: str
 ) -> None:
@@ -159,6 +186,7 @@ async def reindex_page(
     force: bool = False,
     authored_by: str = "user",
     reason: str = "",
+    distill: bool = True,
 ) -> ReindexResult:
     """Bring every index in line with the markdown file for `slug`.
 
@@ -215,6 +243,12 @@ async def reindex_page(
     except Exception as exc:  # noqa: BLE001 - search is rebuildable
         logger.warning("qdrant upsert for %s failed: %s", slug, exc)
         result.degraded.append("search")
+
+    if distill:
+        # Queued, never inline: distillation may reach a model, and indexing has
+        # to stay fast enough to run on every keystroke-driven save and every
+        # watcher sweep.
+        await sqlite.enqueue_distillation(slug, wiki_id, kind="page")
 
     result.action = "indexed"
     return result
@@ -297,6 +331,10 @@ async def reconcile_vault(
                     wiki_id=wiki_id,
                     settings=settings,
                     force=force,
+                    # `force` is the repair path — rebuilding projections that
+                    # were lost, not reacting to new content. Queueing a model
+                    # pass over the whole vault for that would be wasteful.
+                    distill=not force,
                     reason="reconcile",
                 )
             )

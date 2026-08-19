@@ -121,6 +121,10 @@ CREATE TABLE IF NOT EXISTS distill_queue (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
     wiki_id     TEXT    NOT NULL DEFAULT 'default',
     source_id   TEXT    NOT NULL,
+    -- A page queues by slug and a captured source by id; the worker routes on
+    -- this rather than guessing from the identifier's shape.
+    kind        TEXT    NOT NULL DEFAULT 'source'
+                CHECK (kind IN ('source', 'page')),
     status      TEXT    NOT NULL DEFAULT 'pending'
                 CHECK (status IN ('pending', 'running', 'done', 'error')),
     attempts    INTEGER NOT NULL DEFAULT 0,
@@ -1029,7 +1033,9 @@ async def list_invite_tokens(wiki_id: str = "default") -> list[dict[str, Any]]:
 
 # ── Distillation queue ───────────────────────────────────────────────────────
 
-async def enqueue_distillation(source_id: str, wiki_id: str = "default") -> None:
+async def enqueue_distillation(
+    source_id: str, wiki_id: str = "default", kind: str = "source"
+) -> None:
     """Mark a captured source as needing distillation.
 
     Idempotent: re-capturing the same source resets it to pending rather than
@@ -1039,12 +1045,12 @@ async def enqueue_distillation(source_id: str, wiki_id: str = "default") -> None
     async with get_db() as db:
         await db.execute(
             """
-            INSERT INTO distill_queue (wiki_id, source_id, status, created_at, updated_at)
-            VALUES (?,?, 'pending', ?, ?)
+            INSERT INTO distill_queue (wiki_id, source_id, kind, status, created_at, updated_at)
+            VALUES (?,?,?, 'pending', ?, ?)
             ON CONFLICT(wiki_id, source_id) DO UPDATE SET
                 status='pending', error=NULL, updated_at=excluded.updated_at
             """,
-            (wiki_id, source_id, now, now),
+            (wiki_id, source_id, kind, now, now),
         )
         await db.commit()
 

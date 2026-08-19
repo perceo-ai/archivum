@@ -100,3 +100,45 @@ async def test_capture_enqueues_distillation():
     source = inspect.getsource(capture.capture_endpoint)
     assert "enqueue_distillation" in source
     assert "distill_conversation" not in source
+
+
+async def test_a_page_you_wrote_gets_queued_for_distillation(settings, tmp_path):
+    """Only captured conversations ever distilled, so a note you wrote by hand —
+    the most deliberate thing in the vault — never proposed anything."""
+    from archivum.indexing import reindex_page
+
+    settings.wiki_dir = tmp_path / "wiki"
+    settings.wiki_dir.mkdir(parents=True, exist_ok=True)
+    (settings.wiki_dir / "note.md").write_text("# A note\n\nI decided to ship it.\n")
+
+    await reindex_page("note", wiki_id="default", settings=settings)
+
+    jobs = await sqlite_mod.list_distillation_jobs("default")
+    assert [(j["source_id"], j["kind"]) for j in jobs] == [("note", "page")]
+
+
+async def test_reindex_can_skip_distillation(settings, tmp_path):
+    """Bulk reconciles should not queue the whole vault for a model pass."""
+    from archivum.indexing import reindex_page
+
+    settings.wiki_dir = tmp_path / "wiki2"
+    settings.wiki_dir.mkdir(parents=True, exist_ok=True)
+    (settings.wiki_dir / "note.md").write_text("# A note\n")
+
+    await reindex_page("note", wiki_id="default", settings=settings, distill=False)
+
+    assert await sqlite_mod.list_distillation_jobs("default") == []
+
+
+async def test_a_page_is_distilled_as_authored_text(settings):
+    """The extractor works on turns, so a page becomes one authored turn rather
+    than a second input shape to maintain."""
+    from archivum.distillation import page_as_conversation
+
+    loaded = page_as_conversation("topics/a", "A", "I decided to ship the lexical pass.")
+
+    assert loaded.source_id == "page:topics/a"
+    assert len(loaded.conversation.turns) == 1
+    assert loaded.conversation.turns[0].role == "user"
+    # Provenance points at the page itself, not at some other source's chunk.
+    assert loaded.chunk_ids == ["page:topics/a:chunk:0"]

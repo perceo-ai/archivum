@@ -304,6 +304,10 @@ class OwnerProfile(BaseModel):
     pending_review: int = 0
 
 
+# memory/schema.py seeds person:self with the name "Self" as a placeholder, so
+# the name doubles as "has the owner introduced themselves?". That misfires for
+# anyone actually called Self, but the alternative is a schema change to carry a
+# boolean; the seeded row is also recognisable by never having been updated.
 _PLACEHOLDER_SELF_NAMES = {"", "Self"}
 
 
