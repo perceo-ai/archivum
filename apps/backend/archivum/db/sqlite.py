@@ -321,6 +321,7 @@ async def list_recent_pages(
     limit: int = 50,
     before_inclusive: str | None = None,
     before_slug: str | None = None,
+    exclude_tied: bool = False,
 ) -> list[dict[str, Any]]:
     """Pages ordered by last touch, newest first, for the activity stream.
 
@@ -337,6 +338,9 @@ async def list_recent_pages(
         if before_slug:
             clauses.append("(updated_at < ? OR (updated_at = ? AND slug < ?))")
             params.extend([before_inclusive, before_inclusive, before_slug])
+        elif exclude_tied:
+            clauses.append("updated_at < ?")
+            params.append(before_inclusive)
         else:
             clauses.append("updated_at <= ?")
             params.append(before_inclusive)
@@ -810,12 +814,21 @@ async def list_ingest_logs(
     wiki_id: str = "default",
     limit: int = 50,
     before_inclusive: str | None = None,
+    before_id: str | None = None,
+    exclude_tied: bool = False,
 ) -> list[dict[str, Any]]:
     clauses = ["wiki_id=?"]
     params: list[Any] = [wiki_id]
     if before_inclusive:
-        clauses.append("created_at <= ?")
-        params.append(before_inclusive)
+        if before_id:
+            clauses.append("(created_at < ? OR (created_at = ? AND id < ?))")
+            params.extend([before_inclusive, before_inclusive, before_id])
+        elif exclude_tied:
+            clauses.append("created_at < ?")
+            params.append(before_inclusive)
+        else:
+            clauses.append("created_at <= ?")
+            params.append(before_inclusive)
     params.append(limit)
     async with get_db() as db:
         async with db.execute(

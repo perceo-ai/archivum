@@ -299,6 +299,8 @@ class SuggestionRepository:
         target_prefixes: list[str] | None = None,
         status: SuggestionStatus | None = "pending",
         before_inclusive: str | None = None,
+        before_id: str | None = None,
+        exclude_tied: bool = False,
     ) -> list[MemorySuggestion]:
         clauses: list[str] = []
         params: list[str] = []
@@ -322,14 +324,23 @@ class SuggestionRepository:
             clauses.append("status=?")
             params.append(status)
         if before_inclusive:
-            # Inclusive: the caller resolves ties on the full ordering key.
-            clauses.append("updated_at <= ?")
-            params.append(before_inclusive)
+            # Row-value comparison so a capped slice can walk a run of records
+            # sharing updated_at rather than repeating its top rows.
+            if before_id:
+                clauses.append("(updated_at < ? OR (updated_at = ? AND id < ?))")
+                params.extend([before_inclusive, before_inclusive, before_id])
+            elif exclude_tied:
+                clauses.append("updated_at < ?")
+                params.append(before_inclusive)
+            else:
+                clauses.append("updated_at <= ?")
+                params.append(before_inclusive)
 
         where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
         async with self._conn.execute(
             f"SELECT * FROM memory_suggestions {where} "
-            "ORDER BY updated_at DESC, created_at DESC, id ASC",
+            # Descending tie-break, matching the activity feed's merge order.
+            "ORDER BY updated_at DESC, created_at DESC, id DESC",
             params,
         ) as cursor:
             rows = await cursor.fetchall()

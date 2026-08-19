@@ -192,6 +192,44 @@ def _memory_items(assets: list[Any]) -> list[ActivityItem]:
 _CURSOR_SEP = "\x1f"
 
 
+def _source_anchor(
+    cursor: tuple[str, str] | None, prefix: str
+) -> tuple[str | None, str | None, bool]:
+    """Where a single source should resume, given the merged cursor.
+
+    The feed orders on (timestamp, activity id) descending, and activity ids
+    are prefixed by source. For records tied on the cursor's timestamp, whether
+    a source still has rows to emit depends on how its prefix compares with the
+    cursor's:
+
+    * same source  -> resume strictly below the cursor's own id
+    * sorts after   -> every tied row is still ahead, keep them all
+    * sorts before  -> its tied rows were already emitted, skip that second
+
+    Returns (before_at, before_id, exclude_tied).
+    """
+    if not cursor:
+        return (None, None, False)
+    at, item_id = cursor
+    cursor_prefix = f"{item_id.split(':', 1)[0]}:" if ":" in item_id else ""
+    if cursor_prefix == prefix:
+        return (at, _source_id_from_item(item_id, prefix, at), False)
+    if cursor_prefix > prefix:
+        return (at, None, False)
+    return (at, None, True)
+
+
+def _source_id_from_item(item_id: str, prefix: str, at: str) -> str | None:
+    """Recover the store's own id from an activity id."""
+    body = item_id[len(prefix) :]
+    if prefix == "memory:":
+        # "memory:{asset_id}:{version}"
+        return body.rsplit(":", 1)[0] or None
+    if prefix == "suggestion:":
+        return body or None
+    return body or None
+
+
 def _page_slug_from_id(item_id: str, at: str) -> str | None:
     """Page item ids are `page:{slug}:{timestamp}`; the SQL cursor needs the slug.
 
@@ -245,27 +283,50 @@ async def get_activity(
     slice_size = min(limit * 2, 200)
 
     at = cursor[0] if cursor else None
-    # Anchor every source at the cursor. Without this each one keeps returning
-    # its newest rows and pagination stalls as soon as a run of records shares a
-    # timestamp.
+    # Anchor every source at the cursor. Without this each keeps returning its
+    # newest rows, and pagination stalls on any run of records sharing a
+    # timestamp — which a batch import produces routinely.
+    page_at, _page_id, page_skip_tied = _source_anchor(cursor, "page:")
     pages = await sqlite.list_recent_pages(
         wiki_id,
         limit=slice_size,
-        before_inclusive=at,
+        before_inclusive=page_at,
         before_slug=_page_slug_from_id(cursor[1], cursor[0]) if cursor else None,
+        exclude_tied=page_skip_tied,
     )
-    ingests = await sqlite.list_ingest_logs(wiki_id, limit=slice_size, before_inclusive=at)
+
+    ingest_at, ingest_id, ingest_skip_tied = _source_anchor(cursor, "ingest:")
+    ingests = await sqlite.list_ingest_logs(
+        wiki_id,
+        limit=slice_size,
+        before_inclusive=ingest_at,
+        before_id=ingest_id,
+        exclude_tied=ingest_skip_tied,
+    )
+
+    sugg_at, sugg_id, sugg_skip_tied = _source_anchor(cursor, "suggestion:")
+    asset_at, asset_id, asset_skip_tied = _source_anchor(cursor, "memory:")
 
     async with sqlite.get_db() as conn:
         repo = SuggestionRepository(conn)
         # Scoped: an unfiltered listing would serialise every wiki's proposals
         # into this feed.
         suggestions = await repo.list_suggestions(
-            status=None, before_inclusive=at, **wiki_scope(wiki_id)
+            status=None,
+            before_inclusive=sugg_at,
+            before_id=sugg_id,
+            exclude_tied=sugg_skip_tied,
+            **wiki_scope(wiki_id),
         )
+        # Counted separately: `suggestions` is anchored at the cursor, so
+        # deriving the badge from it would undercount on later pages.
         pending = await repo.list_suggestions(status="pending", **wiki_scope(wiki_id))
         assets = await MemoryAssetRegistry(conn).list_assets(
-            wiki_id=wiki_id, limit=slice_size, before_inclusive=at
+            wiki_id=wiki_id,
+            limit=slice_size,
+            before_inclusive=asset_at,
+            before_id=asset_id,
+            exclude_tied=asset_skip_tied,
         )
 
     items = (

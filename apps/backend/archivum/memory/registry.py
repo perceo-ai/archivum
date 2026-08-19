@@ -394,6 +394,8 @@ class MemoryAssetRegistry:
         scope: str | None = None,
         page_slug: str | None = None,
         before_inclusive: str | None = None,
+        before_id: str | None = None,
+        exclude_tied: bool = False,
         limit: int = _ASSET_LIST_LIMIT,
     ) -> list[MemoryAsset]:
         clauses = ["wiki_id=?"]
@@ -414,12 +416,24 @@ class MemoryAssetRegistry:
             clauses.append("page_slug=?")
             params.append(page_slug)
         if before_inclusive:
-            clauses.append("updated_at <= ?")
-            params.append(before_inclusive)
+            # Row-value comparison so a capped slice can walk through a run of
+            # records sharing updated_at instead of returning the same top rows.
+            if before_id:
+                clauses.append("(updated_at < ? OR (updated_at = ? AND id < ?))")
+                params.extend([before_inclusive, before_inclusive, before_id])
+            elif exclude_tied:
+                clauses.append("updated_at < ?")
+                params.append(before_inclusive)
+            else:
+                clauses.append("updated_at <= ?")
+                params.append(before_inclusive)
         params.append(max(limit, 0))
         async with self._conn.execute(
             f"SELECT * FROM memory_assets WHERE {' AND '.join(clauses)} "
-            "ORDER BY updated_at DESC, id ASC LIMIT ?",
+            # Tie-break descending so a capped slice of records sharing an
+            # updated_at returns the same rows the activity feed orders first;
+            # ascending here would strand the rest behind the cursor.
+            "ORDER BY updated_at DESC, id DESC LIMIT ?",
             params,
         ) as cursor:
             rows = await cursor.fetchall()

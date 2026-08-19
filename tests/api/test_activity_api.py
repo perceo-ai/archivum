@@ -176,3 +176,43 @@ async def test_activity_cursor_keeps_records_tied_on_timestamp(env):
     assert len(seen) == len(set(seen)), "pagination repeated a record"
     tied = [item_id for item_id in seen if "notes/tied-" in item_id]
     assert len(tied) == 6, f"cursor dropped tied records: got {len(tied)} of 6"
+
+
+async def test_activity_keeps_memory_records_tied_on_timestamp(env):
+    """A source whose SQL tie-breaks the opposite way to the merge strands rows.
+
+    `list_assets` caps its slice in SQL; if it tie-breaks ascending while the
+    feed orders descending, the assets it drops are already behind the cursor by
+    the time the next page is requested.
+    """
+    client = env
+    tied_at = "2026-08-19T09:00:00+00:00"
+    async with sqlite_mod.get_db() as conn:
+        for i in range(6):
+            await conn.execute(
+                "INSERT INTO memory_assets (id, wiki_id, asset_type, layer, name, owner, "
+                "scope, status, visibility, version, summary, body, tags, metadata, "
+                "citations, supersedes, superseded_by, conflict_lineage, created_at, updated_at) "
+                "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                (
+                    f"memory:atom:{i}", "default", "wiki", "L1", f"Atom {i}", "person:self",
+                    "person:self", "active", "private", 1, f"Atom {i}", "", "[]", "{}",
+                    "[]", "[]", "[]", "[]", tied_at, tied_at,
+                ),
+            )
+        await conn.commit()
+
+    seen: list[str] = []
+    cursor = None
+    for _ in range(6):
+        suffix = f"&before={cursor}" if cursor else ""
+        page = client.get(f"/api/activity?limit=2{suffix}").json()
+        seen.extend(item["id"] for item in page["items"])
+        cursor = page["next_before"]
+        if not cursor:
+            break
+
+    # Activity ids for memory are "memory:{asset_id}:{version}".
+    memories = [item_id for item_id in seen if "memory:atom:" in item_id]
+    assert len(memories) == 6, f"cursor dropped tied memory records: {len(memories)} of 6"
+    assert len(seen) == len(set(seen))
