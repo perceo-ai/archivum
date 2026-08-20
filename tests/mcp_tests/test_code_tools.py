@@ -112,3 +112,71 @@ async def test_an_agent_asking_about_code_gets_cited_records(vault, tmp_path, mo
     labels = {node["label"] for node in package["nodes"]}
     assert "haversine" in labels
     assert package["citations"], "code context must carry citations into files"
+
+
+async def test_an_agent_can_recall_a_fix_from_an_error(vault, tmp_path, mock_kuzu_conn):
+    """The payoff at 2am: paste the error, get what fixed it last time."""
+    from archivum.capture.schema import Conversation, ToolCall, Turn
+    from archivum.knowledge.repository import KnowledgeRepository
+    from archivum.mcp.server import recall_fix
+    from archivum.sessions import record_session_work
+
+    await sqlite_mod.init_db(vault)
+    async with sqlite_mod.get_db() as conn:
+        await record_session_work(
+            KnowledgeRepository(conn),
+            conversation=Conversation(
+                session_id="s",
+                interface="claude_code_import",
+                started_at="",
+                turns=(
+                    Turn(role="user", text="save blows up with KeyError: 'slug'"),
+                    Turn(
+                        role="assistant",
+                        text="The frontmatter parser dropped the key.",
+                        tool_calls=(
+                            ToolCall(name="Edit", arguments={"file_path": "/a.py"}, result="ok"),
+                        ),
+                    ),
+                ),
+            ),
+            source_id="src-1",
+            wiki_id="default",
+        )
+        await conn.commit()
+
+    found = await recall_fix("KeyError: 'title' when saving")
+
+    assert found["fixes"], found
+    assert "KeyError" in found["fixes"][0]["symptom"]
+    assert found["fixes"][0]["diagnosis"]
+
+
+async def test_recalling_an_unfamiliar_error_says_so(vault, tmp_path, mock_kuzu_conn):
+    from archivum.mcp.server import recall_fix
+
+    await sqlite_mod.init_db(vault)
+    found = await recall_fix("ZeroDivisionError: division by zero")
+
+    assert found["fixes"] == []
+    assert found["reason"], "an empty answer should explain itself"
+
+
+async def test_an_agent_can_record_work_it_judged_worth_keeping(vault, tmp_path, mock_kuzu_conn):
+    """Capture is automatic, but an agent still knows when something mattered."""
+    from archivum.knowledge.repository import KnowledgeRepository
+    from archivum.mcp.server import record_work
+
+    await sqlite_mod.init_db(vault)
+    result = await record_work(
+        request="the deploy hangs on migrate",
+        outcome="Postgres lock held by a stale session; killed it and added a timeout.",
+        changed_paths=["/deploy/migrate.sh"],
+        verified_by="make deploy",
+    )
+
+    assert result["recorded"]
+    async with sqlite_mod.get_db() as conn:
+        stored = await KnowledgeRepository(conn).get_object(result["id"])
+    assert stored is not None
+    assert stored.kind == "session"

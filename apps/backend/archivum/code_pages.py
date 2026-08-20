@@ -171,6 +171,7 @@ def render_index_page(
     *,
     repo_name: str,
     communities: list[Community],
+    fixes: list[KnowledgeObject] | None = None,
 ) -> str:
     lines = [
         f"# {repo_name}",
@@ -193,6 +194,30 @@ def render_index_page(
             lines.append(f"- [[{slug}|{community.label}]] — {community.size} records")
     else:
         lines.append("- Nothing clustered yet. Index a larger repository, or check the ingest log.")
+
+    if fixes:
+        lines += [
+            "",
+            "## What broke before",
+            "",
+            "Trouble this repository has already had, and what settled it.",
+            "",
+        ]
+        for fix in fixes:
+            symptom = str(fix.properties.get("symptom", "")) or fix.label
+            diagnosis = str(fix.properties.get("diagnosis", ""))
+            verified = str(fix.properties.get("verified_by", ""))
+            lines.append(f"- **{symptom}**")
+            if diagnosis:
+                lines.append(f"  - {diagnosis}")
+            changed = fix.properties.get("changed_paths") or []
+            if changed:
+                lines.append(f"  - Changed: {', '.join(str(path) for path in changed)}")
+            # Say plainly whether this was checked. An unverified fix is still
+            # worth keeping; presenting it as proven would not be.
+            lines.append(
+                f"  - Verified by `{verified}`" if verified else "  - Not verified by a check"
+            )
 
     if report.surprising_links:
         lines += [
@@ -235,6 +260,30 @@ def _is_bookkeeping(
     return bool(kinds) and kinds <= _BOOKKEEPING_KINDS
 
 
+async def _fixes_for(repo: "CodeRepo") -> list[KnowledgeObject]:
+    """Remembered repairs that reached this repository's code.
+
+    Fixes live in the vault's scope and reach code through a `bridge` edge, so
+    they are found by walking that edge rather than by scope.
+    """
+    async with sqlite.get_db() as conn:
+        knowledge = KnowledgeRepository(conn)
+        symbol_ids = {
+            object_.id
+            for object_ in await knowledge.list_objects(scope=repo.scope, limit=10_000)
+        }
+        edges = await knowledge.list_relationships(scope="bridge")
+        fix_ids = sorted(
+            {
+                edge.src_id
+                for edge in edges
+                if edge.rel_type == "fixes" and edge.dst_id in symbol_ids
+            }
+        )
+        found = [await knowledge.get_object(fix_id) for fix_id in fix_ids]
+    return [fix for fix in found if fix is not None][:MAX_SURPRISING]
+
+
 async def write_repo_pages(repo: "CodeRepo", *, settings: Settings) -> int:
     """Write the index and one page per cluster. Returns how many pages landed.
 
@@ -255,6 +304,7 @@ async def write_repo_pages(repo: "CodeRepo", *, settings: Settings) -> int:
         edges = await knowledge.list_relationships(scope=repo.scope)
 
     objects_by_id = {object_.id: object_ for object_ in objects}
+    fixes = await _fixes_for(repo)
     communities = [
         community
         for community in report.communities
@@ -268,7 +318,10 @@ async def write_repo_pages(repo: "CodeRepo", *, settings: Settings) -> int:
             f"{folder}/index",
             repo.name,
             render_index_page(
-                report, repo_name=repo.name, communities=communities
+                report,
+                repo_name=repo.name,
+                communities=communities,
+                fixes=fixes,
             ),
             ["code", "repo"],
         )

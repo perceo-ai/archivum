@@ -174,3 +174,116 @@ async def test_recording_the_same_session_twice_does_not_duplicate_it(vault, tmp
 
     assert len(sessions) == 1
     assert len({rel.id for rel in links}) == len(links)
+
+
+# ── Fix memory, stored and recalled ───────────────────────────────────────
+
+
+def _bugfix_session(repo: Path) -> Conversation:
+    return Conversation(
+        session_id="s-fix",
+        interface="claude_code_import",
+        started_at="2026-08-20T10:00:00Z",
+        turns=(
+            Turn(role="user", text="haversine raises TypeError: bad operand on save"),
+            Turn(
+                role="assistant",
+                text="normalise was returning a string.",
+                tool_calls=(
+                    ToolCall(name="Bash", arguments={"command": "pytest"}, result="1 failed", ok=False),
+                    ToolCall(name="Edit", arguments={"file_path": str(repo / "geo.py")}, result="ok"),
+                    ToolCall(name="Bash", arguments={"command": "pytest"}, result="ok", ok=True),
+                ),
+            ),
+        ),
+    )
+
+
+async def test_a_bug_fix_session_leaves_a_fix_record(vault, tmp_path, mock_kuzu_conn):
+    repo = await _indexed_repo(vault, tmp_path)
+
+    async with sqlite_mod.get_db() as conn:
+        knowledge = KnowledgeRepository(conn)
+        await record_session_work(
+            knowledge,
+            conversation=_bugfix_session(repo),
+            source_id="src-fix",
+            wiki_id="default",
+        )
+        fix = await knowledge.get_object("fix:src-fix")
+
+    assert fix is not None
+    assert "TypeError" in fix.properties["symptom"]
+    assert fix.properties["verified_by"] == "pytest"
+    assert fix.properties["diagnosis"]
+
+
+async def test_a_fix_links_to_the_symbols_it_repaired(vault, tmp_path, mock_kuzu_conn):
+    repo = await _indexed_repo(vault, tmp_path)
+
+    async with sqlite_mod.get_db() as conn:
+        knowledge = KnowledgeRepository(conn)
+        await record_session_work(
+            knowledge,
+            conversation=_bugfix_session(repo),
+            source_id="src-fix",
+            wiki_id="default",
+        )
+        links = await knowledge.list_relationships(scope="bridge")
+
+    fixes = [rel for rel in links if rel.rel_type == "fixes"]
+    assert fixes, "a fix should reach the code it repaired"
+    assert any(rel.dst_id.endswith("haversine") for rel in fixes)
+
+
+async def test_an_ordinary_session_leaves_no_fix_record(vault, tmp_path, mock_kuzu_conn):
+    repo = await _indexed_repo(vault, tmp_path)
+
+    async with sqlite_mod.get_db() as conn:
+        knowledge = KnowledgeRepository(conn)
+        await record_session_work(
+            knowledge,
+            conversation=_session(repo, "Add a settings page"),
+            source_id="src-feat",
+            wiki_id="default",
+        )
+        assert await knowledge.get_object("fix:src-feat") is None
+
+
+async def test_the_same_error_recalls_the_earlier_fix(vault, tmp_path, mock_kuzu_conn):
+    """The payoff: the error you are staring at, answered with what fixed it."""
+    from archivum.fixes import recall_fixes
+
+    repo = await _indexed_repo(vault, tmp_path)
+
+    async with sqlite_mod.get_db() as conn:
+        knowledge = KnowledgeRepository(conn)
+        await record_session_work(
+            knowledge,
+            conversation=_bugfix_session(repo),
+            source_id="src-fix",
+            wiki_id="default",
+        )
+        found = await recall_fixes(
+            knowledge, symptom="TypeError: bad operand", wiki_id="default"
+        )
+
+    assert [f.id for f in found] == ["fix:src-fix"]
+
+
+async def test_an_unfamiliar_error_recalls_nothing(vault, tmp_path, mock_kuzu_conn):
+    from archivum.fixes import recall_fixes
+
+    repo = await _indexed_repo(vault, tmp_path)
+
+    async with sqlite_mod.get_db() as conn:
+        knowledge = KnowledgeRepository(conn)
+        await record_session_work(
+            knowledge,
+            conversation=_bugfix_session(repo),
+            source_id="src-fix",
+            wiki_id="default",
+        )
+        assert await recall_fixes(
+            knowledge, symptom="ZeroDivisionError: division by zero", wiki_id="default"
+        ) == []

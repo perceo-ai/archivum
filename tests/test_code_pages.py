@@ -200,3 +200,62 @@ async def test_repo_metadata_does_not_get_a_cluster_page(vault, tmp_path, mock_k
     folder = vault.wiki_dir / "code" / "atlas"
     assert not (folder / "atlas.md").exists()
     assert (folder / "index.md").exists()
+
+
+async def test_the_index_lists_what_broke_and_what_fixed_it(vault, tmp_path, mock_kuzu_conn):
+    """The vault is where you read, so this is where fix memory belongs."""
+    from archivum.capture.schema import Conversation, ToolCall, Turn
+    from archivum.knowledge.repository import KnowledgeRepository
+    from archivum.sessions import record_session_work
+
+    await _index(vault, tmp_path)
+
+    async with sqlite_mod.get_db() as conn:
+        await record_session_work(
+            KnowledgeRepository(conn),
+            conversation=Conversation(
+                session_id="s",
+                interface="claude_code_import",
+                started_at="",
+                turns=(
+                    Turn(role="user", text="haversine crashes with TypeError: bad operand"),
+                    Turn(
+                        role="assistant",
+                        text="normalise returned a string instead of a number.",
+                        tool_calls=(
+                            ToolCall(
+                                name="Edit",
+                                arguments={"file_path": str(tmp_path / "atlas" / "geo.py")},
+                                result="ok",
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+            source_id="src-fix",
+            wiki_id="default",
+        )
+        await conn.commit()
+
+    from archivum.code_repos import get_repo
+    from archivum.code_pages import write_repo_pages
+
+    repo = await get_repo("repo:default:atlas", wiki_id="default")
+    with (
+        patch("archivum.indexing.qdrant.upsert_page", new=AsyncMock()),
+        patch("archivum.indexing.graph.upsert_page", new=AsyncMock()),
+        patch("archivum.indexing.graph.clear_references_from_page", new=AsyncMock()),
+        patch("archivum.indexing.graph.add_reference", new=AsyncMock()),
+    ):
+        await write_repo_pages(repo, settings=vault)
+
+    body = (vault.wiki_dir / "code" / "atlas" / "index.md").read_text(encoding="utf-8")
+    assert "TypeError" in body, "a remembered fix should be readable in the vault"
+    assert "normalise returned a string" in body, "including what caused it"
+
+
+async def test_a_repository_with_no_remembered_fixes_says_nothing_about_them(vault, tmp_path, mock_kuzu_conn):
+    await _index(vault, tmp_path)
+
+    body = (vault.wiki_dir / "code" / "atlas" / "index.md").read_text(encoding="utf-8")
+    assert "What broke before" not in body

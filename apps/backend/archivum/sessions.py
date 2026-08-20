@@ -21,6 +21,7 @@ from pathlib import Path
 from archivum.capture.classify import classify_session, touched_paths
 from archivum.capture.schema import Conversation
 from archivum.code_repos import list_repos
+from archivum.fixes import extract_fix, fix_id_for, fix_to_object
 from archivum.knowledge.models import Citation, KnowledgeObject, KnowledgeRelationship
 from archivum.knowledge.personal_root import ensure_personal_root, link_to_self
 from archivum.knowledge.repository import KnowledgeRepository
@@ -123,7 +124,32 @@ async def record_session_work(
     await ensure_personal_root(repo, wiki_id=wiki_id)
     await link_to_self(repo, session_id, "did_work", citation=citation)
 
-    for symbol in await _symbols_touched(repo, paths=paths, wiki_id=wiki_id):
+    touched = await _symbols_touched(repo, paths=paths, wiki_id=wiki_id)
+
+    # A bug fix leaves a second record: what the trouble was and what settled
+    # it. This is the one people actually come back for.
+    fix = extract_fix(conversation)
+    if fix is not None:
+        await repo.upsert_object(
+            fix_to_object(fix, source_id=source_id, wiki_id=wiki_id)
+        )
+        await link_to_self(repo, fix_id_for(source_id), "remembers", citation=citation)
+        for symbol in touched:
+            await repo.upsert_relationship(
+                KnowledgeRelationship(
+                    id=f"{fix_id_for(source_id)}__fixes__{symbol.id}",
+                    src_id=fix_id_for(source_id),
+                    dst_id=symbol.id,
+                    rel_type="fixes",
+                    scope="bridge",
+                    confidence=0.9 if fix.verified_by else 0.6,
+                    extraction_method="EXTRACTED",
+                    citations=[citation],
+                    properties={"verified_by": fix.verified_by},
+                )
+            )
+
+    for symbol in touched:
         await repo.upsert_relationship(
             KnowledgeRelationship(
                 # Deterministic id, so re-capturing a session that grew does not

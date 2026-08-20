@@ -14,8 +14,11 @@ from mcp.server.auth.middleware.auth_context import get_access_token
 from mcp.server.auth.provider import AccessToken
 from mcp.server.auth.settings import AuthSettings
 
-from archivum.capture.schema import Conversation, Turn
+from archivum.capture.schema import Conversation, ToolCall, Turn
 from archivum.code_repos import index_repo, list_repos, register_repo, scope_for
+from archivum.fixes import recall_fixes
+from archivum.sessions import record_session_work
+from archivum.store.hashing import sha256_text
 from archivum.capture.store import CaptureStore
 from archivum.config import Settings, get_settings
 from archivum.db import graph, qdrant_client as qdrant, sqlite
@@ -536,6 +539,94 @@ async def retrieve_code_context(
     async with sqlite.get_db() as connection:
         package = await build_package(KnowledgeRepository(connection), request)
     return package.model_dump()
+
+
+@mcp.tool()
+async def recall_fix(symptom: str, wiki_id: str = "default") -> dict[str, Any]:
+    """Have I hit this error before? Call this *before* debugging anything.
+
+    Paste the error or a description of the failure. Returns what was wrong last
+    time, what settled it, and which files changed — each cited back to the
+    session it came from. An empty answer says why it is empty rather than
+    leaving you guessing whether the store was consulted.
+    """
+    _require_key()
+    set_trace_id(new_trace_id("mcp-recall-fix"))
+    async with sqlite.get_db() as connection:
+        found = await recall_fixes(
+            KnowledgeRepository(connection), symptom=symptom, wiki_id=wiki_id
+        )
+    return {
+        "symptom": symptom,
+        "fixes": [
+            {
+                "id": fix.id,
+                "symptom": fix.properties.get("symptom", ""),
+                "diagnosis": fix.properties.get("diagnosis", ""),
+                "changed_paths": fix.properties.get("changed_paths", []),
+                "verified_by": fix.properties.get("verified_by", ""),
+                "confidence": fix.confidence,
+                "citations": [citation.model_dump() for citation in fix.citations],
+            }
+            for fix in found
+        ],
+        "reason": "" if found else "Nothing in memory matches this failure yet.",
+    }
+
+
+@mcp.tool()
+async def record_work(
+    request: str,
+    outcome: str,
+    changed_paths: list[str] | None = None,
+    verified_by: str = "",
+    wiki_id: str = "default",
+) -> dict[str, Any]:
+    """Record what you just did and why, when it is worth keeping.
+
+    Sessions are captured automatically, so this is not the only path — it is
+    the one for when you know something mattered and want it stated plainly
+    rather than inferred from a transcript. Say what was asked, what you found,
+    which files changed, and how you checked.
+    """
+    _require_key()
+    set_trace_id(new_trace_id("mcp-record-work"))
+    now = datetime.now(UTC).isoformat()
+    calls = tuple(
+        ToolCall(name="Edit", arguments={"file_path": path}, result="ok", ok=True)
+        for path in (changed_paths or [])
+    )
+    if verified_by:
+        calls = (
+            ToolCall(name="Bash", arguments={"command": verified_by}, result="failed", ok=False),
+            *calls,
+            ToolCall(name="Bash", arguments={"command": verified_by}, result="ok", ok=True),
+        )
+    conversation = Conversation(
+        session_id=f"recorded-{sha256_text(request + now)[:16]}",
+        interface="agent_report",
+        started_at=now,
+        turns=(
+            Turn(role="user", text=request),
+            Turn(role="assistant", text=outcome, tool_calls=calls),
+        ),
+    )
+    store = CaptureStore(wiki_id=wiki_id, settings=settings)
+    captured = await store.capture(conversation)
+    async with sqlite.get_db() as connection:
+        recorded = await record_session_work(
+            KnowledgeRepository(connection),
+            conversation=conversation,
+            source_id=captured.source_id,
+            wiki_id=wiki_id,
+        )
+        await connection.commit()
+    return {
+        "recorded": True,
+        "id": recorded.id,
+        "kind": recorded.properties.get("kind", "unknown"),
+        "source_id": captured.source_id,
+    }
 
 
 @mcp.tool()

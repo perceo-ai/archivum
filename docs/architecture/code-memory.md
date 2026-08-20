@@ -83,3 +83,54 @@ Re-indexing an already-known repository diffs against the last indexed SHA, re-e
 **Settings → Code memory** registers a repository and shows each one's status, record counts, and page count, polling while indexing runs.
 
 **Visualized** gains a scope picker once a repository is indexed: *Your vault* plus one button per repo. Pointed at a repository, the graph puts the repo at its centre rather than the owner, names cluster members from the report, and makes each cluster ring open the page written for it.
+
+## Remembering the Work
+
+Indexing remembers the code as it stands. Capture remembers how it got that way.
+
+Agent transcripts are watched and imported automatically — the same importer and
+redaction the manual route used, run on a poll rather than on request. Nothing
+downstream of capture (atoms, decisions, skills, `decided_in`) ever ran before,
+because nothing was capturing. Name the directories in `TRANSCRIPT_DIRS`; unset,
+the watcher does nothing rather than guessing at a path it cannot see.
+
+Each captured session becomes a small record:
+
+| Field | From |
+|---|---|
+| kind | The request that opened it — `bugfix`, `feature`, `refactor`, `investigation`, or `unknown` |
+| touched paths | Tool calls that changed a file and succeeded. A file that was only read was not changed |
+| `touched` edges | The symbols defined in those files |
+
+A request that matches no rule stays `unknown`. An invented category would be
+treated downstream as a fact.
+
+### Fixes
+
+A `bugfix` session that actually changed something and did not end on a failing
+check leaves a **fix**: symptom, diagnosis, changed paths, and the command that
+verified it. Prose describing a bug never becomes a fix, for the same reason
+prose describing a procedure never becomes a skill — a record of work has to be
+backed by work.
+
+Verification is recorded only when a check went from failing to passing. Most
+real fixes have no such check; those are kept and marked unverified rather than
+dropped or overclaimed, and they carry lower confidence.
+
+Recall matches on the *shape* of the trouble: quoted values, numbers and paths
+are stripped before comparing, so `KeyError: 'slug'` finds `KeyError: 'title'`.
+Without that every occurrence looks novel and memory never recognises anything.
+
+Fixes appear on the repository's index page under "What broke before", and are
+reachable from the code they repaired through a `fixes` edge.
+
+### Tools an agent should reach for
+
+| Tool | When |
+|---|---|
+| `recall_fix(symptom)` | Before debugging anything. Paste the error |
+| `retrieve_code_context(query, repo, include_source)` | Before changing unfamiliar code |
+| `record_work(request, outcome, changed_paths, verified_by)` | After work that mattered |
+
+`skills/archivum-memory/SKILL.md` packages this loop for agents that support
+skills. Copy it into `~/.claude/skills/` to have it loaded automatically.
