@@ -22,6 +22,7 @@ import { Dialog } from '../components/ui/Dialog';
 import { useToast } from '../components/ui/Toast';
 import PageActions from '../components/PageActions';
 import EntryMemory from '../surfaces/EntryMemory';
+import ReindexControl from '../surfaces/ReindexControl';
 import { Icon } from '../shell/Icon';
 import { useAppState } from '../store';
 import { mergeFrontmatterProperties, parseFrontmatter } from './frontmatter';
@@ -292,6 +293,7 @@ export default function WikiPage() {
             </span>
           </div>
         )}
+        <ReindexControl slug={slugStr} />
       </div>
 
       <div className="wiki-document-gutter group/document shrink-0 pb-2 pt-7">

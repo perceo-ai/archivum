@@ -158,6 +158,44 @@ export async function createPage(input: CreatePageInput): Promise<Page> {
   return res.json();
 }
 
+export interface ReindexResult {
+  slug: string;
+  action: 'indexed' | 'unchanged' | 'removed' | 'missing';
+  degraded: string[];
+}
+
+/**
+ * Re-read this page from disk and rebuild everything derived from it.
+ *
+ * The vault is plain markdown you can edit with any tool, so this is the
+ * manual counterpart to the watcher: the file is the truth, and the indexes
+ * are being told to catch up.
+ */
+export async function reindexPage(slug: string): Promise<ReindexResult> {
+  const res = await apiFetch(`/api/pages/${encodeSlugPath(slug)}/reindex`, { method: 'POST' });
+  return res.json();
+}
+
+export interface DerivedRecord {
+  id: string;
+  kind: string;
+  label: string;
+  slug: string | null;
+  confidence: number;
+}
+
+export interface DerivedResponse {
+  source_id: string;
+  records: DerivedRecord[];
+  pages: number;
+}
+
+/** What a source actually produced, walked through its provenance citations. */
+export async function listSourceDerived(sourceId: string): Promise<DerivedResponse> {
+  const res = await apiFetch(`/api/sources/${encodeSlugPath(sourceId)}/derived`);
+  return res.json();
+}
+
 export async function deletePage(slug: string): Promise<void> {
   await apiFetch(`/api/pages/${encodeSlugPath(slug)}`, { method: 'DELETE' });
 }
