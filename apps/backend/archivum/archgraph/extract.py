@@ -81,6 +81,49 @@ def _extract_generic(
             current = current.parent
         return None
 
+    def _emit_inheritance(node, type_id: str) -> None:  # type: ignore[no-untyped-def]
+        """Record what this type extends.
+
+        `inherits` was in the edge model from the start and never once emitted.
+        A type hierarchy is some of the strongest structure a codebase has, so
+        leaving it out cost the clustering its clearest signal — and cost anyone
+        reading the graph the answer to "what is this a kind of?".
+
+        Base names are emitted bare, exactly like call targets, and resolved by
+        the same pass; an unresolvable base (an imported third-party class) is
+        dropped rather than stored as a pointer to nothing.
+        """
+        # Python: `class Retry(Base)` -> argument_list. TS/JS: `class Retry
+        # extends Base` -> class_heritage. Both hold plain identifiers.
+        for child in node.children:
+            if child.type not in ("argument_list", "class_heritage"):
+                continue
+            for base in _identifier_names(child):
+                edges.append(
+                    CodeEdge(
+                        source=type_id,
+                        target=_make_id(base),
+                        relation="inherits",
+                        method=ExtractionMethod.EXTRACTED,
+                        source_file=str(path),
+                        source_location=_source_location(node),
+                    )
+                )
+
+    def _identifier_names(node) -> list[str]:  # type: ignore[no-untyped-def]
+        """Identifier text under a node, outermost first, deduplicated."""
+        found: list[str] = []
+        stack = list(node.children)
+        while stack:
+            current = stack.pop(0)
+            if current.type in ("identifier", "type_identifier"):
+                text = _read_text(current, source)
+                if text and text not in found:
+                    found.append(text)
+                continue
+            stack.extend(current.children)
+        return found
+
     def _walk(node) -> None:  # type: ignore[no-untyped-def]
         if node.type in cfg.class_types:
             name_node = node.child_by_field_name("name")
@@ -95,6 +138,7 @@ def _extract_generic(
                         source_location=_source_location(node),
                     )
                 )
+                _emit_inheritance(node, _make_id(file_namespace, name))
 
         elif node.type in cfg.function_types:
             name_node = node.child_by_field_name("name")
@@ -320,5 +364,23 @@ def _extract_generic(
         _walk(tree_root)
     except Exception as exc:
         return Extraction(nodes=[], edges=[], error=str(exc))
+
+    # Containment. Without it a file node has no edges at all, and the symbols
+    # it declares are joined only by whatever calls happen to run between them —
+    # so a module with no internal calls shatters into isolated records and
+    # nothing can cluster by the structure a person actually navigates.
+    for node in list(nodes):
+        if node.id == file_id or node.kind not in ("symbol", "type"):
+            continue
+        edges.append(
+            CodeEdge(
+                source=file_id,
+                target=node.id,
+                relation="defines",
+                method=ExtractionMethod.EXTRACTED,
+                source_file=str(path),
+                source_location=node.source_location,
+            )
+        )
 
     return Extraction(nodes=nodes, edges=edges)

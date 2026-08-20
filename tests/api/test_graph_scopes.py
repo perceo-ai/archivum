@@ -1,0 +1,200 @@
+"""Code has to be reachable from the same screens as everything else.
+
+Every graph route pinned itself to `wiki:{wiki_id}`, and code records live under
+`repo:{name}`, so the audit, the clusters, the surprising links and the path
+finder could not see a single line of code — even though the algorithms are
+scope-agnostic and the records were sitting right there.
+
+Authorisation cannot come from the scope string the way it does for pages, so it
+comes from the register: you may read a repository you registered.
+"""
+
+from __future__ import annotations
+
+from unittest.mock import AsyncMock, patch
+
+import pytest
+import pytest_asyncio
+from fastapi.testclient import TestClient
+
+import archivum.db.sqlite as sqlite_mod
+from archivum.auth import CurrentUser, get_current_user, require_writer
+from archivum.config import Settings, get_settings
+from archivum.knowledge.models import Citation, KnowledgeObject, KnowledgeRelationship
+from archivum.knowledge.repository import KnowledgeRepository
+from archivum.main import create_app
+
+
+def _citation(id_: str) -> Citation:
+    return Citation(source_id=id_, chunk_id="f.py", span_start=None, span_end=None, quote="L1-L2")
+
+
+@pytest_asyncio.fixture
+async def env(tmp_path):
+    settings = Settings(
+        db_path=tmp_path / "archivum.db",
+        blob_dir=tmp_path / "blobs",
+        wiki_dir=tmp_path / "wiki",
+        code_cache_dir=tmp_path / "code-cache",
+    )
+    settings.wiki_dir.mkdir(parents=True, exist_ok=True)
+    await sqlite_mod.init_db(settings)
+
+    with (
+        patch("archivum.main.sqlite.init_db", new=AsyncMock()),
+        patch("archivum.main.qdrant.init_collection", new=AsyncMock()),
+        patch("archivum.main.graph.init_graph", new=AsyncMock()),
+        patch("archivum.main.sqlite.ensure_owner_exists", new=AsyncMock()),
+    ):
+        app = create_app()
+
+    owner = CurrentUser(username="owner", role="owner", wiki_id="default")
+    app.dependency_overrides[get_current_user] = lambda: owner
+    app.dependency_overrides[require_writer] = lambda: owner
+    app.dependency_overrides[get_settings] = lambda: settings
+
+    # A tiny code graph, plus the register entry that authorises reading it.
+    async with sqlite_mod.get_db() as conn:
+        repo = KnowledgeRepository(conn)
+        for symbol in ("haversine", "normalise"):
+            await repo.upsert_object(
+                KnowledgeObject(
+                    id=f"repo_atlas_geo_{symbol}",
+                    kind="symbol",
+                    label=symbol,
+                    scope="repo:atlas",
+                    confidence=1.0,
+                    extraction_method="EXTRACTED",
+                    citations=[_citation(f"repo_atlas_geo_{symbol}")],
+                    properties={"source_scope": "repo:atlas"},
+                )
+            )
+        await repo.upsert_relationship(
+            KnowledgeRelationship(
+                id="rel:calls",
+                src_id="repo_atlas_geo_haversine",
+                dst_id="repo_atlas_geo_normalise",
+                rel_type="calls",
+                scope="repo:atlas",
+                confidence=1.0,
+                extraction_method="EXTRACTED",
+                citations=[_citation("rel:calls")],
+                properties={},
+            )
+        )
+        await conn.execute(
+            "INSERT INTO code_repos (scope, wiki_id, name, path, status, created_at, updated_at)"
+            " VALUES ('repo:atlas','default','atlas','/tmp/atlas','ready','t','t')"
+        )
+        await conn.commit()
+
+    yield TestClient(app, raise_server_exceptions=True)
+
+
+async def test_the_audit_can_be_pointed_at_a_repository(env):
+    body = env.get("/api/graph/audit", params={"scope": "repo:atlas"}).json()
+    assert body["scope"] == "repo:atlas"
+    assert body["node_count"] == 2
+    assert body["edge_count"] == 1
+
+
+async def test_clusters_can_be_pointed_at_a_repository(env):
+    body = env.get("/api/graph/communities", params={"scope": "repo:atlas"}).json()
+    assert body["scope"] == "repo:atlas"
+    members = {member for c in body["communities"] for member in c["member_ids"]}
+    assert "repo_atlas_geo_haversine" in members
+
+
+async def test_an_unregistered_repository_is_refused(env):
+    response = env.get("/api/graph/audit", params={"scope": "repo:somebody-elses"})
+    assert response.status_code == 403
+    assert response.json()["detail"]["code"] == "unauthorized_graph_scope"
+
+
+async def test_omitting_the_scope_still_means_this_wiki(env):
+    body = env.get("/api/graph/audit").json()
+    assert body["scope"] == "wiki:default"
+
+
+async def test_code_context_is_allowed_for_a_registered_repository(env):
+    response = env.post(
+        "/api/context-package", json={"query": "haversine", "scope": "repo:atlas"}
+    )
+    assert response.status_code == 200, response.text
+    labels = {node["label"] for node in response.json()["nodes"]}
+    assert "haversine" in labels, "a code query should come back with code"
+
+
+async def test_code_context_is_refused_for_an_unregistered_repository(env):
+    response = env.post(
+        "/api/context-package", json={"query": "x", "scope": "repo:somebody-elses"}
+    )
+    assert response.status_code == 403
+    assert response.json()["detail"]["code"] == "unauthorized_context_scope"
+
+
+async def test_a_decision_link_is_visible_from_the_repository_graph(env):
+    """`decided_in` joins a symbol to a conversation, so it lives in neither scope.
+
+    Bridge edges are stored under their own scope precisely because they cross
+    between code and memory. If a scoped load ignored them, the one edge that
+    explains *why* a function exists would be the one edge nobody could see.
+    """
+    async with sqlite_mod.get_db() as conn:
+        repo = KnowledgeRepository(conn)
+        await repo.upsert_object(
+            KnowledgeObject(
+                id="memory:atom:1",
+                kind="memory_atom",
+                label="Keep haversine pure",
+                scope="wiki:default",
+                confidence=0.9,
+                extraction_method="EXTRACTED",
+                citations=[_citation("memory:atom:1")],
+                properties={"text": "We decided haversine should stay pure."},
+            )
+        )
+        await repo.upsert_relationship(
+            KnowledgeRelationship(
+                id="repo_atlas_geo_haversine__decided_in__memory:atom:1",
+                src_id="repo_atlas_geo_haversine",
+                dst_id="memory:atom:1",
+                rel_type="decided_in",
+                scope="bridge",
+                confidence=0.8,
+                extraction_method="INFERRED",
+                citations=[_citation("memory:atom:1")],
+                properties={},
+            )
+        )
+        await conn.commit()
+
+    body = env.get("/api/graph/audit", params={"scope": "repo:atlas"}).json()
+    assert body["edge_count"] == 2, "the decision link should be part of the code graph"
+    assert body["node_count"] == 3, "and so should the decision it points at"
+
+
+async def test_the_audit_carries_the_labels_needed_to_draw_it(env):
+    """The picture is drawn from the audit, so the audit has to name its nodes.
+
+    Cluster members came back as bare ids and the surface looked their labels up
+    in a second, unscoped call. Pointed at a repository that lookup missed
+    everything, so the graph rendered rows of `repo_atlas_geo_haversine` instead
+    of function names.
+    """
+    body = env.get("/api/graph/audit", params={"scope": "repo:atlas"}).json()
+
+    labels = body["node_labels"]
+    assert labels["repo_atlas_geo_haversine"] == "haversine"
+
+    members = [m for c in body["communities"] for m in c["member_ids"]]
+    assert members, "there should be something to draw"
+    assert all(member in labels for member in members), (
+        "every drawable member must have a label"
+    )
+
+
+async def test_the_audit_names_the_kind_of_each_record(env):
+    """Colour and shape come from kind, so it travels with the report."""
+    body = env.get("/api/graph/audit", params={"scope": "repo:atlas"}).json()
+    assert body["node_kinds"]["repo_atlas_geo_haversine"] == "symbol"

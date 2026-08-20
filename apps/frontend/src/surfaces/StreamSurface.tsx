@@ -10,6 +10,7 @@ import {
 import { useToast } from '../components/ui/Toast';
 import { Icon } from '../shell/Icon';
 import StreamComposer from './StreamComposer';
+import ShareHolds from './ShareHolds';
 import { cn } from '../lib/cn';
 
 /**
@@ -151,6 +152,8 @@ export default function StreamSurface() {
     <div className="surface on">
       <div className="col">
         <StreamComposer onCaptured={() => void load()} />
+
+        <ShareHolds />
 
         {pending > 0 && (
           <div className="needs">

@@ -15,6 +15,7 @@ from mcp.server.auth.provider import AccessToken
 from mcp.server.auth.settings import AuthSettings
 
 from archivum.capture.schema import Conversation, Turn
+from archivum.code_repos import index_repo, list_repos, register_repo, scope_for
 from archivum.capture.store import CaptureStore
 from archivum.config import Settings, get_settings
 from archivum.db import graph, qdrant_client as qdrant, sqlite
@@ -464,6 +465,77 @@ async def distill_source(
         "skill_reason": report.skill_reason,
         "pages_written": report.pages_written,
     }
+
+
+@mcp.tool()
+async def index_repository(
+    path: str, name: str | None = None, wiki_id: str = "default"
+) -> dict[str, Any]:
+    """Read a repository into code memory: graph, governed asset, vault pages.
+
+    Runs to completion rather than queueing, because an agent asking for this
+    is waiting on the answer — unlike the REST route, where a queue keeps the
+    wiki responsive for a person who is still using it.
+    """
+    _require_key()
+    set_trace_id(new_trace_id("mcp-index-repo"))
+    repo = await register_repo(path=Path(path), wiki_id=wiki_id, name=name)
+    indexed = await index_repo(repo, settings=settings)
+    return {
+        "scope": indexed.scope,
+        "name": indexed.name,
+        "status": indexed.status,
+        "files": indexed.files,
+        "nodes": indexed.nodes,
+        "edges": indexed.edges,
+        "pages": indexed.pages,
+    }
+
+
+@mcp.tool()
+async def list_repositories(wiki_id: str = "default") -> list[dict[str, Any]]:
+    """The repositories this vault has indexed, and how fresh each one is."""
+    _require_key()
+    return [
+        {
+            "scope": repo.scope,
+            "name": repo.name,
+            "path": repo.path,
+            "status": repo.status,
+            "nodes": repo.nodes,
+            "edges": repo.edges,
+            "indexed_at": repo.indexed_at,
+        }
+        for repo in await list_repos(wiki_id=wiki_id)
+    ]
+
+
+@mcp.tool()
+async def retrieve_code_context(
+    query: str,
+    repo: str,
+    depth: int = 2,
+    max_nodes: int = 10,
+    wiki_id: str = "default",
+) -> dict[str, Any]:
+    """Cited code context for a question, scoped to one indexed repository.
+
+    Every record comes back with the file and line it was read from, and links
+    out to any recorded decision that named it — which is the difference
+    between "here is some code" and "here is why this code is like this".
+    """
+    _require_key()
+    set_trace_id(new_trace_id("mcp-code-context"))
+    request = ContextRequest(
+        query=query,
+        scope=scope_for(repo),
+        wiki_id=wiki_id,
+        depth=max(depth, 0),
+        max_nodes=min(max(max_nodes, 1), 50),
+    )
+    async with sqlite.get_db() as connection:
+        package = await build_package(KnowledgeRepository(connection), request)
+    return package.model_dump()
 
 
 @mcp.tool()

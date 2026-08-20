@@ -5,6 +5,7 @@ import logging
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 
 from archivum.auth import CurrentUser, get_current_user
+from archivum.code_repos import REPO_SCOPE_PREFIX, owned_repo_scopes
 from archivum.db import graph, sqlite
 from archivum.knowledge import graph_audit
 from archivum.knowledge.repository import KnowledgeRepository
@@ -15,6 +16,38 @@ from archivum.scripts.graph_export import DEMO_GRAPH
 router = APIRouter(prefix="/api", tags=["graph"])
 
 logger = logging.getLogger(__name__)
+
+
+async def _authorized_scope(requested: str | None, current_user: CurrentUser) -> str:
+    """Resolve the scope to read, defaulting to this wiki.
+
+    Code lives under `repo:<name>` rather than `wiki:<id>`, so a repository
+    scope cannot be authorised by inspecting the string. It is authorised by
+    the register instead: you may read a repository you registered. Without
+    this, every graph route was pinned to the wiki scope and could not see a
+    single line of code.
+    """
+    default_scope = f"wiki:{current_user.wiki_id}"
+    if requested is None or not requested.strip():
+        return default_scope
+
+    scope = requested.strip()
+    allowed = {default_scope}
+    if current_user.role == "owner":
+        allowed.add("person:self")
+    # Only the register can authorise a repository, and only a repository needs
+    # it, so the wiki path stays free of the extra query.
+    if scope.startswith(REPO_SCOPE_PREFIX):
+        allowed |= await owned_repo_scopes(wiki_id=current_user.wiki_id)
+    if scope not in allowed:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={
+                "detail": "Graph scope is not authorized for this wiki",
+                "code": "unauthorized_graph_scope",
+            },
+        )
+    return scope
 
 
 def _format_edges(data: dict) -> list[dict]:
@@ -77,10 +110,11 @@ async def graph_neighbors(
 @router.get("/graph/audit")
 async def graph_report(
     surprise_limit: int = Query(default=10, ge=1, le=50),
+    scope: str | None = Query(default=None),
     current_user: CurrentUser = Depends(get_current_user),
 ) -> dict:
-    """Plain-language audit of the canonical knowledge graph for this wiki."""
-    scope = f"wiki:{current_user.wiki_id}"
+    """Plain-language audit of a canonical knowledge graph, wiki or repository."""
+    scope = await _authorized_scope(scope, current_user)
     async with sqlite.get_db() as conn:
         report = await graph_audit.audit_knowledge_graph(
             KnowledgeRepository(conn), scope=scope, surprise_limit=surprise_limit
@@ -90,10 +124,11 @@ async def graph_report(
 
 @router.get("/graph/communities")
 async def graph_communities(
+    scope: str | None = Query(default=None),
     current_user: CurrentUser = Depends(get_current_user),
 ) -> dict:
     """Cluster canonical records by label propagation over relationships."""
-    scope = f"wiki:{current_user.wiki_id}"
+    scope = await _authorized_scope(scope, current_user)
     async with sqlite.get_db() as conn:
         nodes, edges = await graph_audit.load_graph(
             KnowledgeRepository(conn), scope=scope
@@ -116,10 +151,11 @@ async def graph_communities(
 @router.get("/graph/surprising")
 async def graph_surprising(
     limit: int = Query(default=10, ge=1, le=50),
+    scope: str | None = Query(default=None),
     current_user: CurrentUser = Depends(get_current_user),
 ) -> dict:
     """Rank the connections least predictable from the rest of the graph."""
-    scope = f"wiki:{current_user.wiki_id}"
+    scope = await _authorized_scope(scope, current_user)
     async with sqlite.get_db() as conn:
         nodes, edges = await graph_audit.load_graph(
             KnowledgeRepository(conn), scope=scope
@@ -148,10 +184,11 @@ async def graph_surprising(
 async def graph_path(
     source: str = Query(min_length=1),
     target: str = Query(min_length=1),
+    scope: str | None = Query(default=None),
     current_user: CurrentUser = Depends(get_current_user),
 ) -> dict:
     """Shortest relationship path between two canonical records."""
-    scope = f"wiki:{current_user.wiki_id}"
+    scope = await _authorized_scope(scope, current_user)
     async with sqlite.get_db() as conn:
         nodes, edges = await graph_audit.load_graph(
             KnowledgeRepository(conn), scope=scope

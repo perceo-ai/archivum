@@ -97,6 +97,9 @@ class MemorySuggestion(BaseModel):
     rationale: str = ""
     estimated_durability: str = ""
     expires_at: str | None = None
+    # None for agent-authored suggestions; a share principal id when a
+    # recipient proposed it.
+    author_principal_id: str | None = None
     status: SuggestionStatus
     # Written by SQLite defaults on insert/update. Exposed so the activity
     # stream can order suggestions against page edits and ingest logs.
@@ -200,6 +203,9 @@ async def _migrate_review_card_columns(conn: aiosqlite.Connection) -> None:
         "rationale": "TEXT NOT NULL DEFAULT ''",
         "estimated_durability": "TEXT NOT NULL DEFAULT ''",
         "expires_at": "TEXT",
+        # Set when a share recipient proposed the edit, so the review queue can
+        # say "Alice suggested this" rather than attributing it to an agent.
+        "author_principal_id": "TEXT",
     }
     for column, definition in additions.items():
         if column not in columns:
@@ -232,6 +238,7 @@ class SuggestionRepository:
         rationale: str = "",
         estimated_durability: str = "",
         expires_at: str | None = None,
+        author_principal_id: str | None = None,
     ) -> MemorySuggestion:
         suggestion = MemorySuggestion(
             id=f"suggestion:{uuid4()}",
@@ -249,6 +256,7 @@ class SuggestionRepository:
             rationale=rationale,
             estimated_durability=estimated_durability,
             expires_at=expires_at,
+            author_principal_id=author_principal_id,
             status="pending",
         )
         await self._conn.execute(
@@ -257,8 +265,8 @@ class SuggestionRepository:
                 (id, target_id, suggestion_type, proposed_markdown,
                  proposed_objects, citations, proposed_scopes, scores, duplicates,
                  conflicts, retention_tier, agent_visibility, rationale,
-                 estimated_durability, expires_at, status)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 estimated_durability, expires_at, author_principal_id, status)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 suggestion.id,
@@ -276,6 +284,7 @@ class SuggestionRepository:
                 suggestion.rationale,
                 suggestion.estimated_durability,
                 suggestion.expires_at,
+                suggestion.author_principal_id,
                 suggestion.status,
             ),
         )
@@ -534,6 +543,7 @@ class SuggestionRepository:
             rationale=row["rationale"],
             estimated_durability=row["estimated_durability"],
             expires_at=row["expires_at"],
+            author_principal_id=row["author_principal_id"],
             status=row["status"],
             created_at=row["created_at"] or "",
             updated_at=row["updated_at"] or "",

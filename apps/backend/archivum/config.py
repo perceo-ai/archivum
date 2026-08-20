@@ -35,6 +35,10 @@ class Settings(BaseSettings):
     blob_dir: Path = Path("/data/blobs")
     db_path: Path = Path("/data/archivum.db")
     kuzu_path: Path = Path("/data/kuzu")
+    # Parsed-AST cache for indexed repositories. Kept beside the other data
+    # rather than inside each repository, so indexing never writes into a
+    # working tree you are trying to keep clean.
+    code_cache_dir: Path = Path("/data/code-cache")
 
     # ── Qdrant ─────────────────────────────────────────────────────────────
     qdrant_url: str = "http://localhost:6333"
@@ -114,6 +118,8 @@ class Settings(BaseSettings):
     # Capture enqueues; this worker does the slow, possibly LLM-backed half.
     distill_worker_enabled: bool = True
     distill_worker_interval_seconds: int = 10
+    code_repo_worker_enabled: bool = True
+    code_repo_worker_interval_seconds: int = 15
     retention_sweep_interval_seconds: int = 3600
 
     # ── Memory distillation ───────────────────────────────────────────────

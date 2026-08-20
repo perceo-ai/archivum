@@ -7,7 +7,9 @@ import {
   getOwner,
   listAgentBindings,
   listMemoryAgents,
+  listRepos,
   type AgentProfile,
+  type CodeRepo,
   type GraphCommunity,
   type GraphReport,
   type MemoryStats,
@@ -74,22 +76,49 @@ function foldersAsCommunities(nodes: GraphNode[]): GraphCommunity[] {
     .sort((a, b) => b.size - a.size);
 }
 
+/** Mirror of the backend slug used when writing `code/<repo>/<cluster>.md`. */
+function clusterSlug(label: string): string {
+  return label.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'untitled';
+}
+
+
 function GraphPanel({
   owner,
-  communities,
+  audit,
   nodes,
   isDemo,
+  repo,
+  onOpenCluster,
 }: {
   owner: OwnerProfile | null;
-  communities: GraphCommunity[];
+  audit: GraphReport | null;
   nodes: GraphNode[];
   isDemo: boolean;
+  /** The repository being looked at, or null for the vault itself. */
+  repo: CodeRepo | null;
+  onOpenCluster: (community: GraphCommunity) => void;
 }) {
+  const communities = audit?.communities ?? [];
+
+  // Names come from the same report the clusters came from. They used to be
+  // looked up in a second, unscoped call, so pointing this at a repository
+  // rendered rows of `repo_atlas_geo_haversine` instead of function names.
   const labelById = useMemo(() => {
     const map = new Map<string, string>();
-    for (const node of nodes) map.set(node.id, node.label);
+    for (const [id, label] of Object.entries(audit?.node_labels ?? {})) map.set(id, label);
+    for (const node of nodes) if (!map.has(node.id)) map.set(node.id, node.label);
     return map;
-  }, [nodes]);
+  }, [audit, nodes]);
+
+  const kindById = audit?.node_kinds ?? {};
+
+  // A repository is not you, so drawing your initials in the middle of a call
+  // graph would be nonsense. The centre is whatever the graph is *of*.
+  const centreLabel = repo ? repo.name : owner?.name ?? 'You';
+  const centreInitials = repo ? repo.name.slice(0, 2).toUpperCase() : owner?.initials ?? '··';
+  const centreSubtitle = repo
+    ? `${audit?.node_count ?? 0} records · ${audit?.edge_count ?? 0} links`
+    : 'person · self';
 
   const fromLinks = communities.length > 0;
   const rings = (fromLinks ? communities : foldersAsCommunities(nodes)).slice(0, 8);
@@ -132,14 +161,25 @@ function GraphPanel({
                   return (
                     <g className="gnode" key={memberId}>
                       <line className="glink" x1={x} y1={y} x2={leaf.x} y2={leaf.y} />
-                      <circle cx={leaf.x} cy={leaf.y} r={6.5} fill="var(--a-500)" opacity={0.6} />
+                      <circle
+                        cx={leaf.x}
+                        cy={leaf.y}
+                        r={kindById[memberId] === 'type' ? 8 : 6.5}
+                        fill="var(--a-500)"
+                        opacity={kindById[memberId] === 'file' ? 0.35 : 0.6}
+                      />
                       <text x={leaf.x} y={leaf.y + 17} textAnchor="middle">
                         {labelById.get(memberId) ?? memberId}
                       </text>
                     </g>
                   );
                 })}
-                <g className="gnode">
+                <g
+                  className="gnode"
+                  role={repo ? 'button' : undefined}
+                  style={repo ? { cursor: 'pointer' } : undefined}
+                  onClick={() => repo && onOpenCluster(community)}
+                >
                   <circle
                     cx={x}
                     cy={y}
@@ -165,22 +205,24 @@ function GraphPanel({
             <circle cx={500} cy={280} r={46} fill="var(--a-500)" opacity={0.13} />
             <circle cx={500} cy={280} r={30} fill="var(--a-500)" />
             <text x={500} y={285} textAnchor="middle" style={{ fontSize: 15, fontWeight: 600, fill: '#fff' }}>
-              {owner?.initials ?? '··'}
+              {centreInitials}
             </text>
             <text x={500} y={332} textAnchor="middle" style={{ fontSize: 12, fontWeight: 600, fill: 'var(--a-500)' }}>
-              {owner?.name ?? 'You'}
+              {centreLabel}
             </text>
             <text x={500} y={346} textAnchor="middle" style={{ fontSize: 10 }}>
-              person · self
+              {centreSubtitle}
             </text>
           </g>
         </svg>
         <div className="legend">
           <div>
             <span className="dot" style={{ background: 'var(--a-500)' }} />
-            {fromLinks
-              ? 'Clusters found in the links between entries'
-              : 'Grouped by the folders you made — no link clusters yet'}
+            {repo
+              ? 'Clusters found in how the code calls itself — click one to read its page'
+              : fromLinks
+                ? 'Clusters found in the links between entries'
+                : 'Grouped by the folders you made — no link clusters yet'}
           </div>
         </div>
       </div>
@@ -342,14 +384,25 @@ export default function VisualizedSurface() {
     null,
   );
   const [agents, setAgents] = useState<AgentProfile[]>([]);
+  const [repos, setRepos] = useState<CodeRepo[]>([]);
+  // Undefined means the vault itself; a repo scope points the same analysis at
+  // code. The clustering and surprise algorithms never cared which graph they
+  // were given — only the routes did.
+  const [scope, setScope] = useState<string | undefined>(undefined);
   const [error, setError] = useState<string | null>(null);
   const navigate = useNavigate();
+
+  useEffect(() => {
+    listRepos()
+      .then((next) => setRepos(next.filter((repo) => repo.status === 'ready')))
+      .catch(() => setRepos([]));
+  }, []);
 
   useEffect(() => {
     Promise.all([
       getOwner(),
       getMemoryStats(),
-      getGraphAudit().catch(() => null),
+      getGraphAudit(10, scope).catch(() => null),
       getGraph().catch(() => null),
       listMemoryAgents().catch(() => []),
     ])
@@ -361,11 +414,11 @@ export default function VisualizedSurface() {
         setAgents(nextAgents);
       })
       .catch((err) => setError(err instanceof Error ? err.message : 'Could not load'));
-  }, []);
+  }, [scope]);
 
   if (error) return <div className="surface-error">{error}</div>;
 
-  const communities = audit?.communities ?? [];
+  const activeRepo = repos.find((entry) => entry.scope === scope) ?? null;
 
   return (
     <div className="surface on viz-root">
@@ -374,6 +427,27 @@ export default function VisualizedSurface() {
           <div className="viz-title">
             <h1>Visualized</h1>
             <p>What is actually under the vault — the graph, the memory pipeline, and who reads what.</p>
+            {repos.length > 0 && (
+              <div className="viz-scope" style={{ display: 'flex', gap: 6, marginTop: 8 }}>
+                <button
+                  type="button"
+                  className={cn('btn btn-sm', scope === undefined ? 'btn-primary' : 'btn-outline')}
+                  onClick={() => setScope(undefined)}
+                >
+                  Your vault
+                </button>
+                {repos.map((repo) => (
+                  <button
+                    key={repo.scope}
+                    type="button"
+                    className={cn('btn btn-sm', scope === repo.scope ? 'btn-primary' : 'btn-outline')}
+                    onClick={() => setScope(repo.scope)}
+                  >
+                    {repo.name}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
 
           <div className="tiles">
@@ -455,9 +529,14 @@ export default function VisualizedSurface() {
           {tab === 'graph' && (
             <GraphPanel
               owner={owner}
-              communities={communities}
+              audit={audit}
               nodes={graph?.nodes ?? []}
-              isDemo={graph?.source === 'demo'}
+              isDemo={scope === undefined && graph?.source === 'demo'}
+              repo={activeRepo}
+              onOpenCluster={(community) =>
+                activeRepo &&
+                navigate(`/wiki/code/${activeRepo.name}/${clusterSlug(community.label)}`)
+              }
             />
           )}
           {tab === 'flow' && <FlowPanel stats={stats} />}

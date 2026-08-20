@@ -13,6 +13,8 @@ import aiosqlite
 from archivum.config import Settings, get_settings
 from archivum.knowledge.suggestions import init_suggestion_schema
 from archivum.memory.registry import init_memory_schema
+from archivum.sharing.migration import migrate_share_links
+from archivum.sharing.repository import init_sharing_schema
 from archivum.store.schema import init_evidence_schema
 
 # ── Schema ────────────────────────────────────────────────────────────────────
@@ -170,6 +172,25 @@ CREATE TABLE IF NOT EXISTS invite_tokens (
     used       INTEGER NOT NULL DEFAULT 0
 );
 
+CREATE TABLE IF NOT EXISTS code_repos (
+    scope        TEXT PRIMARY KEY,
+    wiki_id      TEXT NOT NULL,
+    name         TEXT NOT NULL,
+    path         TEXT NOT NULL,
+    status       TEXT NOT NULL DEFAULT 'pending',
+    last_sha     TEXT,
+    files        INTEGER NOT NULL DEFAULT 0,
+    nodes        INTEGER NOT NULL DEFAULT 0,
+    edges        INTEGER NOT NULL DEFAULT 0,
+    pages        INTEGER NOT NULL DEFAULT 0,
+    error        TEXT,
+    indexed_at   TEXT,
+    created_at   TEXT NOT NULL,
+    updated_at   TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_code_repos_wiki ON code_repos(wiki_id);
+
 CREATE TABLE IF NOT EXISTS agent_activity (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
     wiki_id     TEXT NOT NULL DEFAULT 'default',
@@ -221,6 +242,10 @@ async def init_db(settings: Settings) -> None:
         # would otherwise run without them and fail at query time.
         await init_memory_schema(db)
         await init_suggestion_schema(db)
+        await init_sharing_schema(db)
+        # Legacy share links become grants so a URL handed out before this
+        # existed keeps resolving. Idempotent, so it is safe on every boot.
+        await migrate_share_links(db)
         await db.commit()
 
 

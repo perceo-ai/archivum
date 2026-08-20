@@ -310,6 +310,39 @@ async def test_distill_endpoint_produces_cited_memory_assets(env):
 
 
 @pytest.mark.asyncio
+async def test_owner_filter_returns_the_memory_the_profile_page_asks_for(env):
+    """`/me` asks "what are my agents told about me?" — that is an owner question.
+
+    Assets are scoped to the wiki they belong to and owned by `person:self`.
+    The profile page filtered on `scope=person:self`, which no asset ever
+    carries, so the section was permanently empty while the count beside it
+    said otherwise.
+    """
+    client, store = env
+    captured = await store.capture(
+        Conversation(
+            session_id="s-owner",
+            interface="claude_code_native",
+            started_at="2026-08-12T00:00:00Z",
+            turns=(Turn(role="user", text="I prefer uv over pip."),),
+        )
+    )
+    client.post(
+        "/api/memory/distill",
+        json={"source_id": captured.source_id, "write_pages": False},
+    )
+
+    everything = client.get("/api/memory/assets").json()
+    assert everything, "distillation should have registered at least one asset"
+
+    owned = client.get("/api/memory/assets", params={"owner": "person:self"}).json()
+    assert [asset["id"] for asset in owned] == [asset["id"] for asset in everything]
+
+    others = client.get("/api/memory/assets", params={"owner": "person:nobody"}).json()
+    assert others == []
+
+
+@pytest.mark.asyncio
 async def test_distill_threshold_override_routes_everything_to_review(env):
     client, store = env
     conv = Conversation(
