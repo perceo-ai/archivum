@@ -170,67 +170,6 @@ CREATE TABLE IF NOT EXISTS invite_tokens (
     used       INTEGER NOT NULL DEFAULT 0
 );
 
-CREATE TABLE IF NOT EXISTS life_projects (
-    id          INTEGER PRIMARY KEY AUTOINCREMENT,
-    wiki_id     TEXT NOT NULL DEFAULT 'default',
-    key         TEXT NOT NULL,
-    name        TEXT NOT NULL,
-    status      TEXT NOT NULL DEFAULT 'active',
-    page_slug   TEXT,
-    summary     TEXT NOT NULL DEFAULT '',
-    created_at  TEXT NOT NULL DEFAULT (datetime('now')),
-    updated_at  TEXT NOT NULL DEFAULT (datetime('now')),
-    UNIQUE(wiki_id, key)
-);
-
-CREATE TABLE IF NOT EXISTS life_tasks (
-    id          INTEGER PRIMARY KEY AUTOINCREMENT,
-    wiki_id     TEXT NOT NULL DEFAULT 'default',
-    title       TEXT NOT NULL,
-    status      TEXT NOT NULL DEFAULT 'open',
-    project_key TEXT,
-    page_slug   TEXT,
-    due_date    TEXT,
-    source      TEXT NOT NULL DEFAULT 'manual',
-    created_at  TEXT NOT NULL DEFAULT (datetime('now')),
-    updated_at  TEXT NOT NULL DEFAULT (datetime('now'))
-);
-
-CREATE TABLE IF NOT EXISTS life_decisions (
-    id          INTEGER PRIMARY KEY AUTOINCREMENT,
-    wiki_id     TEXT NOT NULL DEFAULT 'default',
-    title       TEXT NOT NULL,
-    decision    TEXT NOT NULL,
-    rationale   TEXT NOT NULL DEFAULT '',
-    project_key TEXT,
-    page_slug   TEXT,
-    decided_at  TEXT NOT NULL DEFAULT (datetime('now')),
-    created_at  TEXT NOT NULL DEFAULT (datetime('now'))
-);
-
-CREATE TABLE IF NOT EXISTS life_people (
-    id          INTEGER PRIMARY KEY AUTOINCREMENT,
-    wiki_id     TEXT NOT NULL DEFAULT 'default',
-    name        TEXT NOT NULL,
-    page_slug   TEXT,
-    summary     TEXT NOT NULL DEFAULT '',
-    created_at  TEXT NOT NULL DEFAULT (datetime('now')),
-    updated_at  TEXT NOT NULL DEFAULT (datetime('now')),
-    UNIQUE(wiki_id, name)
-);
-
-CREATE TABLE IF NOT EXISTS life_areas (
-    id          INTEGER PRIMARY KEY AUTOINCREMENT,
-    wiki_id     TEXT NOT NULL DEFAULT 'default',
-    key         TEXT NOT NULL,
-    name        TEXT NOT NULL,
-    page_slug   TEXT,
-    summary     TEXT NOT NULL DEFAULT '',
-    created_at  TEXT NOT NULL DEFAULT (datetime('now')),
-    updated_at  TEXT NOT NULL DEFAULT (datetime('now')),
-    UNIQUE(wiki_id, key)
-);
-
 CREATE TABLE IF NOT EXISTS agent_activity (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
     wiki_id     TEXT NOT NULL DEFAULT 'default',
@@ -243,7 +182,6 @@ CREATE TABLE IF NOT EXISTS agent_activity (
     created_at  TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
-CREATE INDEX IF NOT EXISTS idx_life_tasks_status ON life_tasks(wiki_id, status);
 CREATE INDEX IF NOT EXISTS idx_agent_activity_created ON agent_activity(wiki_id, created_at);
 """
 
@@ -868,80 +806,6 @@ async def list_ingest_logs(
         ) as cur:
             rows = await cur.fetchall()
             return [dict(r) for r in rows]
-
-
-# ── Life OS ──────────────────────────────────────────────────────────────────
-
-async def upsert_life_project(
-    wiki_id: str,
-    key: str,
-    name: str,
-    status: str = "active",
-    page_slug: str | None = None,
-    summary: str = "",
-) -> dict[str, Any]:
-    async with get_db() as db:
-        await db.execute(
-            """
-            INSERT INTO life_projects (wiki_id, key, name, status, page_slug, summary)
-            VALUES (?, ?, ?, ?, ?, ?)
-            ON CONFLICT(wiki_id, key) DO UPDATE SET
-                name=excluded.name,
-                status=excluded.status,
-                page_slug=excluded.page_slug,
-                summary=excluded.summary,
-                updated_at=datetime('now')
-            """,
-            (wiki_id, key, name, status, page_slug, summary),
-        )
-        await db.commit()
-    projects = await list_life_projects(wiki_id)
-    return next(p for p in projects if p["key"] == key)
-
-
-async def list_life_projects(wiki_id: str = "default") -> list[dict[str, Any]]:
-    async with get_db() as db:
-        async with db.execute(
-            "SELECT * FROM life_projects WHERE wiki_id=? ORDER BY updated_at DESC",
-            (wiki_id,),
-        ) as cur:
-            return [dict(r) for r in await cur.fetchall()]
-
-
-async def create_life_task(
-    wiki_id: str,
-    title: str,
-    status: str = "open",
-    project_key: str | None = None,
-    page_slug: str | None = None,
-    due_date: str | None = None,
-    source: str = "manual",
-) -> dict[str, Any]:
-    async with get_db() as db:
-        cur = await db.execute(
-            """
-            INSERT INTO life_tasks (wiki_id, title, status, project_key, page_slug, due_date, source)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
-            """,
-            (wiki_id, title, status, project_key, page_slug, due_date, source),
-        )
-        await db.commit()
-        task_id = cur.lastrowid
-        async with db.execute("SELECT * FROM life_tasks WHERE id=?", (task_id,)) as row_cur:
-            row = await row_cur.fetchone()
-            return dict(row)
-
-
-async def list_life_tasks(wiki_id: str = "default", status: str | None = None) -> list[dict[str, Any]]:
-    sql = "SELECT * FROM life_tasks WHERE wiki_id=?"
-    args: list[Any] = [wiki_id]
-    if status:
-        sql += " AND status=?"
-        args.append(status)
-    sql += " ORDER BY updated_at DESC"
-    async with get_db() as db:
-        async with db.execute(sql, args) as cur:
-            return [dict(r) for r in await cur.fetchall()]
 
 
 # ── Refresh tokens ────────────────────────────────────────────────────────────

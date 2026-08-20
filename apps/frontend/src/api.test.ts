@@ -18,8 +18,6 @@ import {
   search,
   getGraph,
   ensureDailyNote,
-  listLifeProjects,
-  createLifeTask,
   getLlmSettings,
   getAudioSupport,
   getMcpSettings,
@@ -34,7 +32,7 @@ import {
   listMemoryScopes,
   upsertMemoryScope,
 } from './api';
-import type { Page, SearchResult, GraphNode, GraphEdge, LifeProject, LifeTask } from './types';
+import type { Page, SearchResult, GraphNode, GraphEdge } from './types';
 
 const fetchMock = vi.fn();
 
@@ -779,55 +777,7 @@ describe('life os api', () => {
     expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toEqual({ date: '2026-06-21' });
   });
 
-  it('lists Life OS projects', async () => {
-    const projects: LifeProject[] = [{
-      id: 1,
-      key: 'phoenix',
-      name: 'Phoenix',
-      status: 'active',
-      page_slug: 'project-phoenix',
-      summary: 'Second brain MVP',
-      updated_at: '2026-06-21T00:00:00Z',
-    }];
-    fetchMock.mockResolvedValueOnce(new Response(
-      JSON.stringify(projects),
-      { status: 200, headers: { 'Content-Type': 'application/json' } },
-    ));
 
-    await expect(listLifeProjects()).resolves.toEqual(projects);
-
-    expect(fetchMock).toHaveBeenCalledWith('/api/life/projects', expect.objectContaining({
-      credentials: 'include',
-    }));
-  });
-
-  it('creates a Life OS task', async () => {
-    const task: LifeTask = {
-      id: 1,
-      title: 'Wire Life OS UI',
-      status: 'open',
-      project_key: 'phoenix',
-      page_slug: null,
-      due_date: null,
-      source: 'manual',
-      updated_at: '2026-06-21T00:00:00Z',
-    };
-    fetchMock.mockResolvedValueOnce(new Response(
-      JSON.stringify(task),
-      { status: 200, headers: { 'Content-Type': 'application/json' } },
-    ));
-
-    await expect(createLifeTask({ title: 'Wire Life OS UI', project_key: 'phoenix' })).resolves.toEqual(task);
-
-    expect(fetchMock).toHaveBeenCalledWith('/api/life/tasks', expect.objectContaining({
-      method: 'POST',
-      credentials: 'include',
-    }));
-    expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toEqual({
-      title: 'Wire Life OS UI',
-      project_key: 'phoenix',
-    });
-  });
 });
 
 describe('apiFetch error handling', () => {

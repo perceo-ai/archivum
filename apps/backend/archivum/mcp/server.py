@@ -231,26 +231,6 @@ async def life_register_project(
     return await register_project(key, name, summary, status, wiki_id)
 
 
-@mcp.tool()
-async def life_create_task(
-    title: str,
-    project_key: str | None = None,
-    page_slug: str | None = None,
-    due_date: str | None = None,
-    wiki_id: str = "default",
-) -> dict[str, Any]:
-    """Create a Life OS task linked to an optional project or page."""
-    _require_key()
-    set_trace_id(new_trace_id("mcp-life-task"))
-    return await sqlite.create_life_task(
-        wiki_id=wiki_id,
-        title=title,
-        project_key=project_key,
-        page_slug=page_slug,
-        due_date=due_date,
-        source="mcp",
-    )
-
 
 @mcp.tool()
 async def graph_neighbors(node_id: str, wiki_id: str = "default") -> dict[str, Any]:
