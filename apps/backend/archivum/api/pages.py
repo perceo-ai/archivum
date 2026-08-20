@@ -188,9 +188,17 @@ async def _rewrite_wikilinks(
             authored_by=detail["authored_by"],
             wiki_id=wiki_id,
         )
-        await qdrant.upsert_page(detail["slug"], detail["title"], rewritten, wiki_id, settings)
-        await _sync_page_graph(detail["slug"], detail["title"], rewritten, wiki_id)
-        await _sync_page_knowledge(detail["slug"], detail["title"], rewritten, wiki_id)
+        # The file changed, so everything derived from it has to catch up. No
+        # distillation: rewriting a link is not new thinking to remember.
+        await reindex_page(
+            detail["slug"],
+            wiki_id=wiki_id,
+            settings=settings,
+            force=True,
+            authored_by=detail["authored_by"],
+            reason="wikilink-rewrite",
+            distill=False,
+        )
 
 
 async def _sync_page_graph(
@@ -297,9 +305,15 @@ async def move_page_to_slug(
     )
     await sqlite.update_share_targets({old_slug: new_slug}, wiki_id)
     await qdrant.delete_page(old_slug, wiki_id, settings)
-    await qdrant.upsert_page(new_slug, existing["title"], existing["content"], wiki_id, settings)
     await graph.rename_page_node(old_slug, new_slug, wiki_id)
-    await graph.upsert_page(new_slug, existing["title"], wiki_id)
+    await reindex_page(
+        new_slug,
+        wiki_id=wiki_id,
+        settings=settings,
+        force=True,
+        reason="rename",
+        distill=False,
+    )
     await _rewrite_wikilinks({old_slug: new_slug}, wiki_id, settings)
 
     row = await sqlite.get_page(new_slug, wiki_id)
@@ -335,10 +349,13 @@ async def duplicate_page_to_slug(
     wiki_path.parent.mkdir(parents=True, exist_ok=True)
     wiki_path.write_text(content, encoding="utf-8")
 
-    await sqlite.upsert_page(new_slug, duplicate_title, content, tags, "user", wiki_id)
-    await qdrant.upsert_page(new_slug, duplicate_title, content, wiki_id, settings)
-    await _sync_page_graph(new_slug, duplicate_title, content, wiki_id)
-    await _sync_page_knowledge(new_slug, duplicate_title, content, wiki_id)
+    await reindex_page(
+        new_slug,
+        wiki_id=wiki_id,
+        settings=settings,
+        force=True,
+        reason="duplicate",
+    )
     row = await sqlite.get_page(new_slug, wiki_id)
     return row  # type: ignore[return-value]
 

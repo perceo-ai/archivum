@@ -9,7 +9,7 @@ from pydantic import BaseModel
 
 from archivum.auth import CurrentUser, get_current_user, require_writer
 from archivum.config import Settings, get_settings
-from archivum.indexing import repoint_page
+from archivum.indexing import reindex_page, repoint_page
 from archivum.db import graph, qdrant_client as qdrant, sqlite
 from archivum.security.markdown import sanitize_markdown
 
@@ -102,15 +102,17 @@ async def _rewrite_wikilinks(
         wiki_path = settings.wiki_dir / f"{detail['slug']}.md"
         wiki_path.parent.mkdir(parents=True, exist_ok=True)
         wiki_path.write_text(rewritten, encoding="utf-8")
-        await sqlite.upsert_page(
+        # One indexing path. This used to upsert the row and the embedding only,
+        # so a folder rename left the graph pointing at the old link targets.
+        await reindex_page(
             detail["slug"],
-            detail["title"],
-            rewritten,
-            _deserialize_tags(detail["tags"]),
-            detail["authored_by"],
-            wiki_id,
+            wiki_id=wiki_id,
+            settings=settings,
+            force=True,
+            authored_by=detail["authored_by"],
+            reason="folder-wikilink-rewrite",
+            distill=False,
         )
-        await qdrant.upsert_page(detail["slug"], detail["title"], rewritten, wiki_id, settings)
 
 
 def _deserialize_tags(tags_raw: str | list) -> list[str]:
@@ -176,12 +178,17 @@ async def move_folder_tree(
         await sqlite.update_page_slug(old_slug, new_slug, wiki_id)
         await sqlite.update_share_targets({old_slug: new_slug}, wiki_id)
         await qdrant.delete_page(old_slug, wiki_id, settings)
-        if page:
-            await qdrant.upsert_page(new_slug, page["title"], page["content"], wiki_id, settings)
         await graph.rename_page_node(old_slug, new_slug, wiki_id)
         await repoint_page(old_slug=old_slug, new_slug=new_slug, wiki_id=wiki_id)
         if page:
-            await graph.upsert_page(new_slug, page["title"], wiki_id)
+            await reindex_page(
+                new_slug,
+                wiki_id=wiki_id,
+                settings=settings,
+                force=True,
+                reason="folder-rename",
+                distill=False,
+            )
 
     folder_count = await sqlite.move_folder_paths(old_path, new_path, wiki_id)
     await _rewrite_wikilinks(mapping, wiki_id, settings)

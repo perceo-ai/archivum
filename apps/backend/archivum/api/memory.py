@@ -12,6 +12,7 @@ from archivum.auth import CurrentUser, get_current_user, require_writer
 from archivum.config import Settings, get_settings
 from archivum.db import qdrant_client as qdrant
 from archivum.db import sqlite
+from archivum.indexing import ensure_frontmatter, reindex_page
 from archivum.knowledge.models import Citation
 from archivum.knowledge.repository import KnowledgeRepository
 from archivum.knowledge.suggestions import SuggestionRepository
@@ -509,12 +510,24 @@ def _page_writer(wiki_id: str, settings: Settings):
     """Keep distilled memory editable as ordinary markdown pages."""
 
     async def write(slug: str, title: str, markdown: str, tags: list[str]) -> None:
-        await sqlite.upsert_page(slug, title, markdown, tags, "agent", wiki_id)
-        try:
-            await qdrant.upsert_page(slug, title, markdown, wiki_id, settings)
-        except Exception as exc:
+        path = settings.wiki_dir / f"{slug}.md"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(ensure_frontmatter(markdown, title=title, tags=tags), encoding="utf-8")
+        # Same indexing path as a page you write by hand, minus distillation:
+        # this page came *out* of memory, so feeding it back in would loop.
+        result = await reindex_page(
+            slug,
+            wiki_id=wiki_id,
+            settings=settings,
+            force=True,
+            authored_by="agent",
+            reason="memory-page",
+            distill=False,
+        )
+        if result.degraded:
             logger.warning(
-                "Memory page index failed", extra={"slug": slug, "error": str(exc)}
+                "Memory page index degraded",
+                extra={"slug": slug, "degraded": ",".join(result.degraded)},
             )
 
     return write

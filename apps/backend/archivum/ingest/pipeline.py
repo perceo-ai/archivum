@@ -18,6 +18,7 @@ from archivum.knowledge.personal_root import SELF_ID, ensure_personal_root, link
 from archivum.knowledge.repository import KnowledgeRepository
 from archivum.linting import normalize_wikilink_target
 from archivum.observability import new_trace_id, set_trace_id, span
+from archivum.indexing import ensure_frontmatter, reindex_page
 from archivum.pages_to_knowledge import sync_page_to_knowledge
 
 logger = logging.getLogger(__name__)
@@ -169,54 +170,41 @@ async def ingest(
             final_slug = await _unique_slug(page.slug, wiki_id)
             slug_map[page.slug] = final_slug
 
-            # Write markdown to disk
+            # One indexing path, same as every other write. Ingest used to
+            # fan out to SQLite, Qdrant, the graph and knowledge by hand, which
+            # is how those stores drifted apart in the first place.
+            existed = await sqlite.get_page(final_slug, wiki_id) is not None
+            stored = ensure_frontmatter(
+                page.content, title=page.title, tags=page.tags or []
+            )
             wiki_path = s.wiki_dir / f"{final_slug}.md"
             wiki_path.parent.mkdir(parents=True, exist_ok=True)
             with span("disk.write_markdown", slug=final_slug) as sp_write:
-                wiki_path.write_text(page.content, encoding="utf-8")
+                wiki_path.write_text(stored, encoding="utf-8")
 
-            # Upsert into SQLite
-            with span("sqlite.upsert_page", slug=final_slug) as sp_sql:
-                _, created = await sqlite.upsert_page(
-                    slug=final_slug,
-                    title=page.title,
-                    content=page.content,
-                    tags=page.tags,
-                    authored_by="agent",
-                    wiki_id=wiki_id,
-                )
-
-            if created:
-                pages_created += 1
-            else:
-                pages_updated += 1
-
-            # Upsert into Qdrant
-            with span("qdrant.upsert_page", slug=final_slug) as sp_q:
-                chunk_count = await qdrant.upsert_page(
-                    slug=final_slug,
-                    title=page.title,
-                    content=page.content,
+            with span("indexing.reindex_page", slug=final_slug) as sp_index:
+                index_result = await reindex_page(
+                    final_slug,
                     wiki_id=wiki_id,
                     settings=s,
+                    force=True,
+                    authored_by="agent",
+                    reason="ingest",
                 )
-                sp_q["chunks"] = chunk_count
+                sp_index["degraded"] = ",".join(index_result.degraded)
 
-            # Upsert page node in Kuzu
-            with span("graph.upsert_page", slug=final_slug) as sp_g:
-                await graph.upsert_page(final_slug, page.title, wiki_id)
+            if existed:
+                pages_updated += 1
+            else:
+                pages_created += 1
+            created = not existed
 
+            # Provenance is the part ingest adds on top: the page cites the
+            # source it came from, which is what lets a source answer for its
+            # own output later.
             async with sqlite.get_db() as conn:
-                repo = KnowledgeRepository(conn)
-                await sync_page_to_knowledge(
-                    repo,
-                    slug=final_slug,
-                    title=page.title,
-                    markdown=page.content,
-                    wiki_id=wiki_id,
-                )
                 await _sync_extracted_result_to_knowledge(
-                    repo,
+                    KnowledgeRepository(conn),
                     result=ExtractionResult(pages=[page], entities=[], relationships=[]),
                     slug_map={page.slug: final_slug},
                     doc=doc,
@@ -236,8 +224,7 @@ async def ingest(
                         "tags": len(page.tags or []),
                         "content_chars": len(page.content or ""),
                         **sp_write,
-                        **sp_sql,
-                        **sp_q,
+                        **sp_index,
                         **sp_g,
                     }
                 ),

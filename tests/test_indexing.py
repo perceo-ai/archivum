@@ -181,3 +181,45 @@ async def test_removing_a_page_clears_it_from_the_graph(env, tmp_path):
 
     data = await graph_mod.get_all_nodes_edges("default")
     assert "topics/a" not in {node["id"] for node in data["nodes"]}
+
+
+async def test_a_memory_page_is_a_real_file_in_the_vault(env):
+    """Memory pages used to exist only as SQLite rows.
+
+    The writer upserted the row and the embedding and never touched disk, so a
+    page distilled out of memory was invisible to git, to Obsidian, and to the
+    reconcile pass — which would then delete the row for having no file behind
+    it. Routing it through `reindex_page` means it is a page like any other.
+    """
+    from archivum.api.memory import _page_writer
+
+    write_page = _page_writer("default", env)
+    await write_page(
+        "memory/preferences", "Preferences", "Prefers sentence case.", ["memory"]
+    )
+
+    path = env.wiki_dir / "memory/preferences.md"
+    assert path.exists(), "a memory page has to survive outside the database"
+    assert "Prefers sentence case." in path.read_text(encoding="utf-8")
+
+    row = await sqlite_mod.get_page("memory/preferences", "default")
+    assert row is not None
+    assert row["title"] == "Preferences"
+    assert row["authored_by"] == "agent"
+
+    # A page that came out of memory must not be fed back into it.
+    async with sqlite_mod.get_db() as conn:
+        queued = await conn.execute_fetchall(
+            "SELECT source_id FROM distill_queue WHERE kind = 'page'"
+        )
+    assert [r["source_id"] for r in queued] == []
+
+
+async def test_a_survived_reconcile_pass_keeps_memory_pages(env):
+    """The round trip the old writer could not survive."""
+    from archivum.api.memory import _page_writer
+
+    await _page_writer("default", env)("memory/facts", "Facts", "Lives in Austin.", [])
+    await reconcile_vault(wiki_id="default", settings=env)
+
+    assert await sqlite_mod.get_page("memory/facts", "default") is not None
