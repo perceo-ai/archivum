@@ -118,6 +118,13 @@ class Settings(BaseSettings):
     # Capture enqueues; this worker does the slow, possibly LLM-backed half.
     distill_worker_enabled: bool = True
     distill_worker_interval_seconds: int = 10
+    # Where agents write session transcripts. Empty means session capture is
+    # off: the backend usually runs in a container, so this has to be mounted in
+    # and named rather than guessed at.
+    transcript_dirs: list[Path] = []
+    transcript_watch_enabled: bool = True
+    transcript_watch_interval_seconds: int = 20
+
     code_repo_worker_enabled: bool = True
     code_repo_worker_interval_seconds: int = 15
     retention_sweep_interval_seconds: int = 3600

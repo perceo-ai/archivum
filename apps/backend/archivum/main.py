@@ -43,6 +43,7 @@ from archivum.logging_config import setup_logging
 from archivum.observability import new_trace_id, set_trace_id
 from archivum.memory.retention import run_retention_worker
 from archivum.page_write_queue import run_page_write_worker
+from archivum.capture.transcript_watch import run_transcript_watcher
 from archivum.code_repos import run_code_repo_worker
 from archivum.distillation import run_distill_worker
 from archivum.indexing import reconcile_vault
@@ -172,10 +173,23 @@ async def lifespan(app: FastAPI):
     if settings.code_repo_worker_enabled:
         code_repo_task = asyncio.create_task(run_code_repo_worker(settings))
 
+    # Sessions arrive without being asked for. Everything downstream of capture
+    # reads conversations, and nothing was ever capturing them.
+    transcript_task: asyncio.Task[None] | None = None
+    if settings.transcript_watch_enabled:
+        transcript_task = asyncio.create_task(run_transcript_watcher(settings))
+
     try:
         yield
     finally:
-        for task in (write_worker_task, retention_task, vault_watch_task, distill_task, code_repo_task):
+        for task in (
+            write_worker_task,
+            retention_task,
+            vault_watch_task,
+            distill_task,
+            code_repo_task,
+            transcript_task,
+        ):
             if task:
                 task.cancel()
                 try:
