@@ -5,6 +5,7 @@ import logging
 from typing import Any
 
 from archivum.config import Settings
+from archivum.indexing import ensure_frontmatter, reindex_page
 from archivum.db import graph, qdrant_client as qdrant, sqlite
 from archivum.ingest.agent import slugify
 from archivum.security.markdown import sanitize_markdown
@@ -31,22 +32,24 @@ async def apply_page_write(
     if not final_slug:
         raise ValueError("Could not generate slug from title")
 
-    # Index first so a downstream graph/index failure never leaves a visible page row behind.
-    await qdrant.upsert_page(final_slug, title, clean_content, wiki_id, settings)
-    await graph.upsert_page(final_slug, title, wiki_id)
-
+    # Write the file, then reindex. This used to index first so that a failing
+    # projection could not leave a visible row behind — the same worry that
+    # `reindex_page` now handles properly, by treating the file and row as
+    # canonical and letting projections degrade and be repaired later.
+    stored = ensure_frontmatter(clean_content, title=title, tags=tags)
     wiki_path = settings.wiki_dir / f"{final_slug}.md"
     wiki_path.parent.mkdir(parents=True, exist_ok=True)
-    wiki_path.write_text(clean_content, encoding="utf-8")
+    wiki_path.write_text(stored, encoding="utf-8")
 
-    await sqlite.upsert_page(
-        slug=final_slug,
-        title=title,
-        content=clean_content,
-        tags=tags,
-        authored_by=authored_by,
+    await reindex_page(
+        final_slug,
         wiki_id=wiki_id,
+        settings=settings,
+        force=True,
+        authored_by=authored_by,
+        reason="page-write-queue",
     )
+
     row = await sqlite.get_page(final_slug, wiki_id)
     if not row:
         raise RuntimeError(f"Page '{final_slug}' was not persisted")

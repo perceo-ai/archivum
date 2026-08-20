@@ -133,45 +133,12 @@ services:
       timeout: 3s
       retries: 10
 
-  ollama:
-    image: ollama/ollama:latest
-    container_name: archivum-ollama
-    restart: unless-stopped
-    ports:
-      - "11434:11434"
-    volumes:
-      - ollama_data:/root/.ollama
-    networks:
-      - archivum-net
-
-  caddy:
-    image: caddy:2-alpine
-    container_name: archivum-caddy
-    restart: unless-stopped
-    environment:
-      - ARCHIVUM_HOST=${ARCHIVUM_HOST:-localhost}
-    ports:
-      - "80:80"
-      - "443:443"
-    volumes:
-      - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro
-      - caddy_data:/data
-      - caddy_config:/config
-    networks:
-      - archivum-net
-    depends_on:
-      - backend
-      - frontend
-
 volumes:
   wiki_data:
   raw_data:
   db_data:
   kuzu_data:
   qdrant_data:
-  ollama_data:
-  caddy_data:
-  caddy_config:
   codex_home:
   claude_home:
 

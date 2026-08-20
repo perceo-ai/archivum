@@ -63,9 +63,8 @@ Once the stack is up:
 
 | URL | Purpose |
 |---|---|
-| `http://localhost` | Web app through Caddy |
 | `http://localhost:8473` | Frontend container, direct |
-| `http://localhost/api/*` | REST API through Caddy |
+| `http://localhost:8000/api/*` | REST API |
 | `http://localhost:8001/sse` | MCP HTTP/SSE endpoint |
 
 Log in with `OWNER_USERNAME` (`admin` by default) and your `OWNER_PASSWORD`. From there you can create pages, ingest files and URLs, search, run cited queries, and explore the graph.
@@ -105,7 +104,7 @@ MCP tools exposed to agents: `ingest_source`, `search_wiki`, `list_pages`, `get_
 2. **Ingest normalizes sources.** File paths and URLs are parsed into wiki pages with source metadata, then chunked and indexed. Supported inputs include markdown, PDF, HTML, EPUB, DOCX/PPTX/XLSX, CSV/JSON, ZIP archives, source code, RTF/XML, EML/MBOX, subtitles, images, and optional audio/video transcripts.
 3. **Canonical knowledge powers the vault.** Canonical knowledge rows preserve the owner profile, page-authored content, projects, thoughts, extracted entities, relationships, citations, confidence, and extraction method. Qdrant (`qdrant_data`), Kuzu (`kuzu_data`), FTS, and code lexical indexes are rebuildable projections.
 4. **Search and Q&A run over your content.** Retrieval defaults to `person:self` when the caller does not provide another seed, returns cited context and ranked excerpts, and `query` synthesizes an answer with citations back to the source pages.
-5. **Caddy fronts the app.** It terminates TLS and routes the browser UI, REST API, and MCP endpoint. Set `ARCHIVUM_HOST` and point DNS at the host for automatic HTTPS.
+5. **Put your own reverse proxy in front** if you want TLS or a hostname. Archivum exposes the UI on 8473, the API on 8000, and MCP on 8001; anything from Caddy to a Cloudflare tunnel can terminate in front of those.
 6. **Agents reach the same vault over MCP** via stdio or HTTP/SSE — reading, writing, searching, and querying the identical data the browser sees.
 7. **Captured sessions become governed memory.** Distillation turns a captured conversation into cited memory atoms, scenario memory, an owner profile, and — when real tool steps were recorded — a reusable skill. Anything below the confidence threshold goes to human review instead of being written silently, and an agent only receives the assets you bound to it. This path is deterministic and makes no LLM call. See [memory assets](docs/architecture/memory-assets.md).
 
@@ -127,7 +126,7 @@ This command upserts those page records and reference edges. It does not remove 
 - ✅ Graph audit — clusters, shortest paths, surprising connections, and a plain-language provenance report
 - ✅ Governed memory assets — typed, versioned, reviewable memory that agents can be equipped with by name
 - ✅ Deterministic session distillation — captured conversations become cited memory with no LLM call
-- ✅ Docker Compose deployment with SQLite, Qdrant, Kuzu, Ollama, and Caddy
+- ✅ Docker Compose deployment with SQLite and Qdrant
 - ✅ Pluggable LLM and embedding providers: Anthropic, OpenRouter, OpenAI-compatible, or local Ollama/fastembed
 - 🚧 Browser vault navigation — folder/page APIs and file-tree UI exist; click-through needs release smoke
 - 🚧 Wikilinks and backlinks — CodeMirror extension and backlinks API/UI exist; browser smoke pending

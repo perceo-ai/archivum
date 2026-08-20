@@ -26,6 +26,7 @@ async def ingest_source(
     origin_uri: str,
     raw_bytes: bytes,
     scope: str = "personal",
+    wiki_id: str = "default",
     explicit_type: SourceType | str | None = None,
     store: SourceStore | None = None,
     blob_store: BlobStore | None = None,
@@ -44,9 +45,11 @@ async def ingest_source(
     content_hash = sha256_bytes(raw_bytes)
 
     # Dedup: if this exact content already exists for this origin, no-op.
-    existing_version = await _existing_version(store, origin_uri, content_hash)
+    existing_version = await _existing_version(store, origin_uri, content_hash, wiki_id)
     if existing_version is not None:
-        existing = await store.get_source_by_hash_and_version(content_hash, existing_version)
+        existing = await store.get_source_by_hash_and_version(
+            content_hash, existing_version, wiki_id=wiki_id
+        )
         assert existing is not None
         document = await store.get_document_for_source(existing.id)
         assert document is not None
@@ -77,6 +80,7 @@ async def ingest_source(
         source_type=source_type,
         origin_uri=origin_uri,
         scope=scope,
+        wiki_id=wiki_id,
         ingested_at=now,
         recorded_at=now,
         valid_from=now,
@@ -111,13 +115,18 @@ async def ingest_source(
 
 
 async def _existing_version(
-    store: SourceStore, origin_uri: str, content_hash: str
+    store: SourceStore, origin_uri: str, content_hash: str, wiki_id: str
 ) -> int | None:
     """Return the version at which this exact content already exists for the
-    origin, or None. Scans existing versions for a content_hash match."""
+    origin, or None. Scans existing versions for a content_hash match.
+
+    Scoped to one vault: dedup across vaults would hand the caller evidence it
+    never ingested."""
     latest = await store.latest_version_for_origin(origin_uri)
     for version in range(1, latest + 1):
-        match = await store.get_source_by_hash_and_version(content_hash, version)
+        match = await store.get_source_by_hash_and_version(
+            content_hash, version, wiki_id=wiki_id
+        )
         if match is not None and match.origin_uri == origin_uri:
             return version
     return None

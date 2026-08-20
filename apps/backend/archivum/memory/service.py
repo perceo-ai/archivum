@@ -92,12 +92,18 @@ class LoadedConversation:
 
 
 async def load_conversation(
-    source_id: str, *, settings: Settings | None = None
+    source_id: str, *, wiki_id: str | None = None, settings: Settings | None = None
 ) -> LoadedConversation:
-    """Rehydrate a captured conversation and its chunk anchors from L0/L1."""
+    """Rehydrate a captured conversation and its chunk anchors from L0/L1.
+
+    Pass `wiki_id` whenever the source id came from a request. Distillation
+    reads a source's full text and writes it into memory, so an unscoped lookup
+    would let a caller name another vault's source id and pull its contents
+    into their own memory.
+    """
     settings = settings or get_settings()
     store = SourceStore()
-    source = await store.get_source(source_id)
+    source = await store.get_source(source_id, wiki_id=wiki_id)
     if source is None:
         raise DistillationError(f"Source '{source_id}' not found")
     document = await store.get_document_for_source(source_id)

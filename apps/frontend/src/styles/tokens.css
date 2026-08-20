@@ -1,0 +1,221 @@
+/* ============================================================
+   Archivum design tokens — redesign proposal
+   Dark is default. Light is a real theme, not an afterthought.
+   ============================================================ */
+
+:root {
+  /* ---- Neutrals (slightly warm, so it doesn't read as "blue tech") ---- */
+  --n-0:  #0b0b0c;
+  --n-1:  #111112;
+  --n-2:  #17171a;
+  --n-3:  #1d1d21;
+  --n-4:  #26262b;
+  --n-5:  #33333a;
+  --n-6:  #4a4a53;
+  --n-7:  #6e6e79;
+  --n-8:  #9a9aa4;
+  --n-9:  #c9c9d1;
+  --n-10: #ededf0;
+
+  /* ---- Accent: violet, but restrained. Used for state, not decoration ---- */
+  --a-400: #a58aff;
+  --a-500: #8b6cff;
+  --a-600: #7c5cff;
+  --a-700: #6845e8;
+
+  /* ---- Semantic ---- */
+  --ok:    #3fb950;
+  --warn:  #d8a232;
+  --bad:   #f2665a;
+  --info:  #4c8dff;
+
+  /* ---- Radii / motion ---- */
+  --r-xs: 4px;
+  --r-sm: 6px;
+  --r-md: 8px;
+  --r-lg: 12px;
+  --r-xl: 16px;
+  --r-full: 999px;
+
+  --ease: cubic-bezier(0.32, 0.72, 0, 1);
+  --dur-1: 120ms;
+  --dur-2: 200ms;
+
+  /* ---- Type ---- */
+  --font-sans: 'Instrument Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+  --font-serif: 'Newsreader', 'Iowan Old Style', Georgia, serif;
+
+  --t-11: 0.6875rem;
+  --t-12: 0.75rem;
+  --t-13: 0.8125rem;
+  --t-14: 0.875rem;
+  --t-15: 0.9375rem;
+  --t-16: 1rem;
+  --t-18: 1.125rem;
+  --t-21: 1.3125rem;
+  --t-26: 1.625rem;
+  --t-32: 2rem;
+}
+
+/* ---- Dark theme (default) ---- */
+/* Dark is the default; :root carries it so the app renders correctly before
+   the theme attribute is applied. */
+:root,
+[data-theme='dark'] {
+  --bg:            var(--n-0);
+  --bg-panel:      var(--n-1);
+  --bg-raised:     var(--n-2);
+  --bg-overlay:    #161618;
+  --bg-input:      rgba(255, 255, 255, 0.035);
+  --bg-hover:      rgba(255, 255, 255, 0.045);
+  --bg-active:     rgba(255, 255, 255, 0.075);
+  --bg-selected:   rgba(139, 108, 255, 0.13);
+
+  --border:        rgba(255, 255, 255, 0.075);
+  --border-strong: rgba(255, 255, 255, 0.13);
+  --border-focus:  var(--a-500);
+
+  --text:          #f2f2f4;
+  --text-2:        #a4a4ae;
+  --text-3:        #74747f;
+  --text-inv:      #0b0b0c;
+
+  --accent:        var(--a-500);
+  --accent-text:   var(--a-400);
+  --accent-soft:   rgba(139, 108, 255, 0.14);
+
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.45);
+  --shadow-lg: 0 16px 48px rgba(0, 0, 0, 0.55), 0 2px 8px rgba(0, 0, 0, 0.4);
+
+  --ok-soft:   rgba(63, 185, 80, 0.14);
+  --warn-soft: rgba(216, 162, 50, 0.14);
+  --bad-soft:  rgba(242, 102, 90, 0.14);
+  --info-soft: rgba(76, 141, 255, 0.14);
+  color-scheme: dark;
+}
+
+/* ---- Light theme ---- */
+[data-theme='light'] {
+  --bg:            #f7f7f8;
+  --bg-panel:      #fbfbfc;
+  --bg-raised:     #ffffff;
+  --bg-overlay:    #ffffff;
+  --bg-input:      rgba(0, 0, 0, 0.025);
+  --bg-hover:      rgba(0, 0, 0, 0.038);
+  --bg-active:     rgba(0, 0, 0, 0.065);
+  --bg-selected:   rgba(124, 92, 255, 0.1);
+
+  --border:        rgba(0, 0, 0, 0.085);
+  --border-strong: rgba(0, 0, 0, 0.16);
+  --border-focus:  var(--a-600);
+
+  --text:          #16161a;
+  --text-2:        #5c5c66;
+  --text-3:        #8b8b95;
+  --text-inv:      #ffffff;
+
+  --accent:        var(--a-600);
+  --accent-text:   var(--a-700);
+  --accent-soft:   rgba(124, 92, 255, 0.1);
+
+  --shadow-sm: 0 1px 2px rgba(16, 16, 20, 0.06);
+  --shadow-md: 0 4px 16px rgba(16, 16, 20, 0.08);
+  --shadow-lg: 0 16px 48px rgba(16, 16, 20, 0.14), 0 2px 8px rgba(16, 16, 20, 0.06);
+
+  --ok-soft:   rgba(35, 134, 54, 0.1);
+  --warn-soft: rgba(180, 120, 10, 0.12);
+  --bad-soft:  rgba(207, 60, 48, 0.1);
+  --info-soft: rgba(37, 99, 235, 0.1);
+  color-scheme: light;
+}
+
+/* ============================================================
+   Primitives
+   ============================================================ */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 30px;
+  padding: 0 10px;
+  border-radius: var(--r-sm);
+  font-size: var(--t-13);
+  font-weight: 500;
+  color: var(--text-2);
+  white-space: nowrap;
+  transition: background var(--dur-1) var(--ease), color var(--dur-1) var(--ease),
+              border-color var(--dur-1) var(--ease);
+}
+.btn:hover { background: var(--bg-hover); color: var(--text); }
+.btn svg { width: 15px; height: 15px; flex: none; }
+
+.btn-primary {
+  background: var(--accent);
+  color: #fff;
+  box-shadow: var(--shadow-sm);
+}
+.btn-primary:hover { background: var(--a-600); color: #fff; }
+[data-theme='light'] .btn-primary:hover { background: var(--a-700); }
+
+.btn-outline { border: 1px solid var(--border); background: var(--bg-input); color: var(--text); }
+.btn-outline:hover { border-color: var(--border-strong); background: var(--bg-hover); }
+
+.btn-icon { width: 30px; padding: 0; justify-content: center; }
+.btn-sm { height: 26px; font-size: var(--t-12); padding: 0 8px; }
+
+.kbd {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-xs);
+  background: var(--bg-input);
+  font-family: var(--font-sans);
+  font-size: var(--t-11);
+  font-weight: 500;
+  color: var(--text-3);
+  line-height: 1;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 20px;
+  padding: 0 7px;
+  border-radius: var(--r-full);
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  font-size: var(--t-11);
+  font-weight: 500;
+  color: var(--text-2);
+  white-space: nowrap;
+}
+.chip-accent { background: var(--accent-soft); border-color: transparent; color: var(--accent-text); }
+.chip-ok     { background: var(--ok-soft);     border-color: transparent; color: var(--ok); }
+.chip-warn   { background: var(--warn-soft);   border-color: transparent; color: var(--warn); }
+.chip-bad    { background: var(--bad-soft);    border-color: transparent; color: var(--bad); }
+.chip-info   { background: var(--info-soft);   border-color: transparent; color: var(--info); }
+
+.dot { width: 6px; height: 6px; border-radius: 50%; flex: none; }
+
+.eyebrow {
+  font-size: var(--t-11);
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-3);
+}
+
+.card {
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+}
+
+.divider { height: 1px; background: var(--border); border: 0; margin: 0; }

@@ -25,14 +25,17 @@ async def test_mcp_life_os_tools(temp_settings, monkeypatch):
     monkeypatch.setattr(server, "settings", temp_settings)
     await sqlite.init_db(temp_settings)
 
-    with patch("archivum.life_os.service.qdrant.upsert_page", new=AsyncMock()):
-        daily = await server.life_daily_note("2026-06-21")
-        project = await server.life_register_project("phoenix", "Phoenix", "MVP")
-        task = await server.life_create_task("Wire Life OS MCP", project_key="phoenix")
+    monkeypatch.setattr("archivum.life_os.service.get_settings", lambda: temp_settings)
+    temp_settings.wiki_dir.mkdir(parents=True, exist_ok=True)
 
-    assert daily["slug"] == "daily-2026-06-21"
-    assert project["key"] == "phoenix"
-    assert task["project_key"] == "phoenix"
+    daily = await server.life_daily_note("2026-06-21")
+    project = await server.life_register_project("phoenix", "Phoenix", "MVP")
+
+    assert daily["slug"] == "daily/2026-06-21"
+    assert project["slug"] == "projects/phoenix"
+    # The task tool went with the life_tasks table: a task is a line in a page,
+    # and the tool was writing to a store nothing read.
+    assert not hasattr(server, "life_create_task")
 
 
 @pytest.mark.asyncio

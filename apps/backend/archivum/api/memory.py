@@ -12,8 +12,10 @@ from archivum.auth import CurrentUser, get_current_user, require_writer
 from archivum.config import Settings, get_settings
 from archivum.db import qdrant_client as qdrant
 from archivum.db import sqlite
+from archivum.indexing import ensure_frontmatter, reindex_page
 from archivum.knowledge.models import Citation
 from archivum.knowledge.repository import KnowledgeRepository
+from archivum.knowledge.suggestions import SuggestionRepository
 from archivum.memory.catalog import sync_catalog
 from archivum.memory.loadouts import resolve_loadout
 from archivum.memory.models import (
@@ -160,11 +162,72 @@ async def upsert_scope(
             raise _bad_request(str(exc), "invalid_memory_scope") from exc
 
 
+class MemoryStats(BaseModel):
+    """Vault-wide counts behind the memory pipeline view.
+
+    Raw counts only: the funnel in the UI is candidates -> kept -> live -> off,
+    and each of those is a real number from this payload rather than a ratio
+    computed here.
+    """
+
+    suggestions_total: int = 0
+    suggestions_pending: int = 0
+    suggestions_kept: int = 0
+    suggestions_dropped: int = 0
+    suggestions_by_status: dict[str, int] = Field(default_factory=dict)
+    assets_total: int = 0
+    assets_active: int = 0
+    assets_draft: int = 0
+    assets_archived: int = 0
+    assets_disputed: int = 0
+    assets_by_layer: dict[str, int] = Field(default_factory=dict)
+
+
+# Review outcomes that mean the claim earned a place in memory, versus the ones
+# that mean it did not. `pending` is neither: it is still waiting on a human.
+_KEPT_STATUSES = {"accepted", "edited", "merged", "replaced", "kept"}
+_DROPPED_STATUSES = {"rejected", "retired", "expired"}
+
+
+@router.get("/stats", response_model=MemoryStats)
+async def memory_stats(
+    current_user: CurrentUser = Depends(get_current_user),
+) -> MemoryStats:
+    async with sqlite.get_db() as conn:
+        suggestion_counts = await SuggestionRepository(conn).suggestion_counts(
+            wiki_id=current_user.wiki_id
+        )
+        asset_counts = await MemoryAssetRegistry(conn).asset_counts(
+            wiki_id=current_user.wiki_id
+        )
+
+    by_status = asset_counts["by_status"]
+    return MemoryStats(
+        suggestions_total=sum(suggestion_counts.values()),
+        suggestions_pending=suggestion_counts.get("pending", 0),
+        suggestions_kept=sum(
+            n for status, n in suggestion_counts.items() if status in _KEPT_STATUSES
+        ),
+        suggestions_dropped=sum(
+            n for status, n in suggestion_counts.items() if status in _DROPPED_STATUSES
+        ),
+        suggestions_by_status=suggestion_counts,
+        assets_total=asset_counts["total"],
+        assets_active=by_status.get("active", 0),
+        assets_draft=by_status.get("draft", 0),
+        assets_archived=by_status.get("archived", 0),
+        assets_disputed=asset_counts["disputed"],
+        assets_by_layer=asset_counts["by_layer"],
+    )
+
+
 @router.get("/assets", response_model=list[MemoryAsset])
 async def list_assets(
     asset_type: str | None = Query(default=None),
     layer: str | None = Query(default=None),
     status_filter: str | None = Query(default=None, alias="status"),
+    scope: str | None = Query(default=None),
+    page_slug: str | None = Query(default=None),
     limit: int = Query(default=200, ge=1, le=500),
     current_user: CurrentUser = Depends(get_current_user),
 ) -> list[MemoryAsset]:
@@ -174,6 +237,8 @@ async def list_assets(
             asset_type=asset_type,
             layer=layer,
             status=status_filter,
+            scope=scope,
+            page_slug=page_slug,
             limit=limit,
         )
 
@@ -391,7 +456,9 @@ async def distill(
 ) -> DistillResponse:
     """Promote a captured conversation into layered, cited memory."""
     try:
-        loaded = await load_conversation(body.source_id, settings=settings)
+        loaded = await load_conversation(
+            body.source_id, wiki_id=current_user.wiki_id, settings=settings
+        )
     except DistillationError as exc:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -445,12 +512,24 @@ def _page_writer(wiki_id: str, settings: Settings):
     """Keep distilled memory editable as ordinary markdown pages."""
 
     async def write(slug: str, title: str, markdown: str, tags: list[str]) -> None:
-        await sqlite.upsert_page(slug, title, markdown, tags, "agent", wiki_id)
-        try:
-            await qdrant.upsert_page(slug, title, markdown, wiki_id, settings)
-        except Exception as exc:
+        path = settings.wiki_dir / f"{slug}.md"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(ensure_frontmatter(markdown, title=title, tags=tags), encoding="utf-8")
+        # Same indexing path as a page you write by hand, minus distillation:
+        # this page came *out* of memory, so feeding it back in would loop.
+        result = await reindex_page(
+            slug,
+            wiki_id=wiki_id,
+            settings=settings,
+            force=True,
+            authored_by="agent",
+            reason="memory-page",
+            distill=False,
+        )
+        if result.degraded:
             logger.warning(
-                "Memory page index failed", extra={"slug": slug, "error": str(exc)}
+                "Memory page index degraded",
+                extra={"slug": slug, "degraded": ",".join(result.degraded)},
             )
 
     return write

@@ -231,26 +231,6 @@ async def life_register_project(
     return await register_project(key, name, summary, status, wiki_id)
 
 
-@mcp.tool()
-async def life_create_task(
-    title: str,
-    project_key: str | None = None,
-    page_slug: str | None = None,
-    due_date: str | None = None,
-    wiki_id: str = "default",
-) -> dict[str, Any]:
-    """Create a Life OS task linked to an optional project or page."""
-    _require_key()
-    set_trace_id(new_trace_id("mcp-life-task"))
-    return await sqlite.create_life_task(
-        wiki_id=wiki_id,
-        title=title,
-        project_key=project_key,
-        page_slug=page_slug,
-        due_date=due_date,
-        source="mcp",
-    )
-
 
 @mcp.tool()
 async def graph_neighbors(node_id: str, wiki_id: str = "default") -> dict[str, Any]:
@@ -449,7 +429,9 @@ async def distill_source(
     _require_key()
     set_trace_id(new_trace_id("mcp-distill"))
     try:
-        loaded = await load_conversation(source_id, settings=settings)
+        loaded = await load_conversation(
+            source_id, wiki_id=wiki_id, settings=settings
+        )
     except DistillationError as exc:
         return {"error": "source_not_distillable", "detail": str(exc)}
 
@@ -741,6 +723,7 @@ async def capture_conversation_impl(
     turns: list[dict[str, Any]],
     scope: str = "personal",
     origin_uri: str = "",
+    wiki_id: str = "default",
 ) -> dict[str, Any]:
     """Core (testable) capture path: build a Conversation and persist it."""
     conv = Conversation(
@@ -752,7 +735,7 @@ async def capture_conversation_impl(
         ),
         scope=scope, origin_uri=origin_uri,
     )
-    store = CaptureStore(settings=get_settings())
+    store = CaptureStore(wiki_id=wiki_id, settings=get_settings())
     res = await store.capture(conv)
     return {
         "source_id": res.source_id,
@@ -769,6 +752,7 @@ async def capture_conversation(
     interface: str = "claude_code_native",
     turns: list[dict[str, Any]] | None = None,
     scope: str = "personal",
+    wiki_id: str = "default",
 ) -> dict[str, Any]:
     """Capture a user-visible AI conversation as an immutable Source.
 
@@ -778,6 +762,7 @@ async def capture_conversation(
     set_trace_id(new_trace_id("mcp-capture"))
     return await capture_conversation_impl(
         session_id=session_id, interface=interface, turns=turns or [], scope=scope,
+        wiki_id=wiki_id,
     )
 
 

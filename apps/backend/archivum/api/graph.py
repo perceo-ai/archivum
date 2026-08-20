@@ -28,14 +28,22 @@ def _format_edges(data: dict) -> list[dict]:
 
 @router.get("/graph")
 async def get_graph(current_user: CurrentUser = Depends(get_current_user)) -> dict:
+    source = "live"
     try:
         data = await graph.get_all_nodes_edges(current_user.wiki_id)
     except Exception as e:
         # Local/mock-safe fallback: if Kuzu isn't configured, still return a usable demo graph.
         logger.warning("graph.get_all_nodes_edges failed; falling back to demo graph", extra={"error": str(e)})
         data = DEMO_GRAPH
+        source = "demo"
 
-    return {"nodes": data.get("nodes", []), "edges": _format_edges(data)}
+    # `source` is not cosmetic: without it a fabricated graph is indistinguishable
+    # from the user's real one. Clients must surface "demo" to the viewer.
+    return {
+        "nodes": data.get("nodes", []),
+        "edges": _format_edges(data),
+        "source": source,
+    }
 
 
 @router.get("/graph/demo")

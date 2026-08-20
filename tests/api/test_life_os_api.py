@@ -29,7 +29,6 @@ async def life_client(temp_settings):
         patch("archivum.main.qdrant.init_collection", new=AsyncMock()),
         patch("archivum.main.graph.init_graph", new=AsyncMock()),
         patch("archivum.main.sqlite.ensure_owner_exists", new=AsyncMock()),
-        patch("archivum.life_os.service.qdrant.upsert_page", new=AsyncMock()),
     ):
         app = create_app()
         app.dependency_overrides[get_settings] = lambda: temp_settings
@@ -41,18 +40,17 @@ async def life_client(temp_settings):
 def test_daily_note_endpoint(life_client):
     response = life_client.post("/api/life/daily", json={"date": "2026-06-21"})
     assert response.status_code == 200
-    body = response.json()
-    assert body["slug"] == "daily-2026-06-21"
+    assert response.json()["slug"] == "daily/2026-06-21"
 
 
 def test_project_endpoint(life_client):
+    """A project is its page. The listing route went with the parallel table —
+    /api/entries lists projects alongside everything else."""
     response = life_client.post(
         "/api/life/projects",
         json={"key": "phoenix", "name": "Phoenix", "summary": "Second brain MVP"},
     )
     assert response.status_code == 200
-    assert response.json()["key"] == "phoenix"
+    assert response.json()["slug"] == "projects/phoenix"
 
-    list_response = life_client.get("/api/life/projects")
-    assert list_response.status_code == 200
-    assert list_response.json()[0]["key"] == "phoenix"
+    assert life_client.get("/api/life/projects").status_code == 405

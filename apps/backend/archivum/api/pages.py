@@ -9,7 +9,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from archivum.auth import CurrentUser, get_current_user, require_writer
 from archivum.config import Settings, get_settings
@@ -17,6 +17,13 @@ from archivum.db import sqlite, qdrant_client as qdrant, graph
 from archivum.ingest.agent import slugify
 from archivum.knowledge.repository import KnowledgeRepository
 from archivum.knowledge.suggestions import init_suggestion_schema
+from archivum.indexing import (
+    ensure_frontmatter,
+    forget_page,
+    reconcile_vault,
+    reindex_page,
+    repoint_page,
+)
 from archivum.linting import WIKILINK_RE, normalize_wikilink_target
 from archivum.pages_to_knowledge import (
     remove_page_from_knowledge,
@@ -181,9 +188,17 @@ async def _rewrite_wikilinks(
             authored_by=detail["authored_by"],
             wiki_id=wiki_id,
         )
-        await qdrant.upsert_page(detail["slug"], detail["title"], rewritten, wiki_id, settings)
-        await _sync_page_graph(detail["slug"], detail["title"], rewritten, wiki_id)
-        await _sync_page_knowledge(detail["slug"], detail["title"], rewritten, wiki_id)
+        # The file changed, so everything derived from it has to catch up. No
+        # distillation: rewriting a link is not new thinking to remember.
+        await reindex_page(
+            detail["slug"],
+            wiki_id=wiki_id,
+            settings=settings,
+            force=True,
+            authored_by=detail["authored_by"],
+            reason="wikilink-rewrite",
+            distill=False,
+        )
 
 
 async def _sync_page_graph(
@@ -284,14 +299,21 @@ async def move_page_to_slug(
         new_path.write_text(existing["content"], encoding="utf-8")
 
     await sqlite.update_page_slug(old_slug, new_slug, wiki_id)
+    await repoint_page(old_slug=old_slug, new_slug=new_slug, wiki_id=wiki_id)
     await _rename_page_knowledge(
         old_slug, new_slug, existing["title"], existing["content"], wiki_id
     )
     await sqlite.update_share_targets({old_slug: new_slug}, wiki_id)
     await qdrant.delete_page(old_slug, wiki_id, settings)
-    await qdrant.upsert_page(new_slug, existing["title"], existing["content"], wiki_id, settings)
     await graph.rename_page_node(old_slug, new_slug, wiki_id)
-    await graph.upsert_page(new_slug, existing["title"], wiki_id)
+    await reindex_page(
+        new_slug,
+        wiki_id=wiki_id,
+        settings=settings,
+        force=True,
+        reason="rename",
+        distill=False,
+    )
     await _rewrite_wikilinks({old_slug: new_slug}, wiki_id, settings)
 
     row = await sqlite.get_page(new_slug, wiki_id)
@@ -327,15 +349,56 @@ async def duplicate_page_to_slug(
     wiki_path.parent.mkdir(parents=True, exist_ok=True)
     wiki_path.write_text(content, encoding="utf-8")
 
-    await sqlite.upsert_page(new_slug, duplicate_title, content, tags, "user", wiki_id)
-    await qdrant.upsert_page(new_slug, duplicate_title, content, wiki_id, settings)
-    await _sync_page_graph(new_slug, duplicate_title, content, wiki_id)
-    await _sync_page_knowledge(new_slug, duplicate_title, content, wiki_id)
+    await reindex_page(
+        new_slug,
+        wiki_id=wiki_id,
+        settings=settings,
+        force=True,
+        reason="duplicate",
+    )
     row = await sqlite.get_page(new_slug, wiki_id)
     return row  # type: ignore[return-value]
 
 
 # ── Routes ────────────────────────────────────────────────────────────────────
+
+class ReindexResponse(BaseModel):
+    """What a reindex did, including anything it could not reach."""
+
+    slug: str | None = None
+    action: str
+    degraded: list[str] = Field(default_factory=list)
+    pages: int = 0
+
+
+@router.post("/{slug:path}/reindex", response_model=ReindexResponse)
+async def reindex_one_page(
+    slug: str,
+    current_user: CurrentUser = Depends(require_writer),
+    settings: Settings = Depends(get_settings),
+) -> ReindexResponse:
+    """Re-read this page from disk and rebuild everything derived from it.
+
+    The vault is editable by hand, so this is the manual counterpart to the
+    watcher: the file is the truth and the indexes are told to catch up.
+    """
+    slug = _validate_slug(slug)
+    result = await reindex_page(
+        slug,
+        wiki_id=current_user.wiki_id,
+        settings=settings,
+        force=True,
+        reason="manual",
+    )
+    if result.action == "missing":
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"detail": f"No markdown file for '{slug}'", "code": "page_not_found"},
+        )
+    return ReindexResponse(
+        slug=result.slug, action=result.action, degraded=result.degraded
+    )
+
 
 @router.get("", response_model=list[PageSummary])
 async def list_pages(
@@ -427,27 +490,22 @@ async def create_page(
         slug = f"{base_slug}-{counter}"
         counter += 1
 
-    # Write to disk
+    # Write the file, metadata and all, then let the one indexing path derive
+    # everything else from it. The API used to fan out to four stores by hand,
+    # which is how they drifted apart.
+    stored = ensure_frontmatter(clean_content, title=body.title, tags=body.tags)
     wiki_path = settings.wiki_dir / f"{slug}.md"
     wiki_path.parent.mkdir(parents=True, exist_ok=True)
-    wiki_path.write_text(clean_content, encoding="utf-8")
+    wiki_path.write_text(stored, encoding="utf-8")
 
-    # SQLite
-    page_id, _ = await sqlite.upsert_page(
-        slug=slug,
-        title=body.title,
-        content=clean_content,
-        tags=body.tags,
-        authored_by="user",
+    await reindex_page(
+        slug,
         wiki_id=current_user.wiki_id,
+        settings=settings,
+        force=True,
+        authored_by="user",
+        reason="create",
     )
-
-    # Qdrant
-    await qdrant.upsert_page(slug, body.title, clean_content, current_user.wiki_id, settings)
-
-    # Kuzu
-    await _sync_page_graph(slug, body.title, clean_content, current_user.wiki_id)
-    await _sync_page_knowledge(slug, body.title, clean_content, current_user.wiki_id)
 
     row = await sqlite.get_page(slug, current_user.wiki_id)
     return _row_to_detail(row)  # type: ignore[arg-type]
@@ -477,26 +535,18 @@ async def update_page(
     new_content = sanitize_markdown(new_content_raw)
     new_tags = body.tags if body.tags is not None else _deserialize_tags(existing["tags"])
 
-    # Write to disk
+    stored = ensure_frontmatter(new_content, title=new_title, tags=new_tags)
     wiki_path = settings.wiki_dir / f"{slug}.md"
-    wiki_path.write_text(new_content, encoding="utf-8")
+    wiki_path.write_text(stored, encoding="utf-8")
 
-    # SQLite
-    await sqlite.upsert_page(
-        slug=slug,
-        title=new_title,
-        content=new_content,
-        tags=new_tags,
-        authored_by="user",
+    await reindex_page(
+        slug,
         wiki_id=current_user.wiki_id,
+        settings=settings,
+        force=True,
+        authored_by="user",
+        reason="update",
     )
-
-    # Qdrant — re-index
-    await qdrant.upsert_page(slug, new_title, new_content, current_user.wiki_id, settings)
-
-    # Kuzu — update page node
-    await _sync_page_graph(slug, new_title, new_content, current_user.wiki_id)
-    await _sync_page_knowledge(slug, new_title, new_content, current_user.wiki_id)
 
     row = await sqlite.get_page(slug, current_user.wiki_id)
     return _row_to_detail(row)  # type: ignore[arg-type]
@@ -517,19 +567,7 @@ async def delete_page(
             detail={"detail": f"Page '{slug}' not found", "code": "page_not_found"},
         )
 
-    # Remove from disk
     wiki_path = settings.wiki_dir / f"{slug}.md"
     wiki_path.unlink(missing_ok=True)
 
-    # SQLite
-    await sqlite.delete_page(slug, current_user.wiki_id)
-    await _remove_page_knowledge(slug, current_user.wiki_id)
-
-    # Qdrant
-    await qdrant.delete_page(slug, current_user.wiki_id, settings)
-
-    # Kuzu
-    await graph.delete_page_node(slug)
-
-    # Cleanup: remove graph nodes that no longer have any backing Page.
-    await graph.cleanup_abandoned_nodes(current_user.wiki_id)
+    await forget_page(slug, wiki_id=current_user.wiki_id, settings=settings)

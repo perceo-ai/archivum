@@ -36,7 +36,7 @@ Do not describe Archivum as Archductor, Archgraph, project memory, or generic Gr
 | Storage adapters | `apps/backend/archivum/db` |
 | Frontend app | `apps/frontend/src` |
 | CLI installer/update/uninstall | `packages/archivum-cli/src` |
-| Docker/Caddy | `docker-compose.yml`, `docker-compose.images.yml`, `caddy/Caddyfile` |
+| Docker | `docker-compose.yml`, `docker-compose.images.yml` |
 
 ## Work Rules
 

@@ -348,6 +348,73 @@ class MemoryAssetRegistry:
             row = await cursor.fetchone()
         return _row_to_asset(row) if row else None
 
+    async def repoint_page(
+        self, *, wiki_id: str, old_slug: str, new_slug: str
+    ) -> int:
+        """Follow a renamed page. Returns how many assets moved."""
+        async with self._conn.execute(
+            "UPDATE memory_assets SET page_slug=?, updated_at=? "
+            "WHERE wiki_id=? AND page_slug=?",
+            (new_slug, _now(), wiki_id, old_slug),
+        ) as cursor:
+            moved = cursor.rowcount or 0
+        if self._autocommit:
+            await self._conn.commit()
+        return moved
+
+    async def detach_page(self, *, wiki_id: str, slug: str) -> int:
+        """Unhook memory from a deleted page without deleting the memory.
+
+        What was learned survives the page it was learned from — the citation
+        would be a lie either way, but silently dropping reviewed memory because
+        a file moved would be worse.
+        """
+        async with self._conn.execute(
+            "UPDATE memory_assets SET page_slug=NULL, updated_at=? "
+            "WHERE wiki_id=? AND page_slug=?",
+            (_now(), wiki_id, slug),
+        ) as cursor:
+            detached = cursor.rowcount or 0
+        if self._autocommit:
+            await self._conn.commit()
+        return detached
+
+    async def asset_counts(self, *, wiki_id: str) -> dict[str, Any]:
+        """Aggregate asset counts for the memory pipeline view.
+
+        Returned as raw counts rather than percentages so the caller decides how
+        to present the funnel.
+        """
+        counts: dict[str, Any] = {
+            "total": 0,
+            "by_status": {},
+            "by_layer": {},
+            "disputed": 0,
+        }
+        async with self._conn.execute(
+            "SELECT status, COUNT(*) AS n FROM memory_assets WHERE wiki_id=? GROUP BY status",
+            (wiki_id,),
+        ) as cursor:
+            for row in await cursor.fetchall():
+                counts["by_status"][row["status"]] = row["n"]
+                counts["total"] += row["n"]
+        async with self._conn.execute(
+            "SELECT layer, COUNT(*) AS n FROM memory_assets WHERE wiki_id=? GROUP BY layer",
+            (wiki_id,),
+        ) as cursor:
+            for row in await cursor.fetchall():
+                counts["by_layer"][row["layer"]] = row["n"]
+        # "Disputed" is derived, not stored: an asset carrying conflict lineage
+        # is one the system knows two sources disagree about.
+        async with self._conn.execute(
+            "SELECT COUNT(*) AS n FROM memory_assets "
+            "WHERE wiki_id=? AND conflict_lineage NOT IN ('', '[]')",
+            (wiki_id,),
+        ) as cursor:
+            row = await cursor.fetchone()
+            counts["disputed"] = row["n"] if row else 0
+        return counts
+
     async def list_assets(
         self,
         *,
@@ -356,6 +423,10 @@ class MemoryAssetRegistry:
         layer: str | None = None,
         status: str | None = None,
         scope: str | None = None,
+        page_slug: str | None = None,
+        before_inclusive: str | None = None,
+        before_id: str | None = None,
+        exclude_tied: bool = False,
         limit: int = _ASSET_LIST_LIMIT,
     ) -> list[MemoryAsset]:
         clauses = ["wiki_id=?"]
@@ -372,10 +443,35 @@ class MemoryAssetRegistry:
         if scope is not None:
             clauses.append("scope=?")
             params.append(scope)
+        if page_slug is not None:
+            clauses.append("page_slug=?")
+            params.append(page_slug)
+        if before_inclusive:
+            # Row-value comparison so a capped slice can walk through a run of
+            # records sharing updated_at instead of returning the same top rows.
+            if before_id:
+                # Compare on id||':'||version, which is exactly the tail of the
+                # activity id the feed orders by. Comparing the raw id would
+                # disagree whenever one asset id is a prefix of another
+                # ("memory:persona:role" vs "memory:persona:role2").
+                clauses.append(
+                    "(updated_at < ? OR (updated_at = ? "
+                    "AND (id || ':' || CAST(version AS TEXT)) < ?))"
+                )
+                params.extend([before_inclusive, before_inclusive, before_id])
+            elif exclude_tied:
+                clauses.append("updated_at < ?")
+                params.append(before_inclusive)
+            else:
+                clauses.append("updated_at <= ?")
+                params.append(before_inclusive)
         params.append(max(limit, 0))
         async with self._conn.execute(
             f"SELECT * FROM memory_assets WHERE {' AND '.join(clauses)} "
-            "ORDER BY updated_at DESC, id ASC LIMIT ?",
+            # Tie-break on the same key the activity feed sorts by, descending,
+            # so a capped slice of records sharing an updated_at returns the rows
+            # the feed would order first.
+            "ORDER BY updated_at DESC, (id || ':' || CAST(version AS TEXT)) DESC LIMIT ?",
             params,
         ) as cursor:
             rows = await cursor.fetchall()
@@ -670,6 +766,8 @@ def _row_to_scope(row: aiosqlite.Row) -> MemoryScope:
         budget_tokens=row["budget_tokens"],
         budget_items=row["budget_items"],
         retention_policy=json.loads(row["retention_policy"]),
+        created_at=row["created_at"] or "",
+        updated_at=row["updated_at"] or "",
     )
 
 

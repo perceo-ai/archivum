@@ -12,8 +12,8 @@ import aiosqlite
 
 from archivum.config import Settings, get_settings
 from archivum.knowledge.suggestions import init_suggestion_schema
-from archivum.memory.schema import MEMORY_SCHEMA
-from archivum.store.schema import EVIDENCE_SCHEMA
+from archivum.memory.registry import init_memory_schema
+from archivum.store.schema import init_evidence_schema
 
 # ── Schema ────────────────────────────────────────────────────────────────────
 
@@ -117,6 +117,26 @@ CREATE TABLE IF NOT EXISTS share_links (
     revoked     INTEGER NOT NULL DEFAULT 0
 );
 
+CREATE TABLE IF NOT EXISTS distill_queue (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    wiki_id     TEXT    NOT NULL DEFAULT 'default',
+    source_id   TEXT    NOT NULL,
+    -- A page queues by slug and a captured source by id; the worker routes on
+    -- this rather than guessing from the identifier's shape.
+    kind        TEXT    NOT NULL DEFAULT 'source'
+                CHECK (kind IN ('source', 'page')),
+    status      TEXT    NOT NULL DEFAULT 'pending'
+                CHECK (status IN ('pending', 'running', 'done', 'error')),
+    attempts    INTEGER NOT NULL DEFAULT 0,
+    error       TEXT,
+    created_at  TEXT    NOT NULL DEFAULT (datetime('now')),
+    updated_at  TEXT    NOT NULL DEFAULT (datetime('now')),
+    UNIQUE(wiki_id, source_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_distill_queue_status
+    ON distill_queue(status, id);
+
 CREATE TABLE IF NOT EXISTS ingest_log (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
     wiki_id         TEXT    NOT NULL DEFAULT 'default',
@@ -150,67 +170,6 @@ CREATE TABLE IF NOT EXISTS invite_tokens (
     used       INTEGER NOT NULL DEFAULT 0
 );
 
-CREATE TABLE IF NOT EXISTS life_projects (
-    id          INTEGER PRIMARY KEY AUTOINCREMENT,
-    wiki_id     TEXT NOT NULL DEFAULT 'default',
-    key         TEXT NOT NULL,
-    name        TEXT NOT NULL,
-    status      TEXT NOT NULL DEFAULT 'active',
-    page_slug   TEXT,
-    summary     TEXT NOT NULL DEFAULT '',
-    created_at  TEXT NOT NULL DEFAULT (datetime('now')),
-    updated_at  TEXT NOT NULL DEFAULT (datetime('now')),
-    UNIQUE(wiki_id, key)
-);
-
-CREATE TABLE IF NOT EXISTS life_tasks (
-    id          INTEGER PRIMARY KEY AUTOINCREMENT,
-    wiki_id     TEXT NOT NULL DEFAULT 'default',
-    title       TEXT NOT NULL,
-    status      TEXT NOT NULL DEFAULT 'open',
-    project_key TEXT,
-    page_slug   TEXT,
-    due_date    TEXT,
-    source      TEXT NOT NULL DEFAULT 'manual',
-    created_at  TEXT NOT NULL DEFAULT (datetime('now')),
-    updated_at  TEXT NOT NULL DEFAULT (datetime('now'))
-);
-
-CREATE TABLE IF NOT EXISTS life_decisions (
-    id          INTEGER PRIMARY KEY AUTOINCREMENT,
-    wiki_id     TEXT NOT NULL DEFAULT 'default',
-    title       TEXT NOT NULL,
-    decision    TEXT NOT NULL,
-    rationale   TEXT NOT NULL DEFAULT '',
-    project_key TEXT,
-    page_slug   TEXT,
-    decided_at  TEXT NOT NULL DEFAULT (datetime('now')),
-    created_at  TEXT NOT NULL DEFAULT (datetime('now'))
-);
-
-CREATE TABLE IF NOT EXISTS life_people (
-    id          INTEGER PRIMARY KEY AUTOINCREMENT,
-    wiki_id     TEXT NOT NULL DEFAULT 'default',
-    name        TEXT NOT NULL,
-    page_slug   TEXT,
-    summary     TEXT NOT NULL DEFAULT '',
-    created_at  TEXT NOT NULL DEFAULT (datetime('now')),
-    updated_at  TEXT NOT NULL DEFAULT (datetime('now')),
-    UNIQUE(wiki_id, name)
-);
-
-CREATE TABLE IF NOT EXISTS life_areas (
-    id          INTEGER PRIMARY KEY AUTOINCREMENT,
-    wiki_id     TEXT NOT NULL DEFAULT 'default',
-    key         TEXT NOT NULL,
-    name        TEXT NOT NULL,
-    page_slug   TEXT,
-    summary     TEXT NOT NULL DEFAULT '',
-    created_at  TEXT NOT NULL DEFAULT (datetime('now')),
-    updated_at  TEXT NOT NULL DEFAULT (datetime('now')),
-    UNIQUE(wiki_id, key)
-);
-
 CREATE TABLE IF NOT EXISTS agent_activity (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
     wiki_id     TEXT NOT NULL DEFAULT 'default',
@@ -223,7 +182,6 @@ CREATE TABLE IF NOT EXISTS agent_activity (
     created_at  TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
-CREATE INDEX IF NOT EXISTS idx_life_tasks_status ON life_tasks(wiki_id, status);
 CREATE INDEX IF NOT EXISTS idx_agent_activity_created ON agent_activity(wiki_id, created_at);
 """
 
@@ -255,8 +213,13 @@ async def init_db(settings: Settings) -> None:
     configure(settings)
     async with get_db() as db:
         await db.executescript(_SCHEMA)
-        await db.executescript(EVIDENCE_SCHEMA)
-        await db.executescript(MEMORY_SCHEMA)
+        await init_evidence_schema(db)
+        # init_memory_schema, not a bare MEMORY_SCHEMA executescript: the
+        # script only creates missing tables, while the columns added since the
+        # first release (conflict_lineage, supersedes, approved_by, ...) arrive
+        # through ALTER TABLE. A database created before those columns existed
+        # would otherwise run without them and fail at query time.
+        await init_memory_schema(db)
         await init_suggestion_schema(db)
         await db.commit()
 
@@ -311,6 +274,46 @@ async def list_pages(wiki_id: str = "default") -> list[dict[str, Any]]:
             "SELECT id, wiki_id, slug, title, tags, created_at, updated_at, authored_by "
             "FROM pages WHERE wiki_id=? ORDER BY updated_at DESC",
             (wiki_id,),
+        ) as cur:
+            rows = await cur.fetchall()
+            return [dict(r) for r in rows]
+
+
+async def list_recent_pages(
+    wiki_id: str = "default",
+    limit: int = 50,
+    before_inclusive: str | None = None,
+    before_slug: str | None = None,
+    exclude_tied: bool = False,
+) -> list[dict[str, Any]]:
+    """Pages ordered by last touch, newest first, for the activity stream.
+
+    `before_inclusive` is an ISO timestamp cursor. It is deliberately inclusive:
+    the caller orders by (timestamp, id) and needs rows tied with the cursor
+    timestamp so it can compare the full key. Filtering them out here would
+    silently drop every page sharing that second.
+    """
+    clauses = ["wiki_id=?"]
+    params: list[Any] = [wiki_id]
+    if before_inclusive:
+        # Row-value comparison: rows tied on the timestamp are resolved by slug,
+        # which matches the order the caller merges on.
+        if before_slug:
+            clauses.append("(updated_at < ? OR (updated_at = ? AND slug < ?))")
+            params.extend([before_inclusive, before_inclusive, before_slug])
+        elif exclude_tied:
+            clauses.append("updated_at < ?")
+            params.append(before_inclusive)
+        else:
+            clauses.append("updated_at <= ?")
+            params.append(before_inclusive)
+    params.append(max(limit, 0))
+    async with get_db() as db:
+        async with db.execute(
+            "SELECT id, wiki_id, slug, title, tags, created_at, updated_at, authored_by "
+            f"FROM pages WHERE {' AND '.join(clauses)} "
+            "ORDER BY updated_at DESC, slug DESC LIMIT ?",
+            params,
         ) as cur:
             rows = await cur.fetchall()
             return [dict(r) for r in rows]
@@ -386,10 +389,16 @@ async def upsert_page(
             await db.commit()
             return row["id"], False
         else:
+            # Write the timestamps explicitly rather than leaning on the column
+            # defaults: SQLite's datetime('now') is space-separated and naive,
+            # while every UPDATE writes ISO-8601 with a timezone. Mixing the two
+            # in one column breaks lexicographic ordering, which the activity
+            # stream depends on.
             cur = await db.execute(
-                "INSERT INTO pages (wiki_id, slug, title, content, tags, authored_by) "
-                "VALUES (?,?,?,?,?,?)",
-                (wiki_id, slug, title, content, tags_json, authored_by),
+                "INSERT INTO pages "
+                "(wiki_id, slug, title, content, tags, authored_by, created_at, updated_at) "
+                "VALUES (?,?,?,?,?,?,?,?)",
+                (wiki_id, slug, title, content, tags_json, authored_by, now, now),
             )
             await db.commit()
             return cur.lastrowid, True  # type: ignore[return-value]
@@ -764,88 +773,39 @@ async def update_ingest_log(
         await db.commit()
 
 
-async def list_ingest_logs(wiki_id: str = "default", limit: int = 50) -> list[dict[str, Any]]:
+async def list_ingest_logs(
+    wiki_id: str = "default",
+    limit: int = 50,
+    before_inclusive: str | None = None,
+    before_id: str | None = None,
+    exclude_tied: bool = False,
+) -> list[dict[str, Any]]:
+    clauses = ["wiki_id=?"]
+    params: list[Any] = [wiki_id]
+    if before_inclusive:
+        if before_id:
+            # CAST: the activity id embeds this row id as text, so the feed
+            # compares "ingest:9" against "ingest:10" as strings. An integer
+            # comparison here would order them the other way round.
+            clauses.append(
+                "(created_at < ? OR (created_at = ? AND CAST(id AS TEXT) < ?))"
+            )
+            params.extend([before_inclusive, before_inclusive, before_id])
+        elif exclude_tied:
+            clauses.append("created_at < ?")
+            params.append(before_inclusive)
+        else:
+            clauses.append("created_at <= ?")
+            params.append(before_inclusive)
+    params.append(limit)
     async with get_db() as db:
         async with db.execute(
-            "SELECT * FROM ingest_log WHERE wiki_id=? ORDER BY created_at DESC LIMIT ?",
-            (wiki_id, limit),
+            f"SELECT * FROM ingest_log WHERE {' AND '.join(clauses)} "
+            "ORDER BY created_at DESC, CAST(id AS TEXT) DESC LIMIT ?",
+            params,
         ) as cur:
             rows = await cur.fetchall()
             return [dict(r) for r in rows]
-
-
-# ── Life OS ──────────────────────────────────────────────────────────────────
-
-async def upsert_life_project(
-    wiki_id: str,
-    key: str,
-    name: str,
-    status: str = "active",
-    page_slug: str | None = None,
-    summary: str = "",
-) -> dict[str, Any]:
-    async with get_db() as db:
-        await db.execute(
-            """
-            INSERT INTO life_projects (wiki_id, key, name, status, page_slug, summary)
-            VALUES (?, ?, ?, ?, ?, ?)
-            ON CONFLICT(wiki_id, key) DO UPDATE SET
-                name=excluded.name,
-                status=excluded.status,
-                page_slug=excluded.page_slug,
-                summary=excluded.summary,
-                updated_at=datetime('now')
-            """,
-            (wiki_id, key, name, status, page_slug, summary),
-        )
-        await db.commit()
-    projects = await list_life_projects(wiki_id)
-    return next(p for p in projects if p["key"] == key)
-
-
-async def list_life_projects(wiki_id: str = "default") -> list[dict[str, Any]]:
-    async with get_db() as db:
-        async with db.execute(
-            "SELECT * FROM life_projects WHERE wiki_id=? ORDER BY updated_at DESC",
-            (wiki_id,),
-        ) as cur:
-            return [dict(r) for r in await cur.fetchall()]
-
-
-async def create_life_task(
-    wiki_id: str,
-    title: str,
-    status: str = "open",
-    project_key: str | None = None,
-    page_slug: str | None = None,
-    due_date: str | None = None,
-    source: str = "manual",
-) -> dict[str, Any]:
-    async with get_db() as db:
-        cur = await db.execute(
-            """
-            INSERT INTO life_tasks (wiki_id, title, status, project_key, page_slug, due_date, source)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
-            """,
-            (wiki_id, title, status, project_key, page_slug, due_date, source),
-        )
-        await db.commit()
-        task_id = cur.lastrowid
-        async with db.execute("SELECT * FROM life_tasks WHERE id=?", (task_id,)) as row_cur:
-            row = await row_cur.fetchone()
-            return dict(row)
-
-
-async def list_life_tasks(wiki_id: str = "default", status: str | None = None) -> list[dict[str, Any]]:
-    sql = "SELECT * FROM life_tasks WHERE wiki_id=?"
-    args: list[Any] = [wiki_id]
-    if status:
-        sql += " AND status=?"
-        args.append(status)
-    sql += " ORDER BY updated_at DESC"
-    async with get_db() as db:
-        async with db.execute(sql, args) as cur:
-            return [dict(r) for r in await cur.fetchall()]
 
 
 # ── Refresh tokens ────────────────────────────────────────────────────────────
@@ -933,3 +893,69 @@ async def list_invite_tokens(wiki_id: str = "default") -> list[dict[str, Any]]:
         ) as cur:
             rows = await cur.fetchall()
             return [dict(r) for r in rows]
+
+
+# ── Distillation queue ───────────────────────────────────────────────────────
+
+async def enqueue_distillation(
+    source_id: str, wiki_id: str = "default", kind: str = "source"
+) -> None:
+    """Mark a captured source as needing distillation.
+
+    Idempotent: re-capturing the same source resets it to pending rather than
+    queueing it twice, so a retry is just another enqueue.
+    """
+    now = datetime.now(UTC).isoformat()
+    async with get_db() as db:
+        await db.execute(
+            """
+            INSERT INTO distill_queue (wiki_id, source_id, kind, status, created_at, updated_at)
+            VALUES (?,?,?, 'pending', ?, ?)
+            ON CONFLICT(wiki_id, source_id) DO UPDATE SET
+                status='pending', error=NULL, updated_at=excluded.updated_at
+            """,
+            (wiki_id, source_id, kind, now, now),
+        )
+        await db.commit()
+
+
+async def claim_distillation() -> dict[str, Any] | None:
+    """Take the oldest pending job, marking it running so it is claimed once."""
+    now = datetime.now(UTC).isoformat()
+    async with get_db() as db:
+        async with db.execute(
+            "SELECT * FROM distill_queue WHERE status='pending' ORDER BY id ASC LIMIT 1"
+        ) as cur:
+            row = await cur.fetchone()
+        if row is None:
+            return None
+        await db.execute(
+            "UPDATE distill_queue SET status='running', attempts=attempts+1, updated_at=? "
+            "WHERE id=? AND status='pending'",
+            (now, row["id"]),
+        )
+        await db.commit()
+        return dict(row)
+
+
+async def finish_distillation(
+    job_id: int, *, status: str, error: str | None = None
+) -> None:
+    now = datetime.now(UTC).isoformat()
+    async with get_db() as db:
+        await db.execute(
+            "UPDATE distill_queue SET status=?, error=?, updated_at=? WHERE id=?",
+            (status, error, now, job_id),
+        )
+        await db.commit()
+
+
+async def list_distillation_jobs(
+    wiki_id: str = "default", limit: int = 50
+) -> list[dict[str, Any]]:
+    async with get_db() as db:
+        async with db.execute(
+            "SELECT * FROM distill_queue WHERE wiki_id=? ORDER BY id DESC LIMIT ?",
+            (wiki_id, limit),
+        ) as cur:
+            return [dict(r) for r in await cur.fetchall()]

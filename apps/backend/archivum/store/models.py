@@ -32,6 +32,11 @@ class Source:
     recorded_at: str
     valid_from: str
     valid_to: str | None
+    # The vault this evidence belongs to. `scope` is the user's own
+    # classification of a source (personal, work); this is the tenancy
+    # boundary. Last and defaulted so existing positional construction and rows
+    # from a database written before the column existed both still work.
+    wiki_id: str = "default"
 
 
 @dataclass(frozen=True, slots=True)

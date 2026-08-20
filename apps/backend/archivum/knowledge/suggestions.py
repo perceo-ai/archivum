@@ -55,6 +55,32 @@ _STATUS_SQL = (
 )
 
 
+def page_target_prefix(wiki_id: str) -> str:
+    return f"page:{wiki_id}:"
+
+
+def wiki_target_id(wiki_id: str) -> str:
+    return f"wiki:{wiki_id}"
+
+
+def wiki_target_prefix(wiki_id: str) -> str:
+    return f"wiki:{wiki_id}:"
+
+
+def wiki_scope(wiki_id: str) -> dict[str, list[str]]:
+    """Target filters that restrict a suggestion query to one wiki.
+
+    Suggestions are keyed by a target id that embeds the wiki, and
+    `list_suggestions` only applies tenancy when target filters are supplied —
+    so an unfiltered call returns every wiki's rows. Any aggregate over
+    suggestions must pass these filters.
+    """
+    return {
+        "target_ids": [wiki_target_id(wiki_id)],
+        "target_prefixes": [page_target_prefix(wiki_id), wiki_target_prefix(wiki_id)],
+    }
+
+
 class MemorySuggestion(BaseModel):
     id: str
     target_id: str
@@ -72,6 +98,10 @@ class MemorySuggestion(BaseModel):
     estimated_durability: str = ""
     expires_at: str | None = None
     status: SuggestionStatus
+    # Written by SQLite defaults on insert/update. Exposed so the activity
+    # stream can order suggestions against page edits and ingest logs.
+    created_at: str = ""
+    updated_at: str = ""
 
 
 async def init_suggestion_schema(conn: aiosqlite.Connection) -> None:
@@ -250,7 +280,9 @@ class SuggestionRepository:
             ),
         )
         await self._conn.commit()
-        return suggestion
+        # Re-read so created_at/updated_at come back with the values SQLite
+        # defaulted them to, rather than the empty strings on the draft above.
+        return await self.get_suggestion(suggestion.id) or suggestion
 
     async def get_suggestion(self, suggestion_id: str) -> MemorySuggestion | None:
         async with self._conn.execute(
@@ -266,6 +298,9 @@ class SuggestionRepository:
         target_ids: list[str] | None = None,
         target_prefixes: list[str] | None = None,
         status: SuggestionStatus | None = "pending",
+        before_inclusive: str | None = None,
+        before_id: str | None = None,
+        exclude_tied: bool = False,
     ) -> list[MemorySuggestion]:
         clauses: list[str] = []
         params: list[str] = []
@@ -288,15 +323,81 @@ class SuggestionRepository:
         if status is not None:
             clauses.append("status=?")
             params.append(status)
+        if before_inclusive:
+            # Row-value comparison so a capped slice can walk a run of records
+            # sharing updated_at rather than repeating its top rows.
+            if before_id:
+                clauses.append("(updated_at < ? OR (updated_at = ? AND id < ?))")
+                params.extend([before_inclusive, before_inclusive, before_id])
+            elif exclude_tied:
+                clauses.append("updated_at < ?")
+                params.append(before_inclusive)
+            else:
+                clauses.append("updated_at <= ?")
+                params.append(before_inclusive)
 
         where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
         async with self._conn.execute(
             f"SELECT * FROM memory_suggestions {where} "
-            "ORDER BY updated_at DESC, created_at DESC, id ASC",
+            # Descending tie-break, matching the activity feed's merge order.
+            "ORDER BY updated_at DESC, created_at DESC, id DESC",
             params,
         ) as cursor:
             rows = await cursor.fetchall()
         return [self._row_to_suggestion(row) for row in rows]
+
+    async def repoint_page(
+        self, *, wiki_id: str, old_slug: str, new_slug: str
+    ) -> int:
+        """Follow a renamed page so pending review items stay actionable."""
+        old_target = f"{page_target_prefix(wiki_id)}{old_slug}"
+        new_target = f"{page_target_prefix(wiki_id)}{new_slug}"
+        async with self._conn.execute(
+            "UPDATE memory_suggestions SET target_id=?, updated_at=datetime('now') "
+            "WHERE target_id=?",
+            (new_target, old_target),
+        ) as cursor:
+            moved = cursor.rowcount or 0
+        await self._conn.commit()
+        return moved
+
+    async def expire_for_page(self, *, wiki_id: str, slug: str) -> int:
+        """Retire suggestions against a page that no longer exists.
+
+        A pending suggestion targeting a deleted page can never be accepted, so
+        leaving it pending would keep an un-actionable item in the review queue
+        forever.
+        """
+        target = f"{page_target_prefix(wiki_id)}{slug}"
+        async with self._conn.execute(
+            "UPDATE memory_suggestions SET status='expired', updated_at=datetime('now') "
+            "WHERE target_id=? AND status='pending'",
+            (target,),
+        ) as cursor:
+            expired = cursor.rowcount or 0
+        await self._conn.commit()
+        return expired
+
+    async def suggestion_counts(self, *, wiki_id: str) -> dict[str, int]:
+        """How many suggestions sit in each review state, for one wiki."""
+        scope = wiki_scope(wiki_id)
+        clauses = ["target_id IN ({})".format(
+            ", ".join("?" for _ in scope["target_ids"])
+        )]
+        params: list[str] = list(scope["target_ids"])
+        for prefix in scope["target_prefixes"]:
+            clauses.append("target_id LIKE ?")
+            params.append(f"{prefix}%")
+
+        counts: dict[str, int] = {}
+        async with self._conn.execute(
+            "SELECT status, COUNT(*) AS n FROM memory_suggestions "
+            f"WHERE {' OR '.join(clauses)} GROUP BY status",
+            params,
+        ) as cursor:
+            for row in await cursor.fetchall():
+                counts[row["status"]] = row["n"]
+        return counts
 
     async def accept_suggestion(self, suggestion_id: str) -> None:
         await self._transition(suggestion_id, "accepted")
@@ -434,4 +535,6 @@ class SuggestionRepository:
             estimated_durability=row["estimated_durability"],
             expires_at=row["expires_at"],
             status=row["status"],
+            created_at=row["created_at"] or "",
+            updated_at=row["updated_at"] or "",
         )

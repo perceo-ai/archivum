@@ -35,6 +35,28 @@ interface AppState {
   leftOpen: boolean;
   rightOpen: boolean;
   isAuthenticated: boolean;
+  theme: Theme;
+}
+
+export type Theme = 'dark' | 'light';
+
+// Dark is the default. The choice is remembered per browser, and applied to
+// <html data-theme> so the token layer can swap in one place.
+const THEME_KEY = 'archivum:theme';
+
+function readTheme(): Theme {
+  if (typeof window === 'undefined') return 'dark';
+  return window.localStorage?.getItem(THEME_KEY) === 'light' ? 'light' : 'dark';
+}
+
+export function applyTheme(theme: Theme): void {
+  if (typeof document === 'undefined') return;
+  document.documentElement.dataset.theme = theme;
+  try {
+    window.localStorage?.setItem(THEME_KEY, theme);
+  } catch {
+    // Private browsing modes reject writes; the in-memory theme still applies.
+  }
 }
 
 type Action =
@@ -47,7 +69,8 @@ type Action =
   | { type: 'SET_QUICK_SEARCH_OPEN'; open: boolean }
   | { type: 'TOGGLE_LEFT' }
   | { type: 'TOGGLE_RIGHT' }
-  | { type: 'SET_AUTH'; value: boolean };
+  | { type: 'SET_AUTH'; value: boolean }
+  | { type: 'TOGGLE_THEME' };
 
 const initialState: AppState = {
   pages: [],
@@ -59,6 +82,7 @@ const initialState: AppState = {
   leftOpen: true,
   rightOpen: true,
   isAuthenticated: false,
+  theme: readTheme(),
 };
 
 function reducer(state: AppState = initialState, action: Action): AppState {
@@ -86,6 +110,11 @@ function reducer(state: AppState = initialState, action: Action): AppState {
       return { ...state, leftOpen: !state.leftOpen };
     case 'TOGGLE_RIGHT':
       return { ...state, rightOpen: !state.rightOpen };
+    case 'TOGGLE_THEME': {
+      const theme: Theme = state.theme === 'dark' ? 'light' : 'dark';
+      applyTheme(theme);
+      return { ...state, theme };
+    }
     case 'SET_AUTH':
       return { ...state, isAuthenticated: action.value };
     default:

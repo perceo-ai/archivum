@@ -30,8 +30,8 @@ def _src(sid: str, content_hash: str, version: int, origin: str) -> Source:
 async def test_dedup_lookup_by_hash_and_version(store):
     src = _src("s1", "a" * 64, 1, "file:///x")
     await store.insert_source(src)
-    assert await store.get_source_by_hash_and_version("a" * 64, 1) == src
-    assert await store.get_source_by_hash_and_version("a" * 64, 2) is None
+    assert await store.get_source_by_hash_and_version("a" * 64, 1, wiki_id="default") == src
+    assert await store.get_source_by_hash_and_version("a" * 64, 2, wiki_id="default") is None
 
 
 @pytest.mark.asyncio

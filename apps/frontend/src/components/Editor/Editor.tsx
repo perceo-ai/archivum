@@ -200,7 +200,12 @@ const Editor = forwardRef<EditorHandle, EditorProps>(function Editor(
     <div className="flex h-full w-full flex-col">
       {suggestions.length > 0 && (
         <div className="border-b border-white/[0.06] px-4 py-3">
-          <div className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Suggestions</div>
+          {/* Sentence case, and named for what it is: an agent proposing a change. */}
+          <div className="mb-2 text-xs font-medium text-muted-foreground">
+            {suggestions.length === 1
+              ? 'An agent wants to change this'
+              : `${suggestions.length} agent changes waiting on you`}
+          </div>
           <div className="space-y-2">
             {suggestions.map((suggestion) => (
               <div key={suggestion.id} className="flex flex-wrap items-center gap-2 text-sm">
