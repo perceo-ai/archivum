@@ -12,6 +12,11 @@ from archivum.archgraph.extractors.base import (
 from archivum.archgraph.models import CodeEdge, CodeNode, Extraction, ExtractionMethod
 from archivum.archgraph.registry import LanguageConfig, config_for_suffix, load_parser
 
+# Enough to identify a symbol, not enough to paste a file into the graph. The
+# canonical answer is always the cited source; these are for recognition.
+_MAX_SIGNATURE = 300
+_MAX_SUMMARY = 200
+
 
 def extract_file(path: Path, *, root: Path | None = None, scope: str | None = None) -> Extraction:
     """Dispatch extraction by file suffix. Returns Extraction with error on unknown suffix."""
@@ -110,6 +115,44 @@ def _extract_generic(
                     )
                 )
 
+    def _signature_of(node) -> str:  # type: ignore[no-untyped-def]
+        """The declaration line, without the body.
+
+        A name alone tells an agent almost nothing; the parameters and return
+        type are what let it decide whether a symbol is the one it wants without
+        opening the file.
+        """
+        body = node.child_by_field_name("body")
+        end = body.start_byte if body is not None else node.end_byte
+        text = source[node.start_byte:end].decode("utf-8", "replace")
+        # Collapse a wrapped signature onto one readable line.
+        signature = " ".join(text.split()).rstrip("{:").strip()
+        return signature[:_MAX_SIGNATURE] if signature else ""
+
+    def _summary_of(node) -> str:  # type: ignore[no-untyped-def]
+        """The first line of the docstring, if the author wrote one.
+
+        Only what is actually written: an absent docstring stays absent rather
+        than being replaced by a guess at what the code does.
+        """
+        body = node.child_by_field_name("body")
+        if body is None:
+            return ""
+        for child in body.children:
+            # Python: a bare string expression opening the body. TS/JS has no
+            # equivalent construct, so this correctly finds nothing there.
+            if child.type != "expression_statement":
+                continue
+            for grandchild in child.children:
+                if grandchild.type != "string":
+                    continue
+                raw = _read_text(grandchild, source)
+                text = raw.strip().strip('"\'').strip()
+                first = next((line.strip() for line in text.splitlines() if line.strip()), "")
+                return first[:_MAX_SUMMARY]
+            return ""
+        return ""
+
     def _identifier_names(node) -> list[str]:  # type: ignore[no-untyped-def]
         """Identifier text under a node, outermost first, deduplicated."""
         found: list[str] = []
@@ -136,6 +179,10 @@ def _extract_generic(
                         kind="type",
                         source_file=str(path),
                         source_location=_source_location(node),
+                        properties={
+                            "signature": _signature_of(node),
+                            "summary": _summary_of(node),
+                        },
                     )
                 )
                 _emit_inheritance(node, _make_id(file_namespace, name))
@@ -156,6 +203,10 @@ def _extract_generic(
                         kind="symbol",
                         source_file=str(path),
                         source_location=_source_location(node),
+                        properties={
+                            "signature": _signature_of(node),
+                            "summary": _summary_of(node),
+                        },
                     )
                 )
 

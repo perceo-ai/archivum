@@ -9,7 +9,7 @@ import aiosqlite
 
 from archivum.archgraph.cache import load_cached, save_cached
 from archivum.archgraph.extract import extract_file
-from archivum.archgraph.extractors.base import _file_namespace
+from archivum.archgraph.extractors.base import _file_namespace, _make_id
 from archivum.archgraph.mapper import (
     CandidateArtifact,
     CandidateEntity,
@@ -21,7 +21,12 @@ from archivum.archgraph.mapper import (
 )
 from archivum.archgraph.models import Extraction
 from archivum.archgraph.registry import CODE_SUFFIXES
-from archivum.archgraph.repo import collect_files, repo_artifacts, snapshot_repo
+from archivum.archgraph.repo import (
+    changed_line_ranges,
+    collect_files,
+    repo_artifacts,
+    snapshot_repo,
+)
 from archivum.archgraph.resolve import resolve_cross_file
 from archivum.archgraph.cross_repo import resolve_cross_repo
 from archivum.archgraph.bridge import bridge_evidence
@@ -84,6 +89,62 @@ class _KnowledgeL1View:
             if (kind is None or o.get("kind") == kind)
             and (scope is None or o.get("scope") == scope)
         ]
+
+
+def _span_bounds(span: str) -> tuple[int, int] | None:
+    """(start, end) line numbers from an `L12-L18` span."""
+    parts = [part.strip().lstrip("Ll") for part in span.split("-") if part.strip()]
+    if not parts or not all(part.isdigit() for part in parts):
+        return None
+    return int(parts[0]), int(parts[-1])
+
+
+def _changed_in_edges(
+    root: Path, snap, extractions: list[Extraction], *, scope: str
+) -> list[CandidateRelationship]:
+    """Link the commit to every symbol whose lines it touched."""
+    ranges = changed_line_ranges(root, snap.commit_sha)
+    if not ranges:
+        return []
+
+    commit_id = _make_id(snap.repo_id, snap.commit_sha)
+    edges: list[CandidateRelationship] = []
+    seen: set[str] = set()
+    for extraction in extractions:
+        for node in extraction.nodes:
+            if node.kind not in ("symbol", "type") or node.id in seen:
+                continue
+            try:
+                relative = Path(node.source_file).resolve().relative_to(root.resolve())
+            except (ValueError, OSError):
+                continue
+            touched = ranges.get(relative.as_posix())
+            bounds = _span_bounds(node.source_location)
+            if not touched or bounds is None:
+                continue
+            start, end = bounds
+            if not any(hunk_end >= start and hunk_start <= end for hunk_start, hunk_end in touched):
+                continue
+            seen.add(node.id)
+            edges.append(
+                CandidateRelationship(
+                    id=_make_id(node.id, commit_id, "changed_in"),
+                    src_id=node.id,
+                    dst_id=commit_id,
+                    rel_type="changed_in",
+                    scope=scope,
+                    confidence=1.0,
+                    extraction_method="EXTRACTED",
+                    provenance=[
+                        Provenance(
+                            chunk_id=node.source_file,
+                            span=node.source_location,
+                            extraction_method="EXTRACTED",
+                        )
+                    ],
+                )
+            )
+    return edges
 
 
 def changed_files(root: Path, since_sha: str | None) -> tuple[list[Path], list[Path]]:
@@ -230,6 +291,13 @@ async def ingest_repo(
     for (file_or_root, chunk_id), ext in zip(file_chunk_ids, all_extractions):
         mapped = map_extraction(ext, scope=scope, chunk_id=chunk_id)
         all_candidates.extend(mapped)
+
+    # Step 4b: attribute the commit to the symbols whose lines it changed.
+    # Attributing it to every symbol in a touched file would say a module moved;
+    # this says which function did, which is what "what changed and why" needs.
+    all_candidates.extend(
+        _changed_in_edges(root, snap, all_extractions, scope=scope)
+    )
 
     # Step 5 (incremental only): prune candidates from deleted files and remove
     # stale canonical records from every touched file before current upserts.

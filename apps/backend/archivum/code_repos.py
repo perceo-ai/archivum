@@ -107,6 +107,11 @@ REPO_SCOPE_PREFIX = "repo:"
 _SAFE_REPO_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
 _MAX_REPO_NAME_LENGTH = 100
 
+# Code records are short — a name, a signature, a summary — so a repository
+# affords more of them per package than prose memory does.
+CODE_SCOPE_BUDGET_TOKENS = 8000
+CODE_SCOPE_BUDGET_ITEMS = 40
+
 
 def validate_repo_name(name: str) -> str:
     """Return `name` if it is safe to use as a path segment, else raise."""
@@ -265,6 +270,16 @@ async def index_repo(repo: CodeRepo, *, settings: Settings | None = None) -> Cod
             related_scopes=related,
         )
         await ensure_personal_root(knowledge, wiki_id=repo.wiki_id)
+        # Budgets live in the scope registry, so a scope with no row is
+        # unbounded — the budget system simply did not apply to code.
+        await MemoryAssetRegistry(conn).upsert_scope(
+            id=repo.scope,
+            wiki_id=repo.wiki_id,
+            scope_type="repo",
+            name=repo.name,
+            budget_tokens=CODE_SCOPE_BUDGET_TOKENS,
+            budget_items=CODE_SCOPE_BUDGET_ITEMS,
+        )
         await register_codegraph_asset(
             MemoryAssetRegistry(conn),
             knowledge,
