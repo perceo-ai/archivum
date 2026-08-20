@@ -514,15 +514,19 @@ async def audit_knowledge_graph(
     *,
     scope: str | None = None,
     surprise_limit: int = DEFAULT_SURPRISE_LIMIT,
+    allowed_scopes: set[str] | None = None,
 ) -> GraphReport:
-    nodes, edges = await load_graph(repo, scope=scope)
+    nodes, edges = await load_graph(repo, scope=scope, allowed_scopes=allowed_scopes)
     return build_graph_report(
         nodes, edges, scope=scope, surprise_limit=surprise_limit
     )
 
 
 async def load_graph(
-    repo: KnowledgeRepository, *, scope: str | None = None
+    repo: KnowledgeRepository,
+    *,
+    scope: str | None = None,
+    allowed_scopes: set[str] | None = None,
 ) -> tuple[list[KnowledgeObject], list[KnowledgeRelationship]]:
     """Load a scoped graph, always including the owner root and any links in.
 
@@ -534,6 +538,12 @@ async def load_graph(
     to neither the repository's scope nor the wiki's. Loading strictly by scope
     would drop exactly the edges that explain why a thing exists — so links that
     touch a loaded record are pulled in, along with what they point at.
+
+    Following a link crosses a scope boundary, so it needs its own authorisation.
+    `allowed_scopes` is what the caller may read; anything the caller has not
+    been granted is left out rather than fetched by id. Callers that pass nothing
+    get the requested scope only, because a link is not worth disclosing another
+    vault's records by default.
     """
     nodes = await repo.list_objects(scope=scope, limit=_AUDIT_OBJECT_LIMIT)
     if len(nodes) == _AUDIT_OBJECT_LIMIT:
@@ -547,7 +557,9 @@ async def load_graph(
     edges = await repo.list_relationships(scope=scope)
 
     if scope is not None:
-        nodes, edges = await _add_incident_links(repo, nodes, edges)
+        readable = set(allowed_scopes) if allowed_scopes is not None else {scope}
+        readable.add(scope)
+        nodes, edges = await _add_incident_links(repo, nodes, edges, readable)
     return nodes, edges
 
 
@@ -555,8 +567,9 @@ async def _add_incident_links(
     repo: KnowledgeRepository,
     nodes: list[KnowledgeObject],
     edges: list[KnowledgeRelationship],
+    readable_scopes: set[str],
 ) -> tuple[list[KnowledgeObject], list[KnowledgeRelationship]]:
-    """Pull in link-scope edges that touch the loaded nodes, and their far ends."""
+    """Pull in link-scope edges whose far end the caller is allowed to read."""
     known = {node.id for node in nodes}
     incident: list[KnowledgeRelationship] = []
     wanted: set[str] = set()
@@ -576,11 +589,24 @@ async def _add_incident_links(
     if not incident:
         return nodes, edges
 
+    # An edge is only kept once its far end has been fetched *and* cleared, so
+    # an unreadable neighbour discloses neither its label nor the fact of the
+    # connection.
+    disclosed: set[str] = set()
     for node_id in sorted(wanted):
         far_end = await repo.get_object(node_id)
-        if far_end is not None:
-            nodes.append(far_end)
-    return nodes, [*edges, *incident]
+        if far_end is None or far_end.scope not in readable_scopes:
+            continue
+        nodes.append(far_end)
+        disclosed.add(node_id)
+
+    visible = known | disclosed
+    kept = [
+        edge
+        for edge in incident
+        if edge.src_id in visible and edge.dst_id in visible
+    ]
+    return nodes, [*edges, *kept]
 
 
 def report_to_dict(report: GraphReport) -> dict[str, Any]:

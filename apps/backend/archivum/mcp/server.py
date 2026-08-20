@@ -528,7 +528,7 @@ async def retrieve_code_context(
     set_trace_id(new_trace_id("mcp-code-context"))
     request = ContextRequest(
         query=query,
-        scope=scope_for(repo),
+        scope=scope_for(repo, wiki_id=wiki_id),
         wiki_id=wiki_id,
         depth=max(depth, 0),
         max_nodes=min(max(max_nodes, 1), 50),

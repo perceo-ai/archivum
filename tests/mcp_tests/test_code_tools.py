@@ -74,7 +74,7 @@ async def test_an_agent_can_index_a_repository(vault, tmp_path, mock_kuzu_conn):
     ):
         result = await index_repository(str(repo))
 
-    assert result["scope"] == "repo:atlas"
+    assert result["scope"] == "repo:default:atlas"
     assert result["status"] == "ready"
     assert result["nodes"] > 0
     assert result["pages"] > 0, "indexing should leave readable pages behind"

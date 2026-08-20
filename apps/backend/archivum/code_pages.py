@@ -30,6 +30,7 @@ from archivum.knowledge.graph_audit import (
     audit_knowledge_graph,
 )
 from archivum.knowledge.models import KnowledgeObject
+from archivum.knowledge.personal_root import SELF_ID
 from archivum.knowledge.repository import KnowledgeRepository
 
 if TYPE_CHECKING:  # pragma: no cover - import cycle only matters for type checkers
@@ -243,7 +244,13 @@ async def write_repo_pages(repo: "CodeRepo", *, settings: Settings) -> int:
     """
     async with sqlite.get_db() as conn:
         knowledge = KnowledgeRepository(conn)
-        report = await audit_knowledge_graph(knowledge, scope=repo.scope)
+        # This repository, the vault that owns it, and the owner root: enough
+        # for a decision link to show on the page, and nothing from elsewhere.
+        report = await audit_knowledge_graph(
+            knowledge,
+            scope=repo.scope,
+            allowed_scopes={repo.scope, f"wiki:{repo.wiki_id}", SELF_ID},
+        )
         objects = await knowledge.list_objects(scope=repo.scope, limit=100_000)
         edges = await knowledge.list_relationships(scope=repo.scope)
 

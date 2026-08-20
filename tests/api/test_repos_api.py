@@ -102,14 +102,14 @@ async def test_registering_a_repo_queues_it_and_indexing_fills_in_the_counts(env
 
     created = client.post("/api/repos", json={"path": str(repo)})
     assert created.status_code == 201, created.text
-    assert created.json()["scope"] == "repo:atlas"
+    assert created.json()["scope"] == "repo:default:atlas"
     # Indexing is queued, never inline: a large repo must not block the server.
     assert created.json()["status"] == "pending"
 
     assert await _index_all(settings) == 1
 
     listed = client.get("/api/repos").json()
-    assert [repo_["scope"] for repo_ in listed] == ["repo:atlas"]
+    assert [repo_["scope"] for repo_ in listed] == ["repo:default:atlas"]
     assert listed[0]["status"] == "ready"
     assert listed[0]["files"] == 1
     assert listed[0]["nodes"] > 0
@@ -122,7 +122,7 @@ async def test_an_indexed_repo_puts_its_symbols_in_canonical_knowledge(env, tmp_
     await _index_all(settings)
 
     async with sqlite_mod.get_db() as conn:
-        objects = await KnowledgeRepository(conn).list_objects(scope="repo:atlas", limit=100)
+        objects = await KnowledgeRepository(conn).list_objects(scope="repo:default:atlas", limit=100)
 
     labels = {object_.label for object_ in objects}
     assert "haversine" in labels
@@ -144,7 +144,7 @@ async def test_code_retrieval_finds_the_lexical_index_the_server_wrote(env, tmp_
     async with sqlite_mod.get_db() as conn:
         package = await build_context_package(
             KnowledgeRepository(conn),
-            ContextRequest(query="haversine", scope="repo:atlas", wiki_id="default"),
+            ContextRequest(query="haversine", scope="repo:default:atlas", wiki_id="default"),
         )
 
     assert package.nodes, "a code query should return code"
@@ -162,7 +162,7 @@ async def test_indexing_registers_the_code_graph_as_governed_memory(env, tmp_pat
             wiki_id="default", asset_type="codegraph"
         )
 
-    assert [asset.id for asset in assets] == ["codegraph:repo:atlas"]
+    assert [asset.id for asset in assets] == ["codegraph:repo:default:atlas"]
     assert assets[0].layer == "L2"
     assert assets[0].owner == "person:self"
 

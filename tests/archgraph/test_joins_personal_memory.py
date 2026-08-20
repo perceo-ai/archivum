@@ -49,11 +49,17 @@ def _commit_repo(root: Path, name: str, files: dict[str, str]) -> Path:
     return repo
 
 
-async def _ingest(repo: Path, scope: str, knowledge, tmp_path: Path, conn):
+async def _ingest(repo: Path, scope: str, knowledge, tmp_path: Path, conn, related=None):
+    """Index one repo. `related` names the other scopes links may reach."""
     cache = tmp_path / f"cache-{scope.replace(':', '-')}"
     cache.mkdir(parents=True, exist_ok=True)
     return await ingest_repo(
-        repo, scope=scope, cache_dir=cache, knowledge=knowledge, lexical_conn=conn
+        repo,
+        scope=scope,
+        cache_dir=cache,
+        knowledge=knowledge,
+        lexical_conn=conn,
+        related_scopes=related,
     )
 
 
@@ -91,7 +97,7 @@ async def test_a_symbol_links_to_the_decision_that_mentions_it(tmp_path):
             )
         )
 
-        await _ingest(repo, "repo:a", knowledge, tmp_path, conn)
+        await _ingest(repo, "repo:a", knowledge, tmp_path, conn, related={"wiki:default"})
         bridged = await knowledge.list_relationships(scope="bridge")
 
     decided = [rel for rel in bridged if rel.rel_type == "decided_in"]
@@ -136,7 +142,8 @@ async def test_the_same_type_in_two_repos_is_recognised_as_one_thing(tmp_path):
         await init_knowledge_schema(conn)
         knowledge = KnowledgeRepository(conn)
         await _ingest(repo_a, "repo:a", knowledge, tmp_path, conn)
-        await _ingest(repo_b, "repo:b", knowledge, tmp_path, conn)
+        # Two repositories in one vault may recognise a shared type.
+        await _ingest(repo_b, "repo:b", knowledge, tmp_path, conn, related={"repo:a"})
         cross = await knowledge.list_relationships(scope="cross_repo")
 
     same = [rel for rel in cross if rel.rel_type == "same_symbol_as"]
@@ -155,3 +162,53 @@ async def test_one_repo_alone_produces_no_cross_repo_claims(tmp_path):
         cross = await knowledge.list_relationships(scope="cross_repo")
 
     assert cross == []
+
+
+@pytest.mark.asyncio
+async def test_bridging_does_not_reach_into_another_vault(tmp_path):
+    """A decision link may only be drawn from memory the repository's vault owns.
+
+    Derived links are resolved against the whole store, which is what lets a
+    symbol find a decision recorded months earlier. Left unbounded that same
+    sweep would draw an edge from this repository into another vault's memory,
+    manufacturing a cross-tenant link that no reader ever authorised.
+    """
+    repo = _commit_repo(tmp_path, "a", {"calc.py": CALC})
+
+    async with aiosqlite.connect(tmp_path / "k.db") as conn:
+        await init_knowledge_schema(conn)
+        knowledge = KnowledgeRepository(conn)
+        for scope, suffix in (("wiki:mine", "mine"), ("wiki:theirs", "theirs")):
+            await knowledge.upsert_object(
+                KnowledgeObject(
+                    id=f"memory:atom:{suffix}",
+                    kind="memory_atom",
+                    label=f"decision {suffix}",
+                    scope=scope,
+                    confidence=0.9,
+                    extraction_method="EXTRACTED",
+                    citations=[
+                        Citation(
+                            source_id="s", chunk_id="c",
+                            span_start=None, span_end=None, quote="hypot",
+                        )
+                    ],
+                    properties={"atom_type": "decision", "text": "hypot should stay pure."},
+                )
+            )
+
+        cache = tmp_path / "cache"
+        cache.mkdir(parents=True, exist_ok=True)
+        await ingest_repo(
+            repo,
+            scope="repo:mine:a",
+            cache_dir=cache,
+            knowledge=knowledge,
+            lexical_conn=conn,
+            related_scopes={"repo:mine:a", "wiki:mine"},
+        )
+        bridged = await knowledge.list_relationships(scope="bridge")
+
+    targets = {rel.dst_id for rel in bridged}
+    assert "memory:atom:mine" in targets, "the owning vault's decision should link"
+    assert "memory:atom:theirs" not in targets, "another vault's must not"

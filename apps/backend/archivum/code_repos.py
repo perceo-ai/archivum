@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -99,9 +100,36 @@ def _row_to_repo(row: Any) -> CodeRepo:
 
 REPO_SCOPE_PREFIX = "repo:"
 
+# A repository name becomes a directory under the cache root and a folder in the
+# vault, so it has to be a single safe path segment. Without this a name
+# containing traversal or an absolute path would place generated files anywhere
+# the backend could reach.
+_SAFE_REPO_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
+_MAX_REPO_NAME_LENGTH = 100
 
-def scope_for(name: str) -> str:
-    return f"{REPO_SCOPE_PREFIX}{name}"
+
+def validate_repo_name(name: str) -> str:
+    """Return `name` if it is safe to use as a path segment, else raise."""
+    candidate = name.strip()
+    if not candidate or len(candidate) > _MAX_REPO_NAME_LENGTH:
+        raise RepoError("A repository name must be 1–100 characters")
+    if not _SAFE_REPO_NAME.match(candidate) or candidate in {".", ".."}:
+        raise RepoError(
+            "A repository name may only contain letters, digits, dot, dash and "
+            "underscore, and may not contain a path separator"
+        )
+    return candidate
+
+
+def scope_for(name: str, *, wiki_id: str) -> str:
+    """The canonical scope for one vault's copy of a repository.
+
+    The vault id is part of the scope because `api` or `web` is a name many
+    vaults will use. Keying on the name alone meant the second vault to register
+    took over the first vault's register row, and both vaults' code records
+    landed in one shared scope in canonical knowledge.
+    """
+    return f"{REPO_SCOPE_PREFIX}{wiki_id}:{name}"
 
 
 def _now() -> str:
@@ -125,11 +153,9 @@ async def register_repo(*, path: Path, wiki_id: str, name: str | None = None) ->
     if not resolved.is_dir():
         raise RepoError(f"'{path}' is not a directory on this server")
 
-    repo_name = (name or resolved.name).strip()
-    if not repo_name:
-        raise RepoError("Could not derive a name for this repository")
+    repo_name = validate_repo_name(name or resolved.name)
 
-    scope = scope_for(repo_name)
+    scope = scope_for(repo_name, wiki_id=wiki_id)
     now = _now()
     async with sqlite.get_db() as conn:
         await init_repo_schema(conn)
@@ -139,10 +165,10 @@ async def register_repo(*, path: Path, wiki_id: str, name: str | None = None) ->
             VALUES (?,?,?,?, 'pending', ?, ?)
             ON CONFLICT(scope) DO UPDATE SET
                 path=excluded.path,
-                wiki_id=excluded.wiki_id,
                 status='pending',
                 error=NULL,
                 updated_at=excluded.updated_at
+            WHERE code_repos.wiki_id = excluded.wiki_id
             """,
             (scope, wiki_id, repo_name, str(resolved), now, now),
         )
@@ -206,11 +232,19 @@ async def index_repo(repo: CodeRepo, *, settings: Settings | None = None) -> Cod
     if not root.is_dir():
         raise RepoError(f"'{repo.path}' is no longer a directory on this server")
 
-    cache_dir = settings.code_cache_dir / repo.name
+    # `repo.name` was validated as a single safe path segment at registration;
+    # resolving and re-checking keeps that guarantee local to the write.
+    cache_root = settings.code_cache_dir.resolve()
+    cache_dir = (cache_root / validate_repo_name(repo.name)).resolve()
+    if not cache_dir.is_relative_to(cache_root):
+        raise RepoError(f"Cache path for '{repo.name}' escapes the cache root")
     cache_dir.mkdir(parents=True, exist_ok=True)
 
     update = repo.last_sha is not None
     current_sha = snapshot_repo(root).commit_sha
+    # This vault's memory and its other repositories, so a symbol can reach a
+    # decision and two repos can recognise a shared type — and nothing beyond.
+    related = {f"wiki:{repo.wiki_id}"} | await owned_repo_scopes(wiki_id=repo.wiki_id)
 
     async with sqlite.get_db() as conn:
         await init_knowledge_schema(conn)
@@ -226,6 +260,9 @@ async def index_repo(repo: CodeRepo, *, settings: Settings | None = None) -> Cod
             lexical_conn=conn,
             update=update,
             since_sha=repo.last_sha if update else None,
+            # Derived links may only reach this repository and the vault that
+            # owns it — never another tenant's memory.
+            related_scopes=related,
         )
         await ensure_personal_root(knowledge, wiki_id=repo.wiki_id)
         await register_codegraph_asset(

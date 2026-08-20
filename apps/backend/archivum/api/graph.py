@@ -18,6 +18,20 @@ router = APIRouter(prefix="/api", tags=["graph"])
 logger = logging.getLogger(__name__)
 
 
+async def _readable_scopes(current_user: CurrentUser) -> set[str]:
+    """Every scope this caller may read.
+
+    Used both to authorise the requested scope and to bound link traversal: a
+    `bridge` edge crosses scopes by design, so following one has to be checked
+    against the same set rather than trusted because its near end was allowed.
+    """
+    allowed = {f"wiki:{current_user.wiki_id}"}
+    if current_user.role == "owner":
+        allowed.add("person:self")
+    allowed |= await owned_repo_scopes(wiki_id=current_user.wiki_id)
+    return allowed
+
+
 async def _authorized_scope(requested: str | None, current_user: CurrentUser) -> str:
     """Resolve the scope to read, defaulting to this wiki.
 
@@ -115,9 +129,13 @@ async def graph_report(
 ) -> dict:
     """Plain-language audit of a canonical knowledge graph, wiki or repository."""
     scope = await _authorized_scope(scope, current_user)
+    readable = await _readable_scopes(current_user)
     async with sqlite.get_db() as conn:
         report = await graph_audit.audit_knowledge_graph(
-            KnowledgeRepository(conn), scope=scope, surprise_limit=surprise_limit
+            KnowledgeRepository(conn),
+            scope=scope,
+            surprise_limit=surprise_limit,
+            allowed_scopes=readable,
         )
     return graph_audit.report_to_dict(report)
 
@@ -129,9 +147,10 @@ async def graph_communities(
 ) -> dict:
     """Cluster canonical records by label propagation over relationships."""
     scope = await _authorized_scope(scope, current_user)
+    readable = await _readable_scopes(current_user)
     async with sqlite.get_db() as conn:
         nodes, edges = await graph_audit.load_graph(
-            KnowledgeRepository(conn), scope=scope
+            KnowledgeRepository(conn), scope=scope, allowed_scopes=readable
         )
     communities = graph_audit.detect_communities(nodes, edges)
     return {
@@ -156,9 +175,10 @@ async def graph_surprising(
 ) -> dict:
     """Rank the connections least predictable from the rest of the graph."""
     scope = await _authorized_scope(scope, current_user)
+    readable = await _readable_scopes(current_user)
     async with sqlite.get_db() as conn:
         nodes, edges = await graph_audit.load_graph(
-            KnowledgeRepository(conn), scope=scope
+            KnowledgeRepository(conn), scope=scope, allowed_scopes=readable
         )
     links = graph_audit.surprising_links(nodes, edges, limit=limit)
     return {
@@ -189,9 +209,10 @@ async def graph_path(
 ) -> dict:
     """Shortest relationship path between two canonical records."""
     scope = await _authorized_scope(scope, current_user)
+    readable = await _readable_scopes(current_user)
     async with sqlite.get_db() as conn:
         nodes, edges = await graph_audit.load_graph(
-            KnowledgeRepository(conn), scope=scope
+            KnowledgeRepository(conn), scope=scope, allowed_scopes=readable
         )
     path = graph_audit.shortest_path(nodes, edges, source=source, target=target)
     if not path.found and path.reason and path.reason.startswith("Unknown node"):

@@ -1,11 +1,10 @@
 """Repository routes: /api/repos/*
 
 Registering a repository points Archivum at a directory on the machine it is
-running on, so it is a writer-only action — the same trust boundary that
-`/api/sources/ingest` already sits behind, which likewise reads a server-side
-path. Archivum is single-owner and self-hosted; this does not widen who can
-read the host, but it does mean these routes must never be exposed to a
-collaborator role.
+running on, and then publishes what it finds as readable pages. That is a
+host-level capability, so it is owner-only: a collaborator has write access to
+the vault's *content*, which is not the same as being able to make the backend
+read an arbitrary directory and hand back the result.
 """
 
 from __future__ import annotations
@@ -16,7 +15,7 @@ from pathlib import Path
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
 
-from archivum.auth import CurrentUser, get_current_user, require_writer
+from archivum.auth import CurrentUser, get_current_user, require_owner
 from archivum.code_repos import (
     CodeRepo,
     RepoError,
@@ -75,7 +74,7 @@ async def list_registered_repos(
 @router.post("", response_model=RepoSummary, status_code=status.HTTP_201_CREATED)
 async def register(
     body: RegisterRepoRequest,
-    current_user: CurrentUser = Depends(require_writer),
+    current_user: CurrentUser = Depends(require_owner),
 ) -> RepoSummary:
     """Register a repository and queue it for indexing.
 
@@ -89,9 +88,10 @@ async def register(
             path=Path(body.path), wiki_id=current_user.wiki_id, name=body.name
         )
     except RepoError as exc:
+        code = "invalid_repo_name" if "name" in str(exc) else "repo_not_found"
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail={"detail": str(exc), "code": "repo_not_found"},
+            detail={"detail": str(exc), "code": code},
         ) from exc
     return _to_summary(repo)
 
@@ -99,10 +99,10 @@ async def register(
 @router.post("/{name}/reindex", response_model=RepoSummary)
 async def reindex(
     name: str,
-    current_user: CurrentUser = Depends(require_writer),
+    current_user: CurrentUser = Depends(require_owner),
 ) -> RepoSummary:
     """Queue an already-registered repository to be read again."""
-    repo = await get_repo(scope_for(name), wiki_id=current_user.wiki_id)
+    repo = await get_repo(scope_for(name, wiki_id=current_user.wiki_id), wiki_id=current_user.wiki_id)
     if repo is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -117,7 +117,7 @@ async def reindex(
 @router.delete("/{name}", status_code=status.HTTP_204_NO_CONTENT)
 async def forget(
     name: str,
-    current_user: CurrentUser = Depends(require_writer),
+    current_user: CurrentUser = Depends(require_owner),
 ) -> None:
     """Stop tracking a repository.
 
@@ -125,7 +125,7 @@ async def forget(
     memory of work that happened, and deleting the register entry is a
     statement about what to keep indexing, not about what to forget.
     """
-    scope = scope_for(name)
+    scope = scope_for(name, wiki_id=current_user.wiki_id)
     repo = await get_repo(scope, wiki_id=current_user.wiki_id)
     if repo is None:
         raise HTTPException(

@@ -173,7 +173,17 @@ async def ingest_repo(
     lexical_conn: aiosqlite.Connection,
     update: bool = False,
     since_sha: str | None = None,
+    related_scopes: set[str] | None = None,
 ) -> IngestReport:
+    """Read a repository into canonical knowledge.
+
+    `related_scopes` bounds which other scopes may take part in derived links.
+    Bridging deliberately reads beyond this run so a symbol can find a decision
+    recorded months ago — but unbounded, that same sweep would manufacture a
+    link from this repository into another vault's memory. Callers pass the
+    repository's own scope plus the vault that owns it; omitting it means no
+    other scope participates.
+    """
     # Step 1: snapshot repo and collect repo-level artifacts
     snap = snapshot_repo(root)
     repo_cands = repo_artifacts(snap, scope=scope)
@@ -265,7 +275,10 @@ async def ingest_repo(
     # Reading the whole store rather than this run is what lets a symbol link to
     # a decision recorded months ago, and lets two repos recognise a shared type.
     canonical_objects = await knowledge.list_objects(limit=_L1_SCAN_LIMIT)
-    l1_view = _KnowledgeL1View(canonical_objects)
+    linkable_scopes = {scope, *(related_scopes or set())}
+    l1_view = _KnowledgeL1View(
+        [object_ for object_ in canonical_objects if object_.scope in linkable_scopes]
+    )
     cross_repo_rels = await resolve_cross_repo(l1_view)
     bridge_rels = await bridge_evidence(l1_view)
     extra_rels: list[object] = [*cross_repo_rels, *bridge_rels]

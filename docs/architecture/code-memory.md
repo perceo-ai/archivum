@@ -25,7 +25,9 @@ Archivum is a second brain for someone who writes code, so a repository is not a
 
 ## Scopes
 
-Code records live under `repo:{name}`, not `wiki:{id}`, because a repository is not owned by one wiki's page namespace. Scope therefore cannot carry authorisation the way it does for pages: **a repository is authorised by being in the register**. You may read a repo you registered.
+Code records live under `repo:{wiki_id}:{name}`, not `wiki:{id}`, because a repository is not owned by one wiki's page namespace. The vault id is part of the scope because `api` or `web` is a name many vaults will use, and keying on the name alone would let the second vault to register take over the first vault's records.
+
+Scope still cannot carry authorisation the way it does for pages, so **a repository is authorised by being in the register**: you may read a repo you registered. Registering is owner-only — it points the backend at a directory on the host and publishes what it finds, which is a host-level capability rather than ordinary write access. Repository names are validated as a single path segment, since the name becomes a directory under the cache root and a folder in the vault.
 
 Two scopes exist only to join others:
 
@@ -35,6 +37,8 @@ Two scopes exist only to join others:
 | `bridge` | `decided_in`, `shipped_in`, `deployed_in` — code joined to the evidence that explains it |
 
 A scoped graph load pulls in link-scope edges that touch its nodes, along with what they point at. Without that, the one edge explaining *why* a function exists would be the one edge nobody could see, since by construction it belongs to neither side.
+
+Following a link crosses a scope boundary, so it carries its own authorisation. Callers pass the set of scopes they may read; a far end outside that set is neither fetched nor hinted at, and the edge itself is dropped so the connection's existence is not disclosed either. The same boundary applies when links are *created*: derived links are resolved against this repository, the vault that owns it, and that vault's other repositories — never another tenant's memory.
 
 The audit reports `node_labels` and `node_kinds` for every record it covers, so anything drawing the graph can name and shape its nodes from the report alone rather than making a second, differently-scoped request.
 
