@@ -47,11 +47,11 @@ async def test_get_source_by_origin_and_hash(store):
     src = _make_source(origin_uri="file:///a.txt", content_hash="a" * 64)
     await store.insert_source(src)
     # exact (origin, hash) match in one query
-    assert await store.get_source_by_origin_and_hash("file:///a.txt", "a" * 64) == src
+    assert await store.get_source_by_origin_and_hash("file:///a.txt", "a" * 64, wiki_id="default") == src
     # right hash, wrong origin → no match (dedup is origin-scoped)
-    assert await store.get_source_by_origin_and_hash("file:///other.txt", "a" * 64) is None
+    assert await store.get_source_by_origin_and_hash("file:///other.txt", "a" * 64, wiki_id="default") is None
     # unknown → None
-    assert await store.get_source_by_origin_and_hash("file:///a.txt", "z" * 64) is None
+    assert await store.get_source_by_origin_and_hash("file:///a.txt", "z" * 64, wiki_id="default") is None
 
 
 def _doc(source_id: str, doc_id: str = "d" * 32) -> Document:
@@ -67,8 +67,8 @@ def _chunk(document_id: str, seq: int, chunk_id: str) -> Chunk:
 async def test_create_source_with_lineage_assigns_dedups_and_persists(store):
     common = dict(
         source_type=SourceType.CONVERSATION, origin_uri="conversation:x:s1",
-        scope="personal", ingested_at="t", recorded_at="t", valid_from="t",
-        valid_to=None,
+        scope="personal", wiki_id="default", ingested_at="t", recorded_at="t",
+        valid_from="t", valid_to=None,
     )
     doc1 = _doc("a" * 32)
     s1, created1 = await store.create_source_with_lineage(
@@ -103,8 +103,8 @@ async def test_create_source_with_lineage_rolls_back_on_chunk_failure(store):
     with pytest.raises(Exception):
         await store.create_source_with_lineage(
             id="a" * 32, content_hash="1" * 64, source_type=SourceType.CONVERSATION,
-            origin_uri="conversation:x:s1", scope="personal", ingested_at="t",
-            recorded_at="t", valid_from="t", valid_to=None, document=doc,
+            origin_uri="conversation:x:s1", scope="personal", wiki_id="default",
+            ingested_at="t", recorded_at="t", valid_from="t", valid_to=None, document=doc,
             chunks=bad_chunks,
         )
     # atomic: neither the source nor the document was left behind
@@ -121,3 +121,44 @@ async def test_insert_document_and_chunk(store):
     chunk = Chunk(id="c" * 32, document_id=doc.id, seq=0, start_offset=0, end_offset=4, text_hash="t" * 64)
     await store.insert_chunk(chunk)
     # No exception == rows persisted under FK constraints.
+
+
+@pytest.mark.asyncio
+async def test_sources_do_not_cross_vault_boundaries(store):
+    """Evidence is per vault, and the listing is what a user actually sees.
+
+    `sources` had no wiki column, so the entries surface listed every source in
+    the database — one tenant's origin URIs, ids and ingest times rendered into
+    another tenant's view.
+    """
+    mine = _make_source(id="m" * 32, origin_uri="file:///mine.txt", wiki_id="mine")
+    theirs = _make_source(
+        id="t" * 32, content_hash="z" * 64, origin_uri="file:///theirs.txt",
+        wiki_id="theirs",
+    )
+    await store.insert_source(mine)
+    await store.insert_source(theirs)
+
+    listed = await store.list_sources(wiki_id="mine")
+    assert [s.id for s in listed] == [mine.id]
+
+    # Knowing the id is not authorisation to read it.
+    assert await store.get_source(theirs.id, wiki_id="mine") is None
+    assert await store.get_source(theirs.id, wiki_id="theirs") == theirs
+
+
+@pytest.mark.asyncio
+async def test_dedup_does_not_adopt_another_vaults_evidence(store):
+    """Two vaults ingesting the same bytes get their own source, not a shared one."""
+    theirs = _make_source(id="t" * 32, origin_uri="file:///shared.txt", wiki_id="theirs")
+    await store.insert_source(theirs)
+
+    assert (
+        await store.get_source_by_origin_and_hash(
+            "file:///shared.txt", "h" * 64, wiki_id="mine"
+        )
+        is None
+    )
+    assert await store.get_source_by_hash_and_version(
+        "h" * 64, 1, wiki_id="mine"
+    ) is None

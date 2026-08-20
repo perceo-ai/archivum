@@ -15,6 +15,7 @@ def _row_to_source(row) -> Source:
         source_type=SourceType(row["source_type"]),
         origin_uri=row["origin_uri"],
         scope=row["scope"],
+        wiki_id=row["wiki_id"] if "wiki_id" in row.keys() else "default",
         ingested_at=row["ingested_at"],
         recorded_at=row["recorded_at"],
         valid_from=row["valid_from"],
@@ -49,14 +50,14 @@ class SourceStore:
         async with get_db() as db:
             await db.execute(
                 "INSERT INTO sources "
-                "(id, content_hash, version, source_type, origin_uri, scope, "
-                " ingested_at, recorded_at, valid_from, valid_to) "
-                "VALUES (?,?,?,?,?,?,?,?,?,?)",
+                "(id, content_hash, version, source_type, origin_uri, wiki_id, "
+                " scope, ingested_at, recorded_at, valid_from, valid_to) "
+                "VALUES (?,?,?,?,?,?,?,?,?,?,?)",
                 (
                     source.id, source.content_hash, source.version,
-                    source.source_type.value, source.origin_uri, source.scope,
-                    source.ingested_at, source.recorded_at, source.valid_from,
-                    source.valid_to,
+                    source.source_type.value, source.origin_uri, source.wiki_id,
+                    source.scope, source.ingested_at, source.recorded_at,
+                    source.valid_from, source.valid_to,
                 ),
             )
             await db.commit()
@@ -83,45 +84,65 @@ class SourceStore:
             )
             await db.commit()
 
-    async def list_sources(self, *, limit: int = 200) -> list[Source]:
-        """Most recently ingested sources first."""
+    async def list_sources(self, *, wiki_id: str, limit: int = 200) -> list[Source]:
+        """Most recently ingested sources first, for one vault only.
+
+        `wiki_id` is required rather than optional: this listing is serialized
+        straight into a user-facing view, and a default that meant "every
+        vault" would leak one tenant's origin URIs into another's.
+        """
         async with get_db() as db:
             async with db.execute(
-                "SELECT * FROM sources ORDER BY ingested_at DESC, id ASC LIMIT ?",
-                (max(limit, 0),),
+                "SELECT * FROM sources WHERE wiki_id=? "
+                "ORDER BY ingested_at DESC, id ASC LIMIT ?",
+                (wiki_id, max(limit, 0)),
             ) as cursor:
                 rows = await cursor.fetchall()
         return [_row_to_source(row) for row in rows]
 
-    async def get_source(self, source_id: str) -> Source | None:
+    async def get_source(self, source_id: str, *, wiki_id: str | None = None) -> Source | None:
+        """Fetch one source. Pass `wiki_id` on any path a request can reach.
+
+        Left optional because the distiller and other internal callers already
+        hold a source id they derived themselves; anything serving an HTTP
+        request must pass it, or a guessed id would read across vaults.
+        """
+        sql = "SELECT * FROM sources WHERE id=?"
+        params: tuple = (source_id,)
+        if wiki_id is not None:
+            sql += " AND wiki_id=?"
+            params = (source_id, wiki_id)
         async with get_db() as db:
-            async with db.execute(
-                "SELECT * FROM sources WHERE id=?", (source_id,)
-            ) as cur:
+            async with db.execute(sql, params) as cur:
                 row = await cur.fetchone()
                 return _row_to_source(row) if row else None
 
     async def get_source_by_hash_and_version(
-        self, content_hash: str, version: int
+        self, content_hash: str, version: int, *, wiki_id: str
     ) -> Source | None:
         async with get_db() as db:
             async with db.execute(
-                "SELECT * FROM sources WHERE content_hash=? AND version=?",
-                (content_hash, version),
+                "SELECT * FROM sources WHERE content_hash=? AND version=? AND wiki_id=?",
+                (content_hash, version, wiki_id),
             ) as cur:
                 row = await cur.fetchone()
                 return _row_to_source(row) if row else None
 
     async def get_source_by_origin_and_hash(
-        self, origin_uri: str, content_hash: str
+        self, origin_uri: str, content_hash: str, *, wiki_id: str
     ) -> Source | None:
         """Return the source for this exact (origin_uri, content_hash) in one
-        indexed query (highest version if duplicates ever exist), else None."""
+        indexed query (highest version if duplicates ever exist), else None.
+
+        Scoped to one vault, because this is the dedup lookup: unscoped, a
+        vault ingesting a file another vault already holds would be handed that
+        vault's row and silently adopt its evidence.
+        """
         async with get_db() as db:
             async with db.execute(
-                "SELECT * FROM sources WHERE origin_uri=? AND content_hash=? "
+                "SELECT * FROM sources WHERE origin_uri=? AND content_hash=? AND wiki_id=? "
                 "ORDER BY version DESC LIMIT 1",
-                (origin_uri, content_hash),
+                (origin_uri, content_hash, wiki_id),
             ) as cur:
                 row = await cur.fetchone()
                 return _row_to_source(row) if row else None
@@ -134,6 +155,7 @@ class SourceStore:
         source_type: SourceType,
         origin_uri: str,
         scope: str,
+        wiki_id: str,
         ingested_at: str,
         recorded_at: str,
         valid_from: str,
@@ -156,14 +178,17 @@ class SourceStore:
             try:
                 async with db.execute(
                     "SELECT * FROM sources WHERE origin_uri=? AND content_hash=? "
-                    "ORDER BY version DESC LIMIT 1",
-                    (origin_uri, content_hash),
+                    "AND wiki_id=? ORDER BY version DESC LIMIT 1",
+                    (origin_uri, content_hash, wiki_id),
                 ) as cur:
                     row = await cur.fetchone()
                 if row is not None:
                     await db.commit()
                     return _row_to_source(row), False
 
+                # Unscoped on purpose: UNIQUE(origin_uri, version) is global,
+                # so the version counter has to be too. See
+                # latest_version_for_origin.
                 async with db.execute(
                     "SELECT MAX(version) AS v FROM sources WHERE origin_uri=?",
                     (origin_uri,),
@@ -173,12 +198,12 @@ class SourceStore:
 
                 await db.execute(
                     "INSERT INTO sources "
-                    "(id, content_hash, version, source_type, origin_uri, scope, "
-                    " ingested_at, recorded_at, valid_from, valid_to) "
-                    "VALUES (?,?,?,?,?,?,?,?,?,?)",
+                    "(id, content_hash, version, source_type, origin_uri, wiki_id, "
+                    " scope, ingested_at, recorded_at, valid_from, valid_to) "
+                    "VALUES (?,?,?,?,?,?,?,?,?,?,?)",
                     (
                         id, content_hash, version, source_type.value, origin_uri,
-                        scope, ingested_at, recorded_at, valid_from, valid_to,
+                        wiki_id, scope, ingested_at, recorded_at, valid_from, valid_to,
                     ),
                 )
                 await db.execute(
@@ -203,6 +228,7 @@ class SourceStore:
             Source(
                 id=id, content_hash=content_hash, version=version,
                 source_type=source_type, origin_uri=origin_uri, scope=scope,
+                wiki_id=wiki_id,
                 ingested_at=ingested_at, recorded_at=recorded_at,
                 valid_from=valid_from, valid_to=valid_to,
             ),
@@ -210,6 +236,15 @@ class SourceStore:
         )
 
     async def latest_version_for_origin(self, origin_uri: str) -> int:
+        """Highest version for an origin, across every vault.
+
+        Deliberately unscoped, unlike every other query here. Version numbers
+        are allocated against `UNIQUE(origin_uri, version)`, which is a global
+        constraint, so numbering per vault would make two vaults ingesting the
+        same origin both try to claim version 1. Vaults therefore share a
+        counter and may see gaps; identity and dedup are still per vault, which
+        is where the tenancy boundary actually matters.
+        """
         async with get_db() as db:
             async with db.execute(
                 "SELECT MAX(version) AS v FROM sources WHERE origin_uri=?",

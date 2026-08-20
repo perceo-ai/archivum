@@ -100,7 +100,7 @@ async def capture_endpoint(
     current_user: CurrentUser = Depends(require_writer),
     settings: Settings = Depends(get_settings),
 ) -> CaptureResponse:
-    store = CaptureStore(settings=settings)
+    store = CaptureStore(wiki_id=current_user.wiki_id, settings=settings)
     res = await store.capture(_build_conversation(body))
     # Distillation may call a model, so it happens on the queue. Capture stays
     # instant and works whether or not a model is reachable.
@@ -126,7 +126,7 @@ async def capture_import_endpoint(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail={"detail": f"no importer for {body.path}", "code": "no_importer"},
         )
-    store = CaptureStore(settings=settings)
+    store = CaptureStore(wiki_id=current_user.wiki_id, settings=settings)
     try:
         result = connector.parse(path)
     except (json.JSONDecodeError, ValueError, OSError):

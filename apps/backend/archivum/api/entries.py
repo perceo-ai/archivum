@@ -136,7 +136,7 @@ async def list_entries(
         pending = await SuggestionRepository(conn).list_suggestions(
             status="pending", **wiki_scope(wiki_id)
         )
-    sources = await SourceStore().list_sources(limit=limit)
+    sources = await SourceStore().list_sources(wiki_id=wiki_id, limit=limit)
 
     page_prefix = f"page:{wiki_id}:"
     awaiting = {

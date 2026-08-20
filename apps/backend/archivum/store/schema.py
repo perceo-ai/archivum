@@ -9,6 +9,10 @@ CREATE TABLE IF NOT EXISTS sources (
     version       INTEGER NOT NULL,
     source_type   TEXT    NOT NULL,
     origin_uri    TEXT    NOT NULL,
+    -- Which vault this evidence belongs to. `scope` is the user's own
+    -- classification of a source (personal, work); `wiki_id` is the tenancy
+    -- boundary, and the two must not be confused.
+    wiki_id       TEXT    NOT NULL DEFAULT 'default',
     scope         TEXT    NOT NULL DEFAULT 'personal',
     ingested_at   TEXT    NOT NULL,
     recorded_at   TEXT    NOT NULL,
@@ -90,3 +94,25 @@ CREATE TABLE IF NOT EXISTS knowledge_citations (
 CREATE INDEX IF NOT EXISTS idx_knowledge_citations_knowledge
     ON knowledge_citations(knowledge_type, knowledge_id, position);
 """
+
+
+async def init_evidence_schema(db) -> None:
+    """Create the evidence tables, then add columns that arrived later.
+
+    `wiki_id` was not on `sources` originally, so every existing database has
+    the table without it. `executescript` on a CREATE TABLE IF NOT EXISTS would
+    silently leave those databases one column short and every source query
+    would fail at runtime, so the column is added here instead. Existing rows
+    belong to the only vault that could have written them.
+    """
+    await db.executescript(EVIDENCE_SCHEMA)
+    async with db.execute("PRAGMA table_info(sources)") as cur:
+        columns = {row[1] for row in await cur.fetchall()}
+    if "wiki_id" not in columns:
+        await db.execute(
+            "ALTER TABLE sources ADD COLUMN wiki_id TEXT NOT NULL DEFAULT 'default'"
+        )
+    # After the column, never inside EVIDENCE_SCHEMA: the script runs against
+    # databases that still have the old table, and indexing a column that is
+    # about to be added fails the whole init.
+    await db.execute("CREATE INDEX IF NOT EXISTS idx_sources_wiki ON sources(wiki_id)")

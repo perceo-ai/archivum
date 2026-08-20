@@ -101,6 +101,7 @@ async def ingest_endpoint(
         origin_uri=body.origin_uri,
         raw_bytes=raw_bytes,
         scope=body.scope,
+        wiki_id=current_user.wiki_id,
         explicit_type=body.source_type,
         settings=settings,
     )
@@ -147,7 +148,9 @@ async def get_source_endpoint(
     current_user: CurrentUser = Depends(require_writer),
 ) -> SourceDetailResponse:
     store = SourceStore()
-    source: Source | None = await store.get_source(source_id)
+    source: Source | None = await store.get_source(
+        source_id, wiki_id=current_user.wiki_id
+    )
     if source is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,

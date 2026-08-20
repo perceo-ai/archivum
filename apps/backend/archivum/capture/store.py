@@ -47,10 +47,12 @@ class CaptureStore:
     def __init__(
         self,
         *,
+        wiki_id: str = "default",
         store: SourceStore | None = None,
         blob_store: BlobStore | None = None,
         settings: Settings | None = None,
     ) -> None:
+        self._wiki_id = wiki_id
         self._settings = settings or get_settings()
         self._store = store or SourceStore()
         self._blobs = blob_store or BlobStore(self._settings.blob_dir)
@@ -85,7 +87,8 @@ class CaptureStore:
         ]
         source, created = await self._store.create_source_with_lineage(
             id=source_id, content_hash=chash, source_type=SourceType.CONVERSATION,
-            origin_uri=origin, scope=conv.scope, ingested_at=now, recorded_at=now,
+            origin_uri=origin, scope=conv.scope, wiki_id=self._wiki_id,
+            ingested_at=now, recorded_at=now,
             valid_from=conv.started_at or now, valid_to=None,
             document=document, chunks=chunks,
         )
@@ -100,7 +103,9 @@ class CaptureStore:
         )
 
     async def _existing(self, origin: str, chash: str) -> Source | None:
-        return await self._store.get_source_by_origin_and_hash(origin, chash)
+        return await self._store.get_source_by_origin_and_hash(
+            origin, chash, wiki_id=self._wiki_id
+        )
 
     async def _dedup_result(self, source: Source, chash: str) -> CaptureResult:
         """Build a deduplicated CaptureResult by reading back an existing

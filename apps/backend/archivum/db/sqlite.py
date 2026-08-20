@@ -13,7 +13,7 @@ import aiosqlite
 from archivum.config import Settings, get_settings
 from archivum.knowledge.suggestions import init_suggestion_schema
 from archivum.memory.registry import init_memory_schema
-from archivum.store.schema import EVIDENCE_SCHEMA
+from archivum.store.schema import init_evidence_schema
 
 # ── Schema ────────────────────────────────────────────────────────────────────
 
@@ -213,7 +213,7 @@ async def init_db(settings: Settings) -> None:
     configure(settings)
     async with get_db() as db:
         await db.executescript(_SCHEMA)
-        await db.executescript(EVIDENCE_SCHEMA)
+        await init_evidence_schema(db)
         # init_memory_schema, not a bare MEMORY_SCHEMA executescript: the
         # script only creates missing tables, while the columns added since the
         # first release (conflict_lineage, supersedes, approved_by, ...) arrive

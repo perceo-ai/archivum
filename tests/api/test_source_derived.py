@@ -91,3 +91,33 @@ async def test_a_source_with_no_output_is_not_an_error(env):
     body = env.get("/api/sources/source:default:empty.pdf/derived").json()
     assert body["records"] == []
     assert body["pages"] == 0
+
+
+
+async def test_distilling_another_vaults_source_is_a_404(env):
+    """`source_id` arrives in the request body, so it is attacker-chosen.
+
+    Distillation reads a source's full text and writes it into memory, so an
+    unscoped lookup would let anyone pull another vault's conversation into
+    their own memory just by naming its id.
+    """
+    from archivum.store.models import Source
+    from archivum.store.repository import SourceStore
+    from archivum.store.source_types import SourceType
+
+    await SourceStore().insert_source(
+        Source(
+            id="t" * 32, content_hash="h" * 64, version=1,
+            source_type=SourceType.CONVERSATION, origin_uri="conversation:x:theirs",
+            scope="personal", ingested_at="t", recorded_at="t", valid_from="t",
+            valid_to=None, wiki_id="theirs",
+        )
+    )
+
+    res = env.post("/api/memory/distill", json={"source_id": "t" * 32})
+    assert res.status_code == 404
+    # The message matters: the source must be invisible, not merely
+    # unprocessable. Without the tenancy filter the lookup succeeds and the
+    # request fails later with "has no document" — same status, but it has
+    # already confirmed the source exists and read its row.
+    assert "not found" in res.json()["detail"]["detail"]

@@ -40,7 +40,7 @@ async def distill_source(
 ) -> DistillationReport:
     """Distil one captured source into atoms, assets and review suggestions."""
     settings = settings or get_settings()
-    loaded = await load_conversation(source_id, settings=settings)
+    loaded = await load_conversation(source_id, wiki_id=wiki_id, settings=settings)
     async with sqlite.get_db() as conn:
         return await distill_conversation(conn, loaded, wiki_id=wiki_id)
 

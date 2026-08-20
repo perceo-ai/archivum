@@ -456,7 +456,9 @@ async def distill(
 ) -> DistillResponse:
     """Promote a captured conversation into layered, cited memory."""
     try:
-        loaded = await load_conversation(body.source_id, settings=settings)
+        loaded = await load_conversation(
+            body.source_id, wiki_id=current_user.wiki_id, settings=settings
+        )
     except DistillationError as exc:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,

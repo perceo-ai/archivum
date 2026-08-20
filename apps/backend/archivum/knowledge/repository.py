@@ -9,13 +9,13 @@ from typing import Any
 import aiosqlite
 
 from archivum.knowledge.models import Citation, KnowledgeObject, KnowledgeRelationship
-from archivum.store.schema import EVIDENCE_SCHEMA
+from archivum.store.schema import init_evidence_schema
 
 
 async def init_knowledge_schema(conn: aiosqlite.Connection) -> None:
     """Create the knowledge tables on an open SQLite connection."""
     conn.row_factory = aiosqlite.Row
-    await conn.executescript(EVIDENCE_SCHEMA)
+    await init_evidence_schema(conn)
     await conn.commit()
 
 
