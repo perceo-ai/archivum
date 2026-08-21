@@ -125,6 +125,12 @@ class Settings(BaseSettings):
     transcript_watch_enabled: bool = True
     transcript_watch_interval_seconds: int = 20
 
+    # Cluster summaries: the half of GraphRAG that makes global questions
+    # answerable. Hourly by default — themes change over days, and this is the
+    # one place real model time is spent.
+    summary_worker_enabled: bool = True
+    summary_worker_interval_seconds: int = 3600
+
     code_repo_worker_enabled: bool = True
     code_repo_worker_interval_seconds: int = 15
     retention_sweep_interval_seconds: int = 3600

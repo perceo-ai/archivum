@@ -180,3 +180,48 @@ async def test_an_agent_can_record_work_it_judged_worth_keeping(vault, tmp_path,
         stored = await KnowledgeRepository(conn).get_object(result["id"])
     assert stored is not None
     assert stored.kind == "session"
+
+
+async def test_an_agent_can_ask_what_the_vault_is_about(vault, tmp_path, mock_kuzu_conn):
+    """Global questions read summaries; no single record holds the answer."""
+    from unittest.mock import AsyncMock as _AsyncMock
+
+    from archivum.knowledge.models import Citation, KnowledgeObject
+    from archivum.knowledge.repository import KnowledgeRepository
+    from archivum.mcp.server import summarise_vault, vault_themes
+
+    await sqlite_mod.init_db(vault)
+    async with sqlite_mod.get_db() as conn:
+        repo = KnowledgeRepository(conn)
+        for id_, label in [("a", "Retrieval design"), ("b", "Chunking strategy")]:
+            await repo.upsert_object(
+                KnowledgeObject(
+                    id=id_, kind="page", label=label, scope="wiki:default",
+                    confidence=1.0, extraction_method="USER_AUTHORED",
+                    citations=[Citation(source_id=id_, chunk_id=id_, span_start=None, span_end=None, quote=label)],
+                    properties={},
+                )
+            )
+        from archivum.knowledge.models import KnowledgeRelationship
+
+        await repo.upsert_relationship(
+            KnowledgeRelationship(
+                id="a->b", src_id="a", dst_id="b", rel_type="references",
+                scope="wiki:default", confidence=1.0, extraction_method="USER_AUTHORED",
+                citations=[Citation(source_id="a", chunk_id="a", span_start=None, span_end=None, quote="x")],
+                properties={},
+            )
+        )
+        await conn.commit()
+
+    with patch(
+        "archivum.summaries.cli_chat_completion",
+        new=_AsyncMock(return_value="How the system finds things."),
+    ):
+        written = await summarise_vault()
+
+    assert written["summaries"] >= 1
+    themes = await vault_themes()
+    assert themes["themes"], themes
+    assert "finds things" in themes["themes"][0]["summary"]
+    assert themes["themes"][0]["citations"], "a theme is prose; it must cite"

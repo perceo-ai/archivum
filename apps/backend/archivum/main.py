@@ -45,6 +45,7 @@ from archivum.memory.retention import run_retention_worker
 from archivum.page_write_queue import run_page_write_worker
 from archivum.capture.transcript_watch import run_transcript_watcher
 from archivum.code_repos import run_code_repo_worker
+from archivum.summaries import run_summary_worker
 from archivum.distillation import run_distill_worker
 from archivum.indexing import reconcile_vault
 from archivum.vault_watch import run_vault_watcher
@@ -179,6 +180,10 @@ async def lifespan(app: FastAPI):
     if settings.transcript_watch_enabled:
         transcript_task = asyncio.create_task(run_transcript_watcher(settings))
 
+    summary_task: asyncio.Task[None] | None = None
+    if settings.summary_worker_enabled:
+        summary_task = asyncio.create_task(run_summary_worker(settings))
+
     try:
         yield
     finally:
@@ -189,6 +194,7 @@ async def lifespan(app: FastAPI):
             distill_task,
             code_repo_task,
             transcript_task,
+            summary_task,
         ):
             if task:
                 task.cancel()

@@ -18,6 +18,7 @@ from archivum.capture.schema import Conversation, ToolCall, Turn
 from archivum.code_repos import index_repo, list_repos, register_repo, scope_for
 from archivum.fixes import recall_fixes
 from archivum.sessions import record_session_work
+from archivum.summaries import global_answer_context, summarise_communities
 from archivum.store.hashing import sha256_text
 from archivum.capture.store import CaptureStore
 from archivum.config import Settings, get_settings
@@ -626,6 +627,59 @@ async def record_work(
         "id": recorded.id,
         "kind": recorded.properties.get("kind", "unknown"),
         "source_id": captured.source_id,
+    }
+
+
+@mcp.tool()
+async def summarise_vault(wiki_id: str = "default") -> dict[str, Any]:
+    """Write one summary per cluster, so global questions become answerable.
+
+    Retrieval finds records that match a query. It cannot answer "what have I
+    been working on?" — no single record holds that. This summarises each
+    cluster once; `vault_themes` then reads those summaries.
+
+    Uses the configured synthesis provider, which can be a signed-in CLI, so
+    this runs on a subscription rather than per-token.
+    """
+    _require_key()
+    set_trace_id(new_trace_id("mcp-summarise"))
+    async with sqlite.get_db() as connection:
+        written = await summarise_communities(
+            KnowledgeRepository(connection),
+            wiki_id=wiki_id,
+            provider=settings.llm_synthesis_provider,
+            model=settings.llm_model,
+            owner=settings.owner_username or None,
+        )
+        await connection.commit()
+    return {"summaries": len(written), "ids": written}
+
+
+@mcp.tool()
+async def vault_themes(wiki_id: str = "default", limit: int = 20) -> dict[str, Any]:
+    """What this vault is actually about, cluster by cluster, freshest first.
+
+    Read this before answering anything broad — "what am I working on", "what do
+    I know about X overall". Each theme cites the records it was written from,
+    and says when it was written so a stale one is recognisable.
+    """
+    _require_key()
+    async with sqlite.get_db() as connection:
+        summaries = await global_answer_context(
+            KnowledgeRepository(connection), wiki_id=wiki_id, limit=limit
+        )
+    return {
+        "themes": [
+            {
+                "label": summary.label,
+                "summary": summary.properties.get("summary", ""),
+                "members": summary.properties.get("member_count", 0),
+                "written_at": summary.properties.get("written_at", ""),
+                "citations": [c.model_dump() for c in summary.citations[:5]],
+            }
+            for summary in summaries
+        ],
+        "reason": "" if summaries else "No summaries yet — run summarise_vault first.",
     }
 
 

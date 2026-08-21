@@ -19,6 +19,7 @@ This folder contains current docs for Archivum. Public-facing product docs shoul
 - [Code memory: repositories, clusters, and vault pages](./architecture/code-memory.md)
 - [Daily use: the stream, tasks, and search](./architecture/daily-use.md)
 - [MCP server tools](./architecture/mcp.md)
+- [Agent access: coding agents, chat connectors, skills](./architecture/agent-access.md)
 
 ## Pruned Docs
 
