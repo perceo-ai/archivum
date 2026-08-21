@@ -1195,6 +1195,47 @@ export async function getGraphAudit(
   return res.json();
 }
 
+export interface VaultHit {
+  slug: string;
+  title: string;
+  excerpt: string;
+  score: number;
+}
+
+/**
+ * Search the vault properly — semantic, keyword and bounded graph together.
+ *
+ * The Everything box used to filter titles client-side, which meant anything
+ * you could not name was effectively lost, while the embeddings and the hybrid
+ * endpoint sat unused.
+ */
+export async function searchVault(query: string, limit = 20): Promise<VaultHit[]> {
+  const res = await apiFetch(
+    `/api/search?q=${encodeURIComponent(query)}&limit=${limit}`,
+  );
+  return res.json();
+}
+
+export interface OpenTask {
+  text: string;
+  slug: string;
+  page_title: string;
+  line: number;
+}
+
+/** Check or uncheck a task. Edits the line in the page, which owns the truth. */
+export async function toggleTask(input: {
+  slug: string;
+  line: number;
+  done: boolean;
+}): Promise<OpenTask> {
+  const res = await apiFetch('/api/tasks/toggle', {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+  return res.json();
+}
+
 export interface CodeRepo {
   scope: string;
   name: string;
@@ -1577,7 +1618,9 @@ export type ActivityKind =
   | 'page_edited'
   | 'suggestion'
   | 'ingest'
-  | 'memory';
+  | 'memory'
+  | 'session'
+  | 'fix';
 
 export type ActivityActor = 'you' | 'agent' | 'system';
 
@@ -1597,6 +1640,8 @@ export type ActivityFeed = {
   items: ActivityItem[];
   next_before: string | null;
   pending_review: number;
+  /** Still outstanding. A standing list, not part of the timeline. */
+  open_tasks: OpenTask[];
 };
 
 export async function getActivity(

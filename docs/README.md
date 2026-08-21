@@ -17,6 +17,7 @@ This folder contains current docs for Archivum. Public-facing product docs shoul
 - [Memory assets, distillation, and agent loadouts](./architecture/memory-assets.md)
 - [Sharing: principals, grants, and links](./architecture/sharing.md)
 - [Code memory: repositories, clusters, and vault pages](./architecture/code-memory.md)
+- [Daily use: the stream, tasks, and search](./architecture/daily-use.md)
 - [MCP server tools](./architecture/mcp.md)
 
 ## Pruned Docs

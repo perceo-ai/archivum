@@ -909,3 +909,27 @@ textarea.inp { height: auto; padding: 11px 14px; line-height: 1.6; resize: none;
 .shared-index-head h1 {
   margin: 8px 0 6px; font-size: var(--t-26); font-weight: 600; letter-spacing: -0.02em;
 }
+
+
+/* Open tasks in the stream. A standing list above the timeline: what still
+   needs doing, ticked from where you already are. */
+.tasks { margin: 0 0 18px; }
+.task {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 6px;
+  border-radius: 8px;
+}
+.task:hover { background: rgba(255, 255, 255, 0.03); }
+.task-box {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  border-radius: 4px;
+  border: 1.5px solid var(--text-3);
+  background: transparent;
+  cursor: pointer;
+}
+.task-box:hover { border-color: var(--a-500); background: rgba(75, 145, 241, 0.12); }
+.task-text { font-size: var(--t-14); color: var(--text-1); }

@@ -89,7 +89,9 @@ An agent profile is bound to specific assets:
 - `always` bindings are handed over unconditionally,
 - `on_demand` bindings are handed over when the session query matches the asset's text.
 
-Only `active` assets in the caller's wiki are ever returned. `GET /api/memory/agents/{key}/loadout` and the `load_agent_memory` MCP tool return the bound assets with their citations, plus an explicit reason whenever the loadout is empty or uncited. This is what lets the next agent inherit the last agent's experience without loading the whole store into context.
+Only `active` assets in the caller's wiki are ever returned. An agent with no profile is not turned away empty-handed: it receives the vault's `active` assets, on demand, with a reason saying no profile was set. Active is the same bar a bound asset must clear — a draft is a proposal, and an agent is handed decisions rather than proposals. Without this a fresh vault answered every loadout with nothing, because no screen creates profiles.
+
+`GET /api/memory/agents/{key}/loadout` and the `load_agent_memory` MCP tool return the bound assets with their citations, plus an explicit reason whenever the loadout is empty or uncited. This is what lets the next agent inherit the last agent's experience without loading the whole store into context.
 
 ## REST
 

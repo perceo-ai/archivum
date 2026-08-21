@@ -362,3 +362,35 @@ async def test_distill_threshold_override_routes_everything_to_review(env):
 
     pending = client.get("/api/suggestions").json()
     assert [item["suggestion_type"] for item in pending] == ["memory_atom"]
+
+
+@pytest.mark.asyncio
+async def test_an_agent_with_no_profile_still_gets_the_owner_s_active_memory(env):
+    """A fresh vault should not hand an agent an empty package and a shrug.
+
+    Loadouts needed a profile and bindings someone created by hand, and no
+    screen created them — so `load_agent_memory` returned nothing on every new
+    install. Active assets are already owner-approved, so they are the honest
+    default until a profile says otherwise.
+    """
+    client, store = env
+    created = client.post("/api/memory/assets", json=_asset_payload())
+    assert created.status_code == 201
+    client.post("/api/memory/assets/memory%3Awiki%3Anotes/status", json={"status": "active"})
+
+    loadout = client.get("/api/memory/agents/never-configured/loadout").json()
+
+    assert loadout["entries"], loadout
+    assert loadout["insufficient_evidence"] is False
+    assert "default" in loadout["reason"].lower()
+
+
+@pytest.mark.asyncio
+async def test_the_default_loadout_leaves_out_what_was_never_activated(env):
+    """Draft assets are proposals. An agent is handed decisions, not proposals."""
+    client, _ = env
+    client.post("/api/memory/assets", json=_asset_payload())
+
+    loadout = client.get("/api/memory/agents/never-configured/loadout").json()
+
+    assert loadout["entries"] == []
