@@ -11,6 +11,7 @@ This folder contains current docs for Archivum. Public-facing product docs shoul
 ## Architecture
 
 - [Infrastructure and storage](./architecture/infra.md)
+- [Deploying to perceo-control](./architecture/deploy.md)
 - [Ingest pipeline](./architecture/ingest.md)
 - [Retrieval and context sizing](./architecture/retrieval.md)
 - [Graph model and graph audit](./architecture/graph-model.md)
