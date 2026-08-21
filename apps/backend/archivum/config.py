@@ -4,8 +4,10 @@ from __future__ import annotations
 
 from functools import lru_cache
 from pathlib import Path
+from typing import Annotated, Any
 
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic import field_validator
+from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 
 class Settings(BaseSettings):
@@ -121,7 +123,29 @@ class Settings(BaseSettings):
     # Where agents write session transcripts. Empty means session capture is
     # off: the backend usually runs in a container, so this has to be mounted in
     # and named rather than guessed at.
-    transcript_dirs: list[Path] = []
+    #
+    # Read as a comma-separated list rather than JSON. Compose passes an empty
+    # string when the variable is unset, and pydantic's default decoding for a
+    # list field treats that as malformed JSON and refuses to start the process
+    # at all — a formatting detail should not be able to take the vault down.
+    transcript_dirs: Annotated[list[Path], NoDecode] = []
+
+    @field_validator("transcript_dirs", mode="before")
+    @classmethod
+    def _split_transcript_dirs(cls, value: Any) -> Any:
+        if not isinstance(value, str):
+            return value
+        text = value.strip()
+        if not text:
+            return []
+        if text.startswith("["):
+            import json
+
+            try:
+                return json.loads(text)
+            except ValueError:
+                pass
+        return [part.strip() for part in text.split(",") if part.strip()]
     transcript_watch_enabled: bool = True
     transcript_watch_interval_seconds: int = 20
 
