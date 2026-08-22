@@ -16,7 +16,7 @@ set -euo pipefail
 
 PVE_HOST="${PVE_HOST:-jigserver}"
 VMID="${ARCHIVUM_VMID:-104}"
-APP_DIR="${ARCHIVUM_APP_DIR:-/opt/archivum}"
+APP_DIR="${ARCHIVUM_APP_DIR:-/opt/perceo/archivum}"
 BRANCH="${ARCHIVUM_BRANCH:-main}"
 CHECK_ONLY=0
 [ "${1:-}" = "--check" ] && CHECK_ONLY=1
@@ -48,14 +48,15 @@ if guest "cd $APP_DIR && git status --porcelain" | grep -q .; then
   exit 1
 fi
 
-echo "→ Backing up before touching anything"
-guest "cd $APP_DIR && ./update.sh --help >/dev/null 2>&1 && echo 'update.sh present'"
-
 echo "→ Pulling $BRANCH"
 guest "cd $APP_DIR && git fetch --all --quiet && git checkout $BRANCH --quiet && git pull --ff-only"
 
+# Deliberately not ./update.sh: that wrapper needs Node, which perceo-control
+# does not have, so it exits before touching anything. Compose is what actually
+# runs there.
 echo "→ Rebuilding and restarting"
-guest "cd $APP_DIR && ./update.sh"
+guest "cd $APP_DIR && docker compose build backend frontend mcp"
+guest "cd $APP_DIR && docker compose up -d backend frontend mcp"
 
 echo "→ Verifying"
 guest "cd $APP_DIR && docker compose ps --format '{{.Service}} {{.Status}}'"

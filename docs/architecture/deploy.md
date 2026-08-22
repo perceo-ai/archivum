@@ -54,8 +54,15 @@ non-empty `MCP_API_KEY` — bearer auth is only enforced when that is set. See
 
 ## Rolling back
 
-`update.sh` backs up before it changes anything. To go back a commit:
-
 ```bash
-cd /opt/archivum && git checkout <previous-sha> && ./update.sh
+cd /opt/perceo/archivum && git checkout <previous-sha>
+docker compose build backend frontend mcp && docker compose up -d backend frontend mcp
 ```
+
+Not `./update.sh`. That wrapper shells out to Node, which perceo-control does not
+have, so it prints an install hint and exits without deploying anything. Compose
+is what actually runs there. The app lives in `/opt/perceo/archivum`, alongside
+the other Perceo services, not in `/opt/archivum`.
+
+Git operations on the VM need root — the checkout is not owned by `kitts`, and
+git refuses to touch a repository it sees as someone else's.
