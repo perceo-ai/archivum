@@ -197,6 +197,12 @@ class Settings(BaseSettings):
     # short enough that a forced reindex — which holds a connection across Kuzu
     # and Qdrant projection — lost the race and surfaced as a 500.
     sqlite_busy_timeout_seconds: float = 30.0
+
+    # Dense search always returns its top-k, so without a floor a query that
+    # matches nothing still comes back with a full page of confident-looking
+    # results. Tuned against the default local bge-small model, where genuine
+    # matches score ~0.6-0.8 and noise sits at ~0.50.
+    search_min_similarity: float = 0.58
     mcp_public_url: str = ""
 
 

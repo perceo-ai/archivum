@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { listEntries, searchVault, type Entry, type EntryList, type VaultHit } from '../api';
+import { searchResults } from './searchResults';
 import { Icon } from '../shell/Icon';
 import { cn } from '../lib/cn';
 
@@ -113,13 +114,10 @@ export default function EverythingSurface() {
     const all = data?.entries ?? [];
     const needle = search.trim().toLowerCase();
     if (!needle) return all;
-    if (hits) {
-      // Keep the search engine's ordering; it ranked them for a reason.
-      const rank = new Map(hits.map((hit, index) => [hit.slug, index]));
-      return all
-        .filter((entry) => entry.slug && rank.has(entry.slug))
-        .sort((a, b) => (rank.get(a.slug!) ?? 0) - (rank.get(b.slug!) ?? 0));
-    }
+    // The engine ranked these against the whole vault, so they decide both
+    // membership and order. Filtering them through the loaded page dropped
+    // anything not already on screen.
+    if (hits) return searchResults(all, hits);
     return all.filter(
       (entry) =>
         entry.title.toLowerCase().includes(needle) ||
