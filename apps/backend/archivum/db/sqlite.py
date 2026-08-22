@@ -222,9 +222,17 @@ def configure(settings: Settings) -> None:
 async def get_db() -> AsyncGenerator[aiosqlite.Connection, None]:
     settings = get_settings()
     path = _db_path or settings.db_path
-    async with aiosqlite.connect(str(path)) as conn:
+    async with aiosqlite.connect(
+        str(path), timeout=settings.sqlite_busy_timeout_seconds
+    ) as conn:
         conn.row_factory = aiosqlite.Row
         await conn.execute("PRAGMA foreign_keys=ON")
+        # Set explicitly as well as via the driver: waiting is the behaviour
+        # this depends on, and it should not rest on a default that a driver
+        # upgrade could change.
+        await conn.execute(
+            f"PRAGMA busy_timeout={int(settings.sqlite_busy_timeout_seconds * 1000)}"
+        )
         yield conn
 
 

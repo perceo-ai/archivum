@@ -190,6 +190,13 @@ class Settings(BaseSettings):
     mcp_host: str = "127.0.0.1"
     mcp_port: int = 8001
     mcp_api_key: str = ""
+
+    # How long a writer waits for another writer before giving up. SQLite
+    # serialises writes, and this vault always has background workers going, so
+    # contention is normal rather than exceptional. The driver's 5s default was
+    # short enough that a forced reindex — which holds a connection across Kuzu
+    # and Qdrant projection — lost the race and surfaced as a 500.
+    sqlite_busy_timeout_seconds: float = 30.0
     mcp_public_url: str = ""
 
 

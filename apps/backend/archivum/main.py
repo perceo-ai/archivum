@@ -48,7 +48,7 @@ from archivum.code_repos import run_code_repo_worker
 from archivum.summaries import run_summary_worker
 from archivum.distillation import run_distill_worker
 from archivum.indexing import reconcile_vault
-from archivum.vault_scaffold import ensure_default_folders
+from archivum.vault_scaffold import claim_vault_dir, ensure_default_folders
 from archivum.vault_watch import run_vault_watcher
 from archivum.rate_limit import RateLimitMiddleware
 
@@ -125,6 +125,10 @@ async def lifespan(app: FastAPI):
 
     # Ensure directories exist
     settings.wiki_dir.mkdir(parents=True, exist_ok=True)
+    # Before anything writes: one vault directory belongs to one wiki. Page
+    # paths do not carry the wiki, so two backends sharing a WIKI_DIR would
+    # overwrite each other's markdown without either noticing.
+    claim_vault_dir(settings.wiki_dir, wiki_id=settings.wiki_id)
     settings.code_cache_dir.mkdir(parents=True, exist_ok=True)
     settings.raw_dir.mkdir(parents=True, exist_ok=True)
     settings.db_path.parent.mkdir(parents=True, exist_ok=True)

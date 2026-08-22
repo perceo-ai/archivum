@@ -18,6 +18,7 @@ put things.
 from __future__ import annotations
 
 import logging
+from pathlib import Path
 
 from archivum.config import Settings
 from archivum.db import sqlite
@@ -79,3 +80,52 @@ async def ensure_default_folders(
     if created:
         logger.info("Created %d starting folders", len(created))
     return created
+
+
+VAULT_MARKER = ".archivum-wiki"
+
+
+class VaultOwnershipError(RuntimeError):
+    """The vault directory already belongs to a different wiki."""
+
+
+def claim_vault_dir(wiki_dir: Path, *, wiki_id: str) -> None:
+    """Record which wiki owns this directory, and refuse to share it.
+
+    Page paths are `wiki_dir/<slug>.md` — the wiki appears nowhere in them. That
+    is deliberate: the vault is a plain markdown folder people open in other
+    editors, and burying it under an id nobody types would cost the person using
+    it something real. The cost is that two backends configured with different
+    `WIKI_ID` but the same `WIKI_DIR` would quietly overwrite each other's
+    files, and reconciliation would then persist one wiki's content into the
+    other's rows.
+
+    Nothing in the app can create a second wiki, so this is a misconfiguration
+    rather than an attack — but a misconfiguration that loses pages silently is
+    worth a loud failure at startup.
+
+    A directory with no marker is adopted, so upgrading never needs a migration.
+    """
+    marker = wiki_dir / VAULT_MARKER
+    try:
+        owner = marker.read_text(encoding="utf-8").strip()
+    except FileNotFoundError:
+        owner = ""
+    except OSError as exc:  # noqa: BLE001 - unreadable marker is not proof of conflict
+        logger.warning("Could not read %s: %s", marker, exc)
+        return
+
+    if owner and owner != wiki_id:
+        raise VaultOwnershipError(
+            f"{wiki_dir} holds the vault for wiki {owner!r}, but this process is "
+            f"configured as {wiki_id!r}. Two wikis cannot share one vault "
+            f"directory: page paths do not carry the wiki, so they would "
+            f"overwrite each other. Point WIKI_DIR somewhere else."
+        )
+
+    if owner != wiki_id:
+        try:
+            wiki_dir.mkdir(parents=True, exist_ok=True)
+            marker.write_text(f"{wiki_id}\n", encoding="utf-8")
+        except OSError as exc:  # noqa: BLE001 - a read-only vault still reads
+            logger.warning("Could not claim %s: %s", marker, exc)
