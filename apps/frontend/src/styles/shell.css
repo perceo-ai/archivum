@@ -1120,7 +1120,7 @@ textarea.inp { height: auto; padding: 11px 14px; line-height: 1.6; resize: none;
 /* ---------------- placeholder ---------------- */
 /* Notion's most-copied affordance: the empty line you are on tells you what to
    do next instead of sitting blank. */
-.cm-markdown-blank.cm-activeLine::after {
+.cm-markdown-blank.cm-prompt::after {
   content: "Write, or press / for commands";
   position: absolute;
   left: 2px;

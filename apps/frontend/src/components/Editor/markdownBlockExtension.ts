@@ -259,7 +259,6 @@ class BlockHandleWidget extends WidgetType {
   }
 }
 
-const INLINE_CONTENT = Decoration.mark({ class: 'cm-md-strong' });
 const INLINE_MARKS: Record<string, Decoration> = {
   strong: Decoration.mark({ class: 'cm-md-strong' }),
   emphasis: Decoration.mark({ class: 'cm-md-emphasis' }),
@@ -282,11 +281,21 @@ function buildBlockDecorations(view: EditorView): DecorationSet {
       const line = view.state.doc.lineAt(position);
       const block = classifyMarkdownLine(line.text);
 
+      const onCursorLine = editing.has(line.number);
       builder.add(
         line.from,
         line.from,
         Decoration.line({
-          class: `cm-markdown-block cm-markdown-${block.kind}`,
+          // `cm-prompt` drives the empty-line hint. It cannot key off
+          // `.cm-activeLine`, because `highlightActiveLine` is not one of this
+          // editor's extensions and that class is never applied.
+          class: [
+            'cm-markdown-block',
+            `cm-markdown-${block.kind}`,
+            block.kind === 'blank' && onCursorLine ? 'cm-prompt' : '',
+          ]
+            .filter(Boolean)
+            .join(' '),
         }),
       );
 
@@ -310,7 +319,7 @@ function buildBlockDecorations(view: EditorView): DecorationSet {
         );
       }
 
-      const revealing = editing.has(line.number);
+      const revealing = onCursorLine;
       for (const mark of findInlineMarkdownMarks(line.text)) {
         if (mark.from === mark.to) continue;
         const isDelimiter = mark.kind.endsWith('-marker');
@@ -323,7 +332,7 @@ function buildBlockDecorations(view: EditorView): DecorationSet {
                 widget: new MarkdownMarkerWidget('', mark.kind),
                 inclusive: false,
               })
-            : INLINE_MARKS[mark.kind] ?? INLINE_CONTENT,
+            : INLINE_MARKS[mark.kind],
         );
       }
 
