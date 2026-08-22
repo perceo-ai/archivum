@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useParams, useSearchParams } from 'react-router-dom';
-import DOMPurify from 'dompurify';
 import {
   commentOnShare,
   getSharedResource,
@@ -8,7 +7,7 @@ import {
   type SharedResource,
 } from '../api';
 import { Icon } from '../shell/Icon';
-import { renderSharedMarkdown } from './sharedMarkdown';
+import { renderMarkdown } from './markdown';
 
 /**
  * What a recipient sees.
@@ -57,12 +56,12 @@ export default function SharePage() {
     void load();
   }, [load]);
 
-  const html = useMemo(() => {
-    if (!resource?.body) return '';
-    return DOMPurify.sanitize(renderSharedMarkdown(resource.body), {
-      ALLOWED_ATTR: ['class', 'href', 'target', 'rel'],
-    });
-  }, [resource?.body]);
+  const html = useMemo(
+    // A recipient has no vault to open, so a wikilink renders as text rather
+    // than as a link to a login wall.
+    () => (resource?.body ? renderMarkdown(resource.body, { wikilinks: 'text' }) : ''),
+    [resource?.body],
+  );
 
   async function submitComment() {
     const text = comment.trim();

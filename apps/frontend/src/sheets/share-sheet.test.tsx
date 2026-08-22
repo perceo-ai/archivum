@@ -1,9 +1,11 @@
+// @vitest-environment jsdom
+// The markdown cases sanitise through DOMPurify, which needs a DOM.
 import { describe, expect, it, vi } from 'vitest';
 import { renderToString } from 'react-dom/server';
 import { StaticRouter } from 'react-router-dom/server';
 import ShareSheet from './ShareSheet';
 import SharePage from '../pages/SharePage';
-import { renderSharedMarkdown } from '../pages/sharedMarkdown';
+import { renderMarkdown } from '../pages/markdown';
 
 /**
  * Rendered server-side, so effects do not run: these cover the shape a person
@@ -103,28 +105,31 @@ describe('the recipient viewer', () => {
 });
 
 describe('shared markdown', () => {
-  it('escapes html so a shared note cannot inject markup', () => {
-    const html = renderSharedMarkdown('<img src=x onerror=alert(1)>');
-    expect(html).not.toContain('<img');
-    expect(html).toContain('&lt;img');
+  const shared = (source: string) => renderMarkdown(source, { wikilinks: 'text' });
+
+  it('strips the dangerous part of inline html rather than the whole tag', () => {
+    // The old renderer escaped every `<`, which also killed legitimate markup.
+    // Sanitising keeps the image and drops what makes it an attack.
+    const html = shared('<img src=x onerror=alert(1)>');
+    expect(html).not.toContain('onerror');
   });
 
   it('renders wikilinks as plain text, since the reader has no vault to open', () => {
-    const html = renderSharedMarkdown('See [[Deploy policy]] for details.');
-    expect(html).toContain('shared-wl');
+    const html = shared('See [[Deploy policy]] for details.');
+    expect(html).toContain('wikilink-plain');
     expect(html).not.toContain('href');
     expect(html).toContain('Deploy policy');
   });
 
   it('uses theme classes instead of hard-coded colours', () => {
-    const html = renderSharedMarkdown('> a quote\n\n## Heading');
-    expect(html).toContain('class="quote"');
-    expect(html).toContain('<h3>Heading</h3>');
+    const html = shared('> a quote\n\n## Heading');
+    expect(html).toContain('<blockquote>');
+    expect(html).toContain('<h2>Heading</h2>');
     expect(html).not.toContain('style=');
   });
 
   it('keeps external links but marks them safe', () => {
-    const html = renderSharedMarkdown('[docs](https://example.com)');
+    const html = shared('[docs](https://example.com)');
     expect(html).toContain('rel="noopener noreferrer"');
     expect(html).toContain('target="_blank"');
   });

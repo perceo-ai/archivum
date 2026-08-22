@@ -874,7 +874,7 @@ textarea.inp { height: auto; padding: 11px 14px; line-height: 1.6; resize: none;
 }
 .shared-source-locked i { opacity: .7; }
 
-.shared-wl { color: var(--text-2); border-bottom: 1px dotted var(--border-strong); }
+.wikilink-plain { color: var(--text-2); border-bottom: 1px dotted var(--border-strong); }
 
 .shared-comment {
   margin-top: 36px; padding: 15px 16px;
@@ -972,3 +972,277 @@ textarea.inp { height: auto; padding: 11px 14px; line-height: 1.6; resize: none;
   color: var(--text-2);
 }
 .legend-note { margin-top: 8px; font-size: var(--t-12); color: var(--text-3); }
+
+/* ============================================================
+   Markdown editing surface
+   ============================================================
+   The block extension has always emitted these classes — nothing styled them,
+   so headings sat at body size, hidden `**` left bold text looking plain, the
+   drag handle rendered as literal "⋮⋮" in the text flow, and a checkbox was the
+   characters `[ ]`. The machinery was there; only the presentation was missing.
+   Everything below is that presentation. */
+
+.cm-markdown-block {
+  position: relative;
+  padding-left: 2px;
+}
+
+/* ---------------- headings ---------------- */
+.cm-markdown-heading-1,
+.cm-markdown-heading-2,
+.cm-markdown-heading-3,
+.cm-markdown-heading-4,
+.cm-markdown-heading-5,
+.cm-markdown-heading-6 {
+  font-weight: 650;
+  color: var(--text);
+  letter-spacing: -0.011em;
+}
+.cm-markdown-heading-1 { font-size: var(--t-32); line-height: 1.25 !important; margin-top: 26px; }
+.cm-markdown-heading-2 { font-size: var(--t-26); line-height: 1.3 !important;  margin-top: 22px; }
+.cm-markdown-heading-3 { font-size: var(--t-21); line-height: 1.35 !important; margin-top: 18px; }
+.cm-markdown-heading-4 { font-size: var(--t-18); line-height: 1.4 !important;  margin-top: 14px; }
+.cm-markdown-heading-5 { font-size: var(--t-16); line-height: 1.45 !important; margin-top: 12px; }
+.cm-markdown-heading-6 { font-size: var(--t-15); line-height: 1.45 !important; color: var(--text-2); margin-top: 12px; }
+/* The first line of a document should not be pushed down by a heading margin. */
+.cm-content > .cm-markdown-block:first-child { margin-top: 0; }
+
+/* ---------------- inline ---------------- */
+/* These are what make formatting visible once the delimiters are hidden. */
+.cm-md-strong   { font-weight: 680; color: var(--text); }
+.cm-md-emphasis { font-style: italic; }
+.cm-md-code {
+  font-family: var(--font-mono);
+  font-size: 0.88em;
+  padding: 0.12em 0.34em;
+  border-radius: var(--r-xs);
+  background: var(--bg-active);
+  color: var(--accent-text);
+}
+
+/* ---------------- markers ---------------- */
+.cm-markdown-marker {
+  display: inline-block;
+  color: var(--text-3);
+  user-select: none;
+}
+/* Bullets and numbers sit in the margin so wrapped lines align to the text,
+   not to the marker — the thing that makes a list read as a list. */
+.cm-markdown-unordered-list,
+.cm-markdown-ordered-list,
+.cm-markdown-task-open,
+.cm-markdown-task-done {
+  padding-left: 26px;
+  text-indent: -26px;
+}
+.cm-markdown-marker-unordered-list,
+.cm-markdown-marker-ordered-list {
+  width: 26px;
+  text-indent: 0;
+  color: var(--text-2);
+}
+.cm-markdown-marker-ordered-list { font-variant-numeric: tabular-nums; }
+
+/* ---------------- tasks ---------------- */
+.cm-task-toggle {
+  width: 26px;
+  text-indent: 0;
+  background: none;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+  font-size: 1.02em;
+  line-height: inherit;
+  color: var(--text-3);
+  transition: color var(--dur-1) var(--ease);
+}
+.cm-task-toggle:hover { color: var(--accent-text); }
+.cm-markdown-marker-task-done { color: var(--accent); }
+/* A finished task should read as finished without having to be re-read. */
+.cm-markdown-task-done { color: var(--text-3); text-decoration: line-through; text-decoration-color: var(--border-strong); }
+
+/* ---------------- quote, rule, code ---------------- */
+.cm-markdown-quote {
+  padding-left: 16px;
+  border-left: 2px solid var(--accent);
+  color: var(--text-2);
+  font-style: italic;
+}
+.cm-markdown-thematic-break {
+  /* The characters are replaced by an empty widget, so the rule is drawn here. */
+  border-bottom: 1px solid var(--border-strong);
+  height: 0;
+  margin: 16px 0;
+  line-height: 0 !important;
+  min-height: 0 !important;
+}
+.cm-markdown-code-fence {
+  font-family: var(--font-mono);
+  font-size: var(--t-13);
+  color: var(--text-3);
+}
+.cm-markdown-marker-code-fence {
+  font-size: var(--t-11);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  padding: 1px 6px;
+  border-radius: var(--r-full);
+  background: var(--bg-active);
+}
+
+/* ---------------- drag handle ---------------- */
+/* Lives in the margin and only appears on the row you are pointing at. Always
+   visible, it was noise on every single line. */
+.cm-block-handle {
+  position: absolute;
+  left: -22px;
+  top: 0.28em;
+  width: 18px;
+  height: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: var(--r-xs);
+  background: none;
+  color: var(--text-3);
+  font-size: 11px;
+  line-height: 1;
+  cursor: grab;
+  opacity: 0;
+  transition: opacity var(--dur-1) var(--ease), background var(--dur-1) var(--ease);
+}
+.cm-markdown-block:hover .cm-block-handle { opacity: 1; }
+.cm-block-handle:hover { background: var(--bg-hover); color: var(--text-2); }
+.cm-block-handle:active { cursor: grabbing; }
+.cm-block-handle:focus-visible { opacity: 1; outline: 1px solid var(--border-focus); }
+
+/* ---------------- placeholder ---------------- */
+/* Notion's most-copied affordance: the empty line you are on tells you what to
+   do next instead of sitting blank. */
+.cm-markdown-blank.cm-activeLine::after {
+  content: "Write, or press / for commands";
+  position: absolute;
+  left: 2px;
+  top: 0;
+  color: var(--text-3);
+  pointer-events: none;
+}
+
+/* ============================================================
+   Rendered markdown
+   ============================================================
+   Every surface that displays markdown it did not author shares this: the
+   share page, public wiki pages, and answers from Ask. One renderer, one set
+   of styles — a document is supposed to look the same wherever it is read. */
+
+.md-body,
+.shared-doc .body {
+  color: var(--text-2);
+  font-size: var(--t-15);
+  line-height: 1.72;
+}
+
+.md-body > :first-child,
+.shared-doc .body > :first-child { margin-top: 0; }
+
+.md-body h1, .shared-doc .body h1,
+.md-body h2, .shared-doc .body h2,
+.md-body h3, .shared-doc .body h3,
+.md-body h4, .shared-doc .body h4,
+.md-body h5, .shared-doc .body h5,
+.md-body h6, .shared-doc .body h6 {
+  color: var(--text);
+  font-weight: 650;
+  letter-spacing: -0.011em;
+  line-height: 1.3;
+  margin: 1.6em 0 0.5em;
+}
+.md-body h1, .shared-doc .body h1 { font-size: var(--t-26); }
+.md-body h2, .shared-doc .body h2 { font-size: var(--t-21); }
+.md-body h3, .shared-doc .body h3 { font-size: var(--t-18); }
+.md-body h4, .shared-doc .body h4 { font-size: var(--t-16); }
+.md-body h5, .shared-doc .body h5 { font-size: var(--t-15); }
+.md-body h6, .shared-doc .body h6 { font-size: var(--t-14); color: var(--text-2); }
+
+.md-body p, .shared-doc .body p { margin: 0 0 1em; }
+.md-body strong, .shared-doc .body strong { color: var(--text); font-weight: 650; }
+.md-body a, .shared-doc .body a { color: var(--accent-text); text-decoration: none; }
+.md-body a:hover, .shared-doc .body a:hover { text-decoration: underline; }
+
+/* Lists keep their marker in the margin and nest without collapsing. */
+.md-body ul, .shared-doc .body ul,
+.md-body ol, .shared-doc .body ol { margin: 0 0 1em; padding-left: 1.4em; }
+.md-body li, .shared-doc .body li { margin: 0.25em 0; }
+.md-body li > ul, .shared-doc .body li > ul,
+.md-body li > ol, .shared-doc .body li > ol { margin-bottom: 0; }
+/* GFM task lists: the checkbox belongs in the margin, not in the sentence. */
+.md-body li:has(> input[type='checkbox']),
+.shared-doc .body li:has(> input[type='checkbox']) { list-style: none; margin-left: -1.25em; }
+.md-body input[type='checkbox'],
+.shared-doc .body input[type='checkbox'] { margin-right: 0.55em; accent-color: var(--accent); }
+
+.md-body code, .shared-doc .body code {
+  font-family: var(--font-mono);
+  font-size: 0.875em;
+  padding: 0.12em 0.36em;
+  border-radius: var(--r-xs);
+  background: var(--bg-active);
+  color: var(--accent-text);
+}
+.md-body pre, .shared-doc .body pre {
+  margin: 0 0 1.2em;
+  padding: 13px 15px;
+  overflow-x: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  background: var(--bg-raised);
+}
+/* Inside a block the code is the block; it should not also be a chip. */
+.md-body pre code, .shared-doc .body pre code {
+  padding: 0; background: none; color: var(--text);
+  font-size: var(--t-13); line-height: 1.65;
+}
+
+.md-body blockquote, .shared-doc .body blockquote {
+  margin: 0 0 1.2em;
+  padding: 2px 0 2px 16px;
+  border-left: 2px solid var(--accent);
+  color: var(--text-2);
+}
+.md-body blockquote p:last-child,
+.shared-doc .body blockquote p:last-child { margin-bottom: 0; }
+
+.md-body hr, .shared-doc .body hr {
+  border: 0; border-top: 1px solid var(--border-strong); margin: 2em 0;
+}
+
+/* Tables: the block type no previous renderer produced at all. */
+.md-body table, .shared-doc .body table {
+  width: 100%;
+  margin: 0 0 1.3em;
+  border-collapse: collapse;
+  font-size: var(--t-14);
+  display: block;
+  overflow-x: auto;
+}
+.md-body th, .shared-doc .body th,
+.md-body td, .shared-doc .body td {
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  text-align: left;
+  vertical-align: top;
+}
+.md-body th, .shared-doc .body th {
+  background: var(--bg-raised);
+  color: var(--text);
+  font-weight: 600;
+  white-space: nowrap;
+}
+.md-body tbody tr:hover, .shared-doc .body tbody tr:hover { background: var(--bg-hover); }
+
+.md-body img, .shared-doc .body img {
+  max-width: 100%; height: auto; border-radius: var(--r-md); margin: 0.4em 0;
+}
+
+.md-body del, .shared-doc .body del { color: var(--text-3); }

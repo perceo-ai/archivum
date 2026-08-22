@@ -126,7 +126,11 @@ export default function KnowledgeGraph({
         physics: {
           solver: 'forceAtlas2Based',
           forceAtlas2Based: { gravitationalConstant: -60, springLength: 110, avoidOverlap: 0.4 },
-          stabilization: { iterations: 220 },
+          stabilization: { iterations: 220, fit: true },
+          // Stop the moment it settles rather than easing off forever. Left to
+          // decay on its own the whole graph keeps rotating and swimming under
+          // the cursor, which makes it unreadable and impossible to click.
+          minVelocity: 0.75,
         },
         interaction: { hover: true, tooltipDelay: 120, navigationButtons: false },
         nodes: { borderWidth: 1.5 },
@@ -134,6 +138,13 @@ export default function KnowledgeGraph({
         layout: { improvedLayout: false },
       },
     );
+
+    // Freeze the layout once it has settled. Physics is how the shape is found,
+    // not how it should be held: a live simulation drifts continuously, so the
+    // node you reached for is somewhere else by the time you click.
+    const freeze = () => network.setOptions({ physics: { enabled: false } });
+    network.once('stabilizationIterationsDone', freeze);
+    network.once('stabilized', freeze);
 
     network.on('click', (params) => {
       const id = params.nodes[0] ? String(params.nodes[0]) : null;
