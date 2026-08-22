@@ -35,6 +35,7 @@ from archivum.knowledge.projections import project_page
 from archivum.knowledge.repository import KnowledgeRepository
 from archivum.knowledge.suggestions import SuggestionRepository, init_suggestion_schema
 from archivum.linting import WIKILINK_RE, normalize_wikilink_target
+from archivum.memory.catalog import register_page_asset
 from archivum.memory.registry import MemoryAssetRegistry
 from archivum.pages_to_knowledge import remove_page_from_knowledge, sync_page_to_knowledge
 
@@ -235,6 +236,19 @@ async def reindex_page(
         except Exception as exc:  # noqa: BLE001 - the graph is rebuildable
             logger.warning("knowledge projection for %s failed: %s", slug, exc)
             result.degraded.append("graph.knowledge")
+
+        # Governance travels with the page. Registration only ever happened in
+        # the catalog pass, which nothing in the app ran, so pages stayed
+        # invisible to the asset registry that agent loadouts read from.
+        await register_page_asset(
+            MemoryAssetRegistry(conn),
+            repo,
+            wiki_id=wiki_id,
+            slug=slug,
+            title=title,
+            content=markdown,
+            change_note=reason or "Indexed",
+        )
 
     await project_page_graph(slug, title, markdown, wiki_id, result)
 

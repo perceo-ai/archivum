@@ -364,6 +364,28 @@ async def init_collection(settings: Settings | None = None) -> None:
 
 # ── CRUD ──────────────────────────────────────────────────────────────────────
 
+_FRONTMATTER_RE = re.compile(r"\A---\r?\n.*?\r?\n---\r?\n?", re.DOTALL)
+
+
+def strip_frontmatter(markdown: str) -> str:
+    """The page without its YAML header."""
+    return _FRONTMATTER_RE.sub("", markdown or "", count=1)
+
+
+def embeddable_text(title: str, markdown: str) -> str:
+    """What should actually be embedded for a page.
+
+    Frontmatter was being embedded along with the body, and every page opens
+    with the same handful of keys — so the strongest signal in the first chunk
+    was structure that all pages share, and unrelated queries still scored
+    around 0.5 against everything. The title goes in front instead: it is short,
+    it is what people type, and it was previously only searchable by accident.
+    """
+    body = strip_frontmatter(markdown).strip()
+    heading = (title or "").strip()
+    return f"{heading}\n\n{body}".strip() if heading else body
+
+
 async def upsert_page(
     slug: str,
     title: str,
@@ -384,7 +406,7 @@ async def upsert_page(
     # Delete stale vectors first
     await delete_page(slug, wiki_id, s)
 
-    chunks = _chunk_text(content)
+    chunks = _chunk_text(embeddable_text(title, content))
     vectors = await embed_texts(chunks, s)
     logger.debug("Qdrant vectors ready", extra={"slug": slug, "chunks": len(chunks), "dim": len(vectors[0]) if vectors else 0})
     if vectors and len(vectors[0]) != int(embed_dim):

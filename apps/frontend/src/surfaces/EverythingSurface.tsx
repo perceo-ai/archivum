@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { listEntries, type Entry, type EntryList } from '../api';
+import { listEntries, searchVault, type Entry, type EntryList, type VaultHit } from '../api';
+import { searchResults } from './searchResults';
 import { Icon } from '../shell/Icon';
 import { cn } from '../lib/cn';
 
@@ -84,16 +85,45 @@ export default function EverythingSurface() {
       .catch((err) => setError(err instanceof Error ? err.message : 'Could not load entries'));
   }, [kind, needsReview]);
 
+  // Semantic search, debounced. The box used to filter titles in the browser,
+  // which meant anything you could not name was effectively lost — while the
+  // embeddings and the hybrid endpoint sat unused behind it.
+  const [hits, setHits] = useState<VaultHit[] | null>(null);
+
+  useEffect(() => {
+    const needle = search.trim();
+    if (!needle) {
+      setHits(null);
+      return;
+    }
+    let cancelled = false;
+    const id = window.setTimeout(() => {
+      searchVault(needle)
+        .then((found) => !cancelled && setHits(found))
+        // A failed search falls back to matching titles rather than showing
+        // nothing: degraded search beats no search.
+        .catch(() => !cancelled && setHits(null));
+    }, 200);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(id);
+    };
+  }, [search]);
+
   const entries = useMemo(() => {
     const all = data?.entries ?? [];
     const needle = search.trim().toLowerCase();
     if (!needle) return all;
+    // The engine ranked these against the whole vault, so they decide both
+    // membership and order. Filtering them through the loaded page dropped
+    // anything not already on screen.
+    if (hits) return searchResults(all, hits);
     return all.filter(
       (entry) =>
         entry.title.toLowerCase().includes(needle) ||
         (entry.slug ?? '').toLowerCase().includes(needle),
     );
-  }, [data, search]);
+  }, [data, search, hits]);
 
   const columns = useMemo(() => columnsFor(entries, path), [entries, path]);
 
