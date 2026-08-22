@@ -225,6 +225,28 @@ def test_narrative_confirms_an_externally_cited_graph():
     assert any("cites evidence outside itself" in line for line in report.narrative)
 
 
+def test_edge_count_describes_the_graph_you_can_actually_see():
+    """An edge to a record you cannot read is not a relationship you have.
+
+    Edges are scope-filtered separately from nodes, so an edge can point out of
+    the audited scope. `build_adjacency` already drops those, meaning clusters
+    and orphans were computed on the trimmed graph while `edge_count` reported
+    the untrimmed total — the narrative claimed more connectivity than the graph
+    had, and a viewer drawing `edges` would show fewer links than the header
+    promised.
+    """
+    nodes, edges = _two_lobes()
+    visible = len(graph_audit.build_graph_report(nodes, edges).edge_list)
+
+    report = graph_audit.build_graph_report(
+        nodes, [*edges, _edge("a1", "somewhere-we-cannot-read")]
+    )
+
+    assert report.edge_count == visible, "the unreadable far end must not be counted"
+    assert len(report.edge_list) == visible
+    assert any(f"{visible} relationships" in line for line in report.narrative)
+
+
 def test_report_serialises_for_transport():
     nodes, edges = _two_lobes()
     payload = graph_audit.report_to_dict(graph_audit.build_graph_report(nodes, edges))

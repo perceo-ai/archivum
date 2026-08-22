@@ -437,7 +437,16 @@ def build_graph_report(
     communities = detect_communities(nodes, edges)
     links = surprising_links(nodes, edges, communities=communities, limit=surprise_limit)
 
+    # Nodes and edges are scope-filtered by separate queries, so an edge can
+    # point at a record outside the audited scope — one the caller may not read
+    # and that `_add_incident_links` could not pull in. `build_adjacency` already
+    # ignores those, so clusters and orphans describe the trimmed graph; count
+    # the same trimmed set here or the narrative claims connectivity that is not
+    # there and a viewer draws fewer links than the header promises.
     known_ids = {node.id for node in nodes}
+    visible_edges = [
+        edge for edge in edges if edge.src_id in known_ids and edge.dst_id in known_ids
+    ]
     by_kind = Counter(node.kind for node in nodes)
     by_method = Counter(node.extraction_method for node in nodes)
     self_cited = tuple(sorted(node.id for node in nodes if is_self_cited(node)))
@@ -449,7 +458,7 @@ def build_graph_report(
     report = GraphReport(
         scope=scope,
         node_count=len(nodes),
-        edge_count=len(edges),
+        edge_count=len(visible_edges),
         by_kind=dict(sorted(by_kind.items())),
         by_extraction_method=dict(sorted(by_method.items())),
         self_cited_ids=self_cited,
@@ -461,8 +470,7 @@ def build_graph_report(
         node_kinds={node.id: node.kind for node in nodes},
         edge_list=tuple(
             (edge.src_id, edge.dst_id, edge.rel_type, edge.extraction_method)
-            for edge in edges
-            if edge.src_id in known_ids and edge.dst_id in known_ids
+            for edge in visible_edges
         ),
     )
     return replace(report, narrative=_narrative(report))
