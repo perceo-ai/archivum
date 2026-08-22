@@ -269,3 +269,71 @@ async def test_ingest_canonical_records_preserve_extracted_source_provenance():
         and rel.extraction_method == "EXTRACTED"
         for rel in relationships
     )
+
+
+async def test_entities_are_linked_to_the_page_they_were_found_in():
+    """Without this edge the whole entity graph floats free of the person.
+
+    Entities were written, and entity-to-entity relationships were written, but
+    nothing ever connected a page to the entities extracted from it. Pages hang
+    off `person:self`; entities hung off nothing. On a real vault that left 96
+    of 150 records unreachable from the owner — a personal memory graph in which
+    most of the graph is not attached to the person.
+
+    `projections.py` has always had a branch for `page --mentions--> non-page`;
+    it could never fire, because no such edge was produced.
+    """
+    doc = ParsedDoc(text="Jane Doe built Archivum.", source="resume.pdf", metadata={})
+    result = ExtractionResult(
+        pages=[
+            WikiPage(
+                slug="jane-doe",
+                title="Jane Doe",
+                content="Jane Doe built [[Archivum]].",
+                tags=[],
+            )
+        ],
+        entities=[
+            {"name": "Jane Doe", "type": "person"},
+            {"name": "Archivum", "type": "project"},
+        ],
+        relationships=[],
+    )
+    anchor = SourceAnchor(
+        source_id="a1b2c3", text=doc.text, chunks=(("chunk-0", 0, len(doc.text)),)
+    )
+
+    async with aiosqlite.connect(":memory:") as conn:
+        await init_knowledge_schema(conn)
+        repo = KnowledgeRepository(conn)
+        await _sync_extracted_result_to_knowledge(
+            repo,
+            result=result,
+            slug_map={"jane-doe": "jane-doe"},
+            doc=doc,
+            wiki_id="default",
+            source_type="file",
+            display_source="resume.pdf",
+            anchor=anchor,
+        )
+        relationships = await repo.list_relationships(scope="wiki:default")
+
+    mentioned = {
+        rel.dst_id
+        for rel in relationships
+        if rel.src_id == "page:default:jane-doe" and rel.rel_type == "mentions"
+    }
+    assert mentioned == {"entity:default:jane-doe", "entity:default:archivum"}
+
+    # Reachability is the actual property that matters, so assert it directly.
+    adjacency: dict[str, set[str]] = {}
+    for rel in relationships:
+        adjacency.setdefault(rel.src_id, set()).add(rel.dst_id)
+        adjacency.setdefault(rel.dst_id, set()).add(rel.src_id)
+    seen, stack = {SELF_ID}, [SELF_ID]
+    while stack:
+        for neighbour in adjacency.get(stack.pop(), ()):
+            if neighbour not in seen:
+                seen.add(neighbour)
+                stack.append(neighbour)
+    assert "entity:default:archivum" in seen, "an entity you cannot reach is not your memory"

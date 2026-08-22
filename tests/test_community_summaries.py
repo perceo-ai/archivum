@@ -148,3 +148,28 @@ async def test_a_lone_record_is_not_a_community_worth_summarising():
 
     assert written == []
     called.assert_not_awaited()
+
+
+async def test_a_summary_is_joined_to_what_it_summarises():
+    """A summary that names its members only in a property is an orphan.
+
+    `member_ids` sat in properties and the citations named the members, but no
+    edge was ever written — so every community summary was disconnected from
+    the graph it describes, unreachable from the owner and invisible to any
+    traversal.
+    """
+    async with aiosqlite.connect(":memory:") as conn:
+        await init_knowledge_schema(conn)
+        repo = await _seed(conn)
+
+        with patch(
+            "archivum.summaries.cli_chat_completion",
+            new=AsyncMock(return_value="Work on how retrieval finds things."),
+        ):
+            written = await summarise_communities(repo, wiki_id="default", provider="claude_cli")
+
+        relationships = await repo.list_relationships(node_id=written[0])
+
+    summarised = {rel.dst_id for rel in relationships if rel.rel_type == "summarises"}
+    assert summarised, "the summary must be joined to the records it was written from"
+    assert summarised <= {"a", "b", "c"}

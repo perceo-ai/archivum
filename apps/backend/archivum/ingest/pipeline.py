@@ -538,14 +538,21 @@ async def _sync_extracted_result_to_knowledge(
         )
         await link_to_self(repo, page_id, "saved_source", citation=page_citation, confidence=0.8)
 
+    # The pages this batch produced, so each entity can be tied back to where it
+    # was found. Entities used to be written with no edge to any page at all:
+    # pages hang off `person:self`, entities hung off nothing, and the entire
+    # extracted graph floated free of the person it is supposed to be about.
+    page_ids = [f"{wiki_id}:{slug_map.get(page.slug, page.slug)}" for page in result.pages]
+
     for entity in result.entities:
         name = str(entity.get("name", "")).strip()
         if not name:
             continue
         entity_citation = anchor.cite(name)
+        entity_id = _entity_id(wiki_id, name)
         await repo.upsert_object(
             KnowledgeObject(
-                id=_entity_id(wiki_id, name),
+                id=entity_id,
                 kind="entity",
                 label=name,
                 scope=scope,
@@ -559,6 +566,21 @@ async def _sync_extracted_result_to_knowledge(
                 },
             )
         )
+        for suffix in page_ids:
+            page_id = f"page:{suffix}"
+            await repo.upsert_relationship(
+                KnowledgeRelationship(
+                    id=f"rel:{page_id}:mentions:{entity_id}",
+                    src_id=page_id,
+                    dst_id=entity_id,
+                    rel_type="mentions",
+                    scope=scope,
+                    confidence=0.7,
+                    extraction_method="EXTRACTED",
+                    citations=[entity_citation],
+                    properties={"source_type": source_type, "origin_uri": display_source},
+                )
+            )
 
     for rel in result.relationships:
         from_name = str(rel.get("from", "")).strip()

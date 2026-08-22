@@ -23,7 +23,7 @@ import logging
 from datetime import UTC, datetime
 
 from archivum.knowledge.graph_audit import detect_communities, load_graph
-from archivum.knowledge.models import Citation, KnowledgeObject
+from archivum.knowledge.models import Citation, KnowledgeObject, KnowledgeRelationship
 from archivum.knowledge.repository import KnowledgeRepository
 from archivum.llm.cli_client import CliModelError, cli_chat_completion
 from archivum.llm.prompt_context import with_context
@@ -142,6 +142,25 @@ async def summarise_communities(
                 },
             )
         )
+        # Join the summary to what it summarises. Naming the members in a
+        # property is not a link: without an edge the summary is an orphan, and
+        # a record nothing points at is unreachable from the person the vault is
+        # about.
+        for member in community.member_ids:
+            await repo.upsert_relationship(
+                KnowledgeRelationship(
+                    id=f"rel:{summary_id}:summarises:{member}",
+                    src_id=summary_id,
+                    dst_id=member,
+                    rel_type="summarises",
+                    scope=target,
+                    confidence=0.7,
+                    extraction_method="INFERRED",
+                    citations=citations[:1],
+                    properties={"community_id": community.id},
+                )
+            )
+
         written.append(summary_id)
 
     return written

@@ -246,6 +246,7 @@ async def reindex_page(
             wiki_id=wiki_id,
             slug=slug,
             title=title,
+            content=markdown,
             change_note=reason or "Indexed",
         )
 

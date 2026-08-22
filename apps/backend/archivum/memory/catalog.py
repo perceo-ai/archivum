@@ -10,6 +10,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
+import re
+
 import aiosqlite
 
 from archivum.knowledge.models import Citation, KnowledgeObject
@@ -61,7 +63,8 @@ async def _catalog_pages(
     report: CatalogReport,
 ) -> None:
     async with conn.execute(
-        "SELECT slug, title FROM pages WHERE wiki_id=? ORDER BY slug ASC", (wiki_id,)
+        "SELECT slug, title, content FROM pages WHERE wiki_id=? ORDER BY slug ASC",
+        (wiki_id,),
     ) as cursor:
         rows = await cursor.fetchall()
 
@@ -72,6 +75,7 @@ async def _catalog_pages(
             wiki_id=wiki_id,
             slug=row["slug"],
             title=row["title"],
+            content=row["content"] or "",
             change_note="Catalogued from the markdown vault",
         )
         if object_id is None:
@@ -87,6 +91,7 @@ async def register_page_asset(
     wiki_id: str,
     slug: str,
     title: str,
+    content: str = "",
     change_note: str = "Registered from the markdown vault",
 ) -> str | None:
     """Bring one page under governance. Returns its id, or None if it is exempt.
@@ -101,10 +106,16 @@ async def register_page_asset(
     # so the asset shares its id rather than duplicating the record.
     object_id = f"page:{wiki_id}:{slug}"
     canonical = await repo.get_object(object_id)
+    # Prefer the page as it is on disk. Only ingested pages keep a copy of
+    # their markdown on the canonical record, so relying on that alone left
+    # every hand-written page with nothing to summarise.
+    lede = page_lede(content or (str(canonical.properties.get("markdown", "")) if canonical else ""))
     citations = (
         canonical.citations
-        if canonical is not None
-        else [_self_citation(object_id, title)]
+        if canonical is not None and canonical.citations
+        # Quote the page's own opening line. The quote used to be the record id,
+        # which cited nothing — it only restated that the record exists.
+        else [_self_citation(object_id, lede or title)]
     )
     await registry.register_asset(
         id=object_id,
@@ -115,7 +126,10 @@ async def register_page_asset(
         scope=f"wiki:{wiki_id}",
         status="active",
         page_slug=slug,
-        summary="Editable markdown page.",
+        # What this page says, not what every page is. The old text was the
+        # same sentence on all of them, and the surface renders summary over
+        # name, so it hid the title behind a fact about the file format.
+        summary=lede or title,
         tags=["wiki"],
         metadata={"slug": slug},
         citations=citations,
@@ -326,6 +340,49 @@ async def register_codegraph_asset(
         change_note=change_note,
     )
     return asset_id
+
+
+# Enough to say what a page is about without turning a card into a paragraph.
+_LEDE_CHARS = 180
+
+
+def page_lede(markdown: str) -> str:
+    """The first line of a page that actually says something.
+
+    Skips frontmatter, headings, and the structural noise that every page has
+    in common — a summary made of those describes markdown, not this page.
+    Returns "" when there is nothing but structure, so the caller can fall back
+    rather than print an empty card.
+    """
+    body = markdown or ""
+    if body.startswith("---"):
+        end = body.find("\n---", 3)
+        if end != -1:
+            body = body[end + 4 :]
+
+    in_fence = False
+    for raw in body.splitlines():
+        line = raw.strip()
+        if line.startswith("```") or line.startswith("~~~"):
+            in_fence = not in_fence
+            continue
+        if in_fence or not line:
+            continue
+        if line.startswith("#") or line.startswith(">"):
+            continue
+        if set(line) <= set("-*_= "):
+            continue
+        # Read as prose, so the markers that make it a list or a link are noise.
+        line = re.sub(r"^[-*+]\s+(\[[ xX]\]\s+)?", "", line)
+        line = re.sub(r"^\d+[.)]\s+", "", line)
+        line = re.sub(r"\[\[([^\]|]+)(?:\|([^\]]+))?\]\]", lambda m: m.group(2) or m.group(1), line)
+        line = re.sub(r"\[([^\]]+)\]\([^)]*\)", r"\1", line)
+        line = line.replace("**", "").replace("`", "")
+        line = line.strip()
+        if not line:
+            continue
+        return line if len(line) <= _LEDE_CHARS else line[: _LEDE_CHARS - 1].rstrip() + "…"
+    return ""
 
 
 def _self_citation(object_id: str, quote: str) -> Citation:
