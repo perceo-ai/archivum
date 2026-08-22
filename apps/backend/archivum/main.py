@@ -48,6 +48,7 @@ from archivum.code_repos import run_code_repo_worker
 from archivum.summaries import run_summary_worker
 from archivum.distillation import run_distill_worker
 from archivum.indexing import reconcile_vault
+from archivum.vault_scaffold import ensure_default_folders
 from archivum.vault_watch import run_vault_watcher
 from archivum.rate_limit import RateLimitMiddleware
 
@@ -138,6 +139,13 @@ async def lifespan(app: FastAPI):
     # Ensure owner exists
     owner_pw = settings.owner_password or secrets.token_urlsafe(24)
     await sqlite.ensure_owner_exists(settings.owner_username, hash_password(owner_pw))
+
+    # A vault with no folders makes every capture a filing decision; give it a
+    # starting shape. Only ever on a vault that has none of its own.
+    try:
+        await ensure_default_folders(wiki_id="default", settings=settings)
+    except Exception as exc:  # noqa: BLE001 - folders are not worth a failed boot
+        logger.warning("Could not seed default folders: %s", exc)
 
     # Catch up on anything edited while the app was down, before serving.
     if settings.vault_reconcile_on_start:

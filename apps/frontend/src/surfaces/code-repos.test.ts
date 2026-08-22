@@ -104,26 +104,38 @@ describe('the visualized surface', () => {
   });
 });
 
-describe('drawing a repository graph', () => {
+describe('drawing the graph', () => {
   const source = () =>
-    fs.readFileSync(path.resolve('src/surfaces/VisualizedSurface.tsx'), 'utf8');
+    fs.readFileSync(path.resolve('src/surfaces/KnowledgeGraph.tsx'), 'utf8');
 
-  it('names cluster members from the report it drew them from', () => {
+  it('draws from the report it was given, labels and all', () => {
     // Labels used to come from a second, unscoped call, so a repository graph
     // rendered rows of `repo_atlas_geo_haversine` instead of function names.
     expect(source()).toContain('node_labels');
-    expect(source()).not.toMatch(/labelById[\s\S]{0,200}nodes\.map/);
+    expect(source()).toContain('node_kinds');
   });
 
-  it('puts the repository at the centre when you are looking at one', () => {
-    // The centre is "you" for the vault. A repository is not you, so drawing
-    // your initials in the middle of a call graph is just wrong.
-    expect(source()).toContain('centreLabel');
-    expect(source()).toContain('centreSubtitle');
+  it('draws the actual relationships, not a ring around a centre', () => {
+    // The old panel placed clusters on a ring with you in the middle. That is
+    // a layout: it showed none of the edges *between* clusters, which is the
+    // one thing a knowledge graph exists to show.
+    const src = source();
+    expect(src).toContain('report.edges');
+    expect(src).toContain('forceAtlas2Based');
+    expect(src).not.toContain('ringLayout');
   });
 
-  it('links each cluster to the page that was written for it', () => {
-    // Indexing writes code/<repo>/<cluster>.md — the picture should open it.
-    expect(source()).toContain('code/');
+  it('distinguishes an inferred link from a read one', () => {
+    // A guess and a fact should not be drawn with the same weight.
+    expect(source()).toMatch(/dashes:.*EXTRACTED/);
+  });
+
+  it('opens the page behind a record when you click it', () => {
+    const surface = fs.readFileSync(
+      path.resolve('src/surfaces/VisualizedSurface.tsx'),
+      'utf8',
+    );
+    expect(surface).toContain('KnowledgeGraph');
+    expect(surface).toMatch(/navigate\(`\/wiki\//);
   });
 });

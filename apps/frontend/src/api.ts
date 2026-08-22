@@ -1168,6 +1168,8 @@ export type GraphReport = {
   /** Name and kind per record, so the picture can be drawn from this alone. */
   node_labels: Record<string, string>;
   node_kinds: Record<string, string>;
+  /** The relationships analysed. Without these you can only draw a layout. */
+  edges: { source: string; target: string; relation: string; extraction_method: string }[];
 };
 
 export type GraphPathResult = {

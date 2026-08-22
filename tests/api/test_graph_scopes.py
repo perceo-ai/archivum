@@ -242,3 +242,29 @@ async def test_a_link_into_another_vault_is_not_disclosed(env):
     assert "memory:atom:someone-else" not in body["node_labels"]
     assert "Another vault's private decision" not in str(body)
     assert body["node_count"] == 2, "only this repository's own records"
+
+
+async def test_the_audit_returns_the_edges_it_analysed(env):
+    """A picture of clusters without edges cannot show how they connect.
+
+    The report carried nodes and cluster membership but not the relationships
+    between them, so anything drawing it could only place clusters in a ring
+    around the owner — which is a layout, not the graph.
+    """
+    body = env.get("/api/graph/audit", params={"scope": "repo:default:atlas"}).json()
+
+    edges = body["edges"]
+    assert edges, "the audit analysed edges; it should return them"
+    first = edges[0]
+    assert {"source", "target", "relation"} <= set(first)
+    assert first["source"] == "repo_atlas_geo_haversine"
+    assert first["relation"] == "calls"
+
+
+async def test_edges_only_reference_nodes_the_report_includes(env):
+    """An edge to a node the caller cannot see would be a dangling line."""
+    body = env.get("/api/graph/audit", params={"scope": "repo:default:atlas"}).json()
+
+    known = set(body["node_labels"])
+    for edge in body["edges"]:
+        assert edge["source"] in known and edge["target"] in known

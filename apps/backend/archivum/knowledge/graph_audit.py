@@ -98,6 +98,10 @@ class GraphReport:
     # the report was pointed at a repository.
     node_labels: dict[str, str] = field(default_factory=dict)
     node_kinds: dict[str, str] = field(default_factory=dict)
+    # The relationships the analysis ran over. Without these a caller can only
+    # place clusters around a centre — a layout, not the graph. Restricted to
+    # edges whose endpoints are both in the report, so nothing dangles.
+    edge_list: tuple[tuple[str, str, str, str], ...] = field(default=())
 
 
 # ── Adjacency ─────────────────────────────────────────────────────────────
@@ -433,6 +437,7 @@ def build_graph_report(
     communities = detect_communities(nodes, edges)
     links = surprising_links(nodes, edges, communities=communities, limit=surprise_limit)
 
+    known_ids = {node.id for node in nodes}
     by_kind = Counter(node.kind for node in nodes)
     by_method = Counter(node.extraction_method for node in nodes)
     self_cited = tuple(sorted(node.id for node in nodes if is_self_cited(node)))
@@ -454,6 +459,11 @@ def build_graph_report(
         surprising_links=tuple(links),
         node_labels={node.id: node.label for node in nodes},
         node_kinds={node.id: node.kind for node in nodes},
+        edge_list=tuple(
+            (edge.src_id, edge.dst_id, edge.rel_type, edge.extraction_method)
+            for edge in edges
+            if edge.src_id in known_ids and edge.dst_id in known_ids
+        ),
     )
     return replace(report, narrative=_narrative(report))
 
@@ -645,6 +655,10 @@ def report_to_dict(report: GraphReport) -> dict[str, Any]:
         "narrative": list(report.narrative),
         "node_labels": report.node_labels,
         "node_kinds": report.node_kinds,
+        "edges": [
+            {"source": src, "target": dst, "relation": rel, "extraction_method": method}
+            for src, dst, rel, method in report.edge_list
+        ],
     }
 
 

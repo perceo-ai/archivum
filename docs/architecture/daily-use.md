@@ -42,6 +42,27 @@ matching rather than showing nothing.
 
 ⌘K is **Ask**: cited answers over the vault. Different gesture, different job.
 
+## Where things go
+
+A new vault starts with folders — `inbox`, `daily`, `notes`, `projects`, `areas`,
+`people`, `decisions`, `reading`, `reference`, `sources`, `archive` — because an
+empty vault turns every capture into a filing decision, and the composer can only
+guess among folders that exist. On an empty vault it guessed "the root" every
+time, so everything piled up there.
+
+They are a starting point, not a policy. `vault_scaffold.ensure_default_folders`
+runs once at startup and does nothing at all if the vault already has folders of
+its own: arriving with your own structure and being handed a second one on top is
+worse than being handed none.
+
+Listing folders used to create the defaults as a side effect, which meant a
+folder you deleted came back the next time anything read the list — you could not
+actually remove one. Seeding is now an explicit startup step, and `list_folders`
+only reads.
+
+`code/`, `memory/` and `skills/` are deliberately not in the list. The system
+writes those; they are output, not places you put things.
+
 ## Today
 
 `T`, or the Today button, opens the daily note and creates it on first ask. The

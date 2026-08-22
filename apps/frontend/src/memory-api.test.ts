@@ -188,6 +188,7 @@ describe('graph audit client', () => {
     surprising_links: [],
     narrative: ['The graph holds 6 records.'],
     // The report names its own records, so whatever draws it needs no second call.
+    edges: [{ source: 'a1', target: 'a2', relation: 'references', extraction_method: 'EXTRACTED' }],
     node_labels: { a1: 'Alpha', a2: 'Beta', a3: 'Gamma' },
     node_kinds: { a1: 'page', a2: 'page', a3: 'page' },
   };

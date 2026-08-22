@@ -933,3 +933,42 @@ textarea.inp { height: auto; padding: 11px 14px; line-height: 1.6; resize: none;
 }
 .task-box:hover { border-color: var(--a-500); background: rgba(75, 145, 241, 0.12); }
 .task-text { font-size: var(--t-14); color: var(--text-1); }
+
+
+/* ---------------- knowledge graph ---------------- */
+/* A real node-link view: any record can connect to any other, which is the
+   whole point and exactly what a ring layout could not show. */
+.graph-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 18px 10px;
+}
+.graph-search {
+  flex: none;
+  width: 240px;
+  padding: 7px 11px;
+  font-size: var(--t-13);
+  color: var(--text-1);
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+.graph-search:focus { outline: none; border-color: var(--a-500); }
+.graph-meta { font-size: var(--t-12); color: var(--text-3); }
+.graph-canvas {
+  height: 560px;
+  margin: 0 18px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: radial-gradient(circle at 50% 40%, rgba(75,145,241,0.05), transparent 70%);
+}
+.legend-row { display: flex; flex-wrap: wrap; gap: 12px; }
+.legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--t-12);
+  color: var(--text-2);
+}
+.legend-note { margin-top: 8px; font-size: var(--t-12); color: var(--text-3); }
