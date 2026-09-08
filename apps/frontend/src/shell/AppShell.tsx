@@ -258,10 +258,25 @@ export default function AppShell() {
             <b>{owner ? `${owner.memories_active} memories live` : 'Loading…'}</b>
             {owner ? `${owner.agents} agent${owner.agents === 1 ? '' : 's'} connected` : ''}
           </span>
+          {/* Settings is neither a noun you return to nor a verb worth a
+              sheet, so it sits with the other chrome. It was reachable only
+              by typing the URL after the redesign dropped the Tools section,
+              and device pairing lives behind it. */}
+          <button
+            type="button"
+            className="btn btn-icon"
+            title="Settings"
+            aria-label="Settings"
+            data-active={location.pathname.startsWith('/settings')}
+            onClick={() => navigate('/settings')}
+          >
+            <Icon name="settings" />
+          </button>
           <button
             type="button"
             className="btn btn-icon"
             title={theme === 'dark' ? 'Switch to light' : 'Switch to dark'}
+            aria-label={theme === 'dark' ? 'Switch to light' : 'Switch to dark'}
             onClick={() => dispatch({ type: 'TOGGLE_THEME' })}
           >
             <Icon name={theme === 'dark' ? 'sun' : 'moon'} />

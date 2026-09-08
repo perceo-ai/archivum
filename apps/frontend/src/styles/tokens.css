@@ -163,6 +163,7 @@
 .btn-outline:hover { border-color: var(--border-strong); background: var(--bg-hover); }
 
 .btn-icon { width: 30px; padding: 0; justify-content: center; }
+.btn-icon[data-active='true'] { background: var(--bg-selected); color: var(--accent-text); }
 .btn-sm { height: 26px; font-size: var(--t-12); padding: 0 8px; }
 
 .kbd {
