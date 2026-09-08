@@ -67,6 +67,16 @@ export function writeCursorConfig({ home, sseUrl, key }) {
   return writeJsonServer(path.join(home, ".cursor", "mcp.json"), { sseUrl, key });
 }
 
+// Codex speaks streamable HTTP only: it POSTs `initialize` at whatever URL it
+// is given, and the SSE endpoint answers that with 405 Method Not Allowed. The
+// server serves both transports off one port, so the fix is the path.
+export function streamableHttpUrl(sseUrl) {
+  const trimmed = sseUrl.replace(/\/+$/, "");
+  if (trimmed.endsWith("/mcp")) return trimmed;
+  if (trimmed.endsWith("/sse")) return `${trimmed.slice(0, -"/sse".length)}/mcp`;
+  return `${trimmed}/mcp`;
+}
+
 export function writeCodexConfig({ home, sseUrl, key }) {
   const file = path.join(home, ".codex", "config.toml");
   const existing = fs.existsSync(file) ? fs.readFileSync(file, "utf8") : "";
@@ -79,7 +89,7 @@ export function writeCodexConfig({ home, sseUrl, key }) {
   const block = [
     CODEX_BEGIN,
     "[mcp_servers.archivum]",
-    `url = "${sseUrl}"`,
+    `url = "${streamableHttpUrl(sseUrl)}"`,
     `http_headers = { Authorization = "Bearer ${key}" }`,
     CODEX_END,
     "",

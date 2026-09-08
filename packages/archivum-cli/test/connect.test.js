@@ -16,6 +16,7 @@ import {
   saveState,
   status,
   verifyConnection,
+  verifyStreamableEndpoint,
 } from "../src/connect.js";
 
 // connectCommand hands this to the Claude writer. Without it the writer would
@@ -310,8 +311,14 @@ const REDEEMED = {
 
 // A fetchImpl that answers redeem, the skill fetch, the SSE verification and
 // the self-revoke, recording every call so tests can assert on the sequence.
-function scriptedFetch({ sse = { ok: true }, redeemBody = REDEEMED, onDelete = () => ({ ok: true }) } = {}) {
+function scriptedFetch({
+  sse = { ok: true },
+  streamable = { ok: true, status: 200 },
+  redeemBody = REDEEMED,
+  onDelete = () => ({ ok: true }),
+} = {}) {
   const calls = [];
+  const streamableUrl = redeemBody.sse_url?.replace(/\/sse$/, "/mcp");
   const fetchImpl = async (url, init = {}) => {
     calls.push({ url, method: init.method ?? "GET", headers: init.headers });
     if (url.endsWith("/pairing/redeem")) return { ok: true, json: async () => redeemBody };
@@ -320,10 +327,71 @@ function scriptedFetch({ sse = { ok: true }, redeemBody = REDEEMED, onDelete = (
       if (typeof sse === "function") return sse();
       return sse;
     }
+    if (url === streamableUrl) {
+      if (typeof streamable === "function") return streamable();
+      return streamable;
+    }
     return { ok: false, status: 404 };
   };
   return { calls, fetchImpl };
 }
+
+test("connectCommand points Codex at the streamable HTTP endpoint, not the SSE one", async (t) => {
+  const home = tempHome();
+  const logs = [];
+  t.mock.method(console, "log", (msg) => logs.push(msg));
+  const { calls, fetchImpl } = scriptedFetch();
+
+  await connectCommand([encode("https://vault.example.com", "s"), "--client", "codex"], {
+    home,
+    fetchImpl,
+    spawnImpl: noClaudeCli,
+  });
+
+  const toml = fs.readFileSync(path.join(home, ".codex", "config.toml"), "utf8");
+  assert.match(toml, /url = "https:\/\/vault\.example\.com\/mcp"/);
+  const probe = calls.find((call) => call.url === "https://vault.example.com/mcp");
+  assert.equal(probe.method, "POST");
+  assert.doesNotMatch(logs.join("\n"), /Codex was configured for/);
+});
+
+test("connectCommand warns when the server has no streamable HTTP endpoint for Codex", async (t) => {
+  const home = tempHome();
+  const logs = [];
+  t.mock.method(console, "log", (msg) => logs.push(msg));
+  // An older server serves /sse only, so the config Codex just got is dead.
+  const { fetchImpl } = scriptedFetch({ streamable: { ok: false, status: 404 } });
+
+  await connectCommand([encode("https://vault.example.com", "s"), "--client", "codex"], {
+    home,
+    fetchImpl,
+    spawnImpl: noClaudeCli,
+  });
+
+  const output = logs.join("\n");
+  assert.match(output, /Codex was configured for https:\/\/vault\.example\.com\/mcp/);
+  assert.match(output, /HTTP 404/);
+  assert.match(output, /Update the server/);
+});
+
+test("verifyStreamableEndpoint posts initialize with the device key", async () => {
+  const seen = [];
+  const fetchImpl = async (url, init) => {
+    seen.push({ url, init });
+    return { ok: true, status: 200, body: { cancel: async () => {} } };
+  };
+
+  const result = await verifyStreamableEndpoint({
+    streamableUrl: "https://v/mcp",
+    key: "amk_1",
+    fetchImpl,
+  });
+
+  assert.deepEqual(result, { ok: true });
+  assert.equal(seen[0].init.method, "POST");
+  assert.equal(seen[0].init.headers.Authorization, "Bearer amk_1");
+  assert.match(JSON.parse(seen[0].init.body).method, /initialize/);
+});
 
 test("verifyConnection reports success when the SSE endpoint accepts the device key", async () => {
   const seen = [];

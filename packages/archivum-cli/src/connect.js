@@ -3,7 +3,7 @@ import os from "node:os";
 import path from "node:path";
 
 import { parseOptions, writeFileAtomic } from "./util.js";
-import { CLIENT_WRITERS, detectClients } from "./clients.js";
+import { CLIENT_WRITERS, detectClients, streamableHttpUrl } from "./clients.js";
 
 const STATE_DIR = ".archivum";
 const STATE_FILE = "connection.json";
@@ -124,6 +124,42 @@ export async function verifyConnection({ sseUrl, key, fetchImpl = fetch }) {
     reason: `${sseUrl} answered HTTP ${response.status}`,
     hint: "Check MCP_PUBLIC_URL on the server — it must include the /sse path and point at the MCP port.",
   };
+}
+
+// Codex-style clients POST `initialize` at the URL they are given, so the SSE
+// endpoint answers them with 405 and the client never starts. A server that
+// predates the streamable HTTP endpoint answers 404. Either way the config we
+// just wrote for Codex is dead, and saying so now beats an unexplained
+// "MCP client failed to start" later.
+export async function verifyStreamableEndpoint({ streamableUrl, key, fetchImpl = fetch }) {
+  const body = JSON.stringify({
+    jsonrpc: "2.0",
+    id: 1,
+    method: "initialize",
+    params: {
+      protocolVersion: "2025-06-18",
+      capabilities: {},
+      clientInfo: { name: "archivum-connect", version: "1" },
+    },
+  });
+  let response;
+  try {
+    response = await fetchImpl(streamableUrl, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${key}`,
+        "Content-Type": "application/json",
+        Accept: "application/json, text/event-stream",
+      },
+      body,
+      signal: AbortSignal.timeout(10_000),
+    });
+  } catch (error) {
+    return { ok: false, reason: `could not reach ${streamableUrl} (${error.message})` };
+  }
+  await Promise.resolve(response.body?.cancel?.()).catch(() => {});
+  if (response.ok) return { ok: true };
+  return { ok: false, reason: `${streamableUrl} answered HTTP ${response.status}` };
 }
 
 export async function installSkill({ home, skillUrl, fetchImpl = fetch }) {
@@ -281,6 +317,11 @@ export async function connectCommand(
     );
   }
 
+  const streamableUrl = streamableHttpUrl(details.sse_url);
+  const streamableCheck = clients.includes("codex")
+    ? await verifyStreamableEndpoint({ streamableUrl, key: details.key, fetchImpl })
+    : null;
+
   if (verification.ok) {
     console.log(`  verified ${details.sse_url} answers this device key`);
   } else {
@@ -291,8 +332,15 @@ export async function connectCommand(
     console.log("  The configs above were written and the device key is valid;");
     console.log("  re-check with: archivum connect --status");
   }
+  if (streamableCheck && !streamableCheck.ok) {
+    console.log(`\nCodex was configured for ${streamableUrl}, which did not answer: ${streamableCheck.reason}.`);
+    console.log("  Codex speaks only streamable HTTP, so it cannot use the /sse endpoint.");
+    console.log("  Update the server to a version that serves /mcp, then re-run this command.");
+  }
+
   console.log("\nFor claude.ai or ChatGPT, add a custom connector:");
-  console.log(`  URL:    ${details.sse_url}`);
+  console.log(`  URL:    ${streamableUrl}`);
+  console.log(`  SSE:    ${details.sse_url} (clients that only speak the SSE transport)`);
   console.log(`  Header: Authorization: Bearer ${details.key}`);
   console.log("\nRestart your agent for the new server to appear.");
 }

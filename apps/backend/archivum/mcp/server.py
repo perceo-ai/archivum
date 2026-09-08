@@ -13,6 +13,8 @@ from mcp.server.fastmcp import FastMCP
 from mcp.server.auth.middleware.auth_context import get_access_token
 from mcp.server.auth.provider import AccessToken
 from mcp.server.auth.settings import AuthSettings
+from starlette.applications import Starlette
+from starlette.routing import BaseRoute
 
 from archivum.capture.schema import Conversation, ToolCall, Turn
 from archivum.code_repos import index_repo, list_repos, register_repo, scope_for
@@ -135,6 +137,35 @@ def create_mcp(
                 meta=tool.meta,
             )
     return app
+
+
+def build_http_app(app: FastMCP) -> Starlette:
+    """Serve both MCP HTTP transports from one ASGI app.
+
+    ``/sse`` plus ``/messages/`` is the older SSE transport; ``/mcp`` is
+    streamable HTTP. Clients that only speak streamable HTTP (Codex, and any
+    other rmcp-based client) POST ``initialize`` straight at the configured
+    URL, so an SSE-only deployment answered them with 405.
+    """
+    sse_app = app.sse_app(mount_path="/")
+    streamable_app = app.streamable_http_app()
+
+    routes: list[BaseRoute] = []
+    seen: set[str] = set()
+    for route in [*streamable_app.routes, *sse_app.routes]:
+        path = getattr(route, "path", None)
+        if path is not None:
+            if path in seen:
+                continue
+            seen.add(path)
+        routes.append(route)
+
+    return Starlette(
+        debug=streamable_app.debug,
+        routes=routes,
+        middleware=list(streamable_app.user_middleware),
+        lifespan=lambda _: app.session_manager.run(),
+    )
 
 
 mcp = create_mcp(settings, register_existing_tools=False)
@@ -1015,9 +1046,17 @@ async def capture_conversation(
 
 
 def main() -> None:
+    import uvicorn
+
     parser = argparse.ArgumentParser(prog="archivum-mcp")
     parser.add_argument("--stdio", action="store_true", help="Run MCP over stdio")
-    parser.add_argument("--sse", action="store_true", help="Run MCP over HTTP/SSE")
+    parser.add_argument(
+        "--sse",
+        "--http",
+        dest="sse",
+        action="store_true",
+        help="Run MCP over HTTP (/sse and /mcp)",
+    )
     args = parser.parse_args()
 
     if args.stdio and args.sse:
@@ -1029,11 +1068,19 @@ def main() -> None:
         mcp.run(transport="stdio")
         return
 
-    # Default to SSE for container usage. Host is set when FastMCP is created;
-    # port is configured via MCP_PORT.
-    logger.info("Starting MCP server (sse)", extra={"host": settings.mcp_host, "port": settings.mcp_port})
+    # Default to HTTP for container usage: both /sse and /mcp are served. Host
+    # is set when FastMCP is created; port is configured via MCP_PORT.
+    logger.info(
+        "Starting MCP server (http: /sse and /mcp)",
+        extra={"host": settings.mcp_host, "port": settings.mcp_port},
+    )
     set_transport("http")
-    mcp.run(transport="sse", mount_path="/")
+    uvicorn.run(
+        build_http_app(mcp),
+        host=settings.mcp_host,
+        port=settings.mcp_port,
+        log_level=mcp.settings.log_level.lower(),
+    )
 
 
 if __name__ == "__main__":
