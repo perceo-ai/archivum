@@ -10,8 +10,15 @@ Agents read and write the same markdown pages that humans edit. Canonical knowle
 |---|---|
 | stdio | Desktop clients that run a local command, such as Claude Desktop |
 | HTTP/SSE | Editors and web clients that connect to `http://localhost:8001/sse` |
+| Streamable HTTP | Clients that speak only the current HTTP transport, at `http://localhost:8001/mcp` |
 
-Container default is SSE. Use `--stdio` when shelling into the MCP container from a desktop client.
+The container serves both HTTP transports on the same port. Use `--stdio` when
+shelling into the MCP container from a desktop client.
+
+Which one a client needs is not a preference. Codex, and anything else built on
+`rmcp`, POSTs `initialize` at whatever URL you configure; `/sse` answers that
+with `405 Method Not Allowed`, because SSE expects a `GET` there and `POST` on
+`/messages/`. Point those clients at `/mcp`.
 
 ## Client Examples
 

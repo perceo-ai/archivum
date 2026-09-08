@@ -57,7 +57,9 @@ In order, `connect`:
    each at mode `0600`, tightening the file even if it already existed with
    looser permissions, and each written to a temp file and renamed into place so
    an interrupted write cannot truncate a config. Pass
-   `--client claude|cursor|codex` to pin the set instead of detecting it.
+   `--client claude|cursor|codex` to pin the set instead of detecting it. Codex
+   gets the streamable HTTP path (`/mcp`) of the same endpoint; Claude Code and
+   Cursor get the SSE path.
 5. Installs the `archivum-memory` skill to `~/.claude/skills/archivum-memory/`,
    fetched from the server at `GET /api/mcp/skill`. A server that does not bundle
    the skill is still a working server, so a missing skill does not fail the link.
@@ -216,11 +218,13 @@ shape:
 }
 ```
 
-Codex (`~/.codex/config.toml`):
+Codex (`~/.codex/config.toml`) — note `/mcp`, not `/sse`: Codex speaks only
+streamable HTTP, and POSTing `initialize` at the SSE endpoint returns `405
+Method Not Allowed`. The server exposes both paths on the same port.
 
 ```toml
 [mcp_servers.archivum]
-url = "http://localhost:8001/sse"
+url = "http://localhost:8001/mcp"
 http_headers = { Authorization = "Bearer amk_..." }
 ```
 

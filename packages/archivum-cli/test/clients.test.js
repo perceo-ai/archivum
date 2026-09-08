@@ -10,6 +10,7 @@ import {
   writeClaudeConfig,
   writeCursorConfig,
   writeCodexConfig,
+  streamableHttpUrl,
 } from "../src/clients.js";
 
 function tempHome() {
@@ -76,7 +77,16 @@ test("writeCodexConfig writes a toml block and replaces it on re-run", () => {
 
   assert.equal(written, path.join(home, ".codex", "config.toml"));
   assert.equal(toml.match(/\[mcp_servers\.archivum\]/g).length, 1);
-  assert.match(toml, /url = "https:\/\/vault\.example\.com\/sse"/);
+  // Codex only speaks streamable HTTP; the SSE endpoint answers its
+  // `initialize` POST with 405.
+  assert.match(toml, /url = "https:\/\/vault\.example\.com\/mcp"/);
+});
+
+test("streamableHttpUrl maps an SSE endpoint onto the streamable HTTP one", () => {
+  assert.equal(streamableHttpUrl("https://vault.example.com/sse"), "https://vault.example.com/mcp");
+  assert.equal(streamableHttpUrl("https://vault.example.com/sse/"), "https://vault.example.com/mcp");
+  assert.equal(streamableHttpUrl("https://vault.example.com/mcp"), "https://vault.example.com/mcp");
+  assert.equal(streamableHttpUrl("https://vault.example.com"), "https://vault.example.com/mcp");
 });
 
 test("writeCodexConfig leaves unrelated toml intact", () => {

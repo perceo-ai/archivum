@@ -145,7 +145,11 @@ revoke for it.
 `connect` writes ordinary config files. If your client is not one of the three, or
 you would rather see exactly what goes where, this is it.
 
-Over HTTP/SSE — the only form that works from a machine other than the server's:
+Over HTTP — the only form that works from a machine other than the server's. The
+MCP port serves both HTTP transports: `/sse` for clients that speak the SSE
+transport (Claude Code, Cursor), and `/mcp` for clients that speak streamable
+HTTP (Codex). A streamable-HTTP client pointed at `/sse` fails to start with
+`405 Method Not Allowed`.
 
 ```json
 {
@@ -184,7 +188,8 @@ including what to set when the server sits behind a reverse proxy.
 |---|---|
 | `http://localhost:8473` | The interface |
 | `http://localhost:8473/api/*` | REST API — the frontend container proxies `/api/` to `backend:8000` |
-| `http://localhost:8001/sse` | MCP HTTP/SSE endpoint |
+| `http://localhost:8001/sse` | MCP SSE endpoint |
+| `http://localhost:8001/mcp` | MCP streamable HTTP endpoint (same server, same keys) |
 
 The backend's own port `8000` is not published to the host. It is reachable only
 from inside the Compose network, which is why REST goes through `8473`.
