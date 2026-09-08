@@ -321,7 +321,11 @@ export default function SettingsPage() {
       : 'Text, docs, code, data, email, and archives are ready. Media transcription is optional.';
 
   return (
-    <div className="page-frame bg-transparent">
+    /* `.canvas` is `overflow: hidden` and `.surface` is what scrolls inside it.
+       This page kept the old shell's `.page-frame`, whose own `overflow-hidden`
+       and `flex-1` assumed a flex parent that no longer exists — so it was
+       clipped at the viewport with no way to reach agent access or sharing. */
+    <div className="surface on px-3 pb-3 pt-3 md:px-5 md:pb-5 md:pt-5">
       <div className="page-header">
         <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
           Settings
@@ -341,7 +345,7 @@ export default function SettingsPage() {
         </div>
       </div>
 
-      <div className="grid min-h-0 gap-4 overflow-y-auto xl:grid-cols-2">
+      <div className="grid gap-4 xl:grid-cols-2">
         <section className="space-y-4">
           <SettingsCard
             icon={<Bot className="h-4 w-4" />}
