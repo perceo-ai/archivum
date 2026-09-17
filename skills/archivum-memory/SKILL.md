@@ -94,6 +94,41 @@ Be specific about the *cause*. "Fixed the test" is worth nothing in six months.
 "The fixture shared a connection across event loops, so the second test saw a
 closed socket" is worth a great deal.
 
+## Keep the vault usable as you go
+
+Writing a page is half the job. A vault nobody tidies becomes a vault nobody
+searches, and you are the one adding to it.
+
+While you work, when you notice it:
+
+```
+organize_vault(operations=[
+  {"op": "create_folder", "path": "projects/kigali"},
+  {"op": "move",          "slug": "inbox/kigali-notes", "to": "projects/kigali/notes"},
+  {"op": "archive",       "slug": "notes/superseded-plan"},
+])
+```
+
+Operations run in order, so make the folder before you file into it. One
+failure does not stop the rest, and each operation reports its own outcome —
+read them, because a move that was refused is a page still sitting in `inbox`.
+
+Worth doing:
+
+- **A page that landed in `inbox` has found its home.** Move it.
+- **Two pages say the same thing.** Rewrite the better one to cover both, then
+  archive the other. Check `get_page(slug, include_backlinks=True)` first so
+  you know what pointed at it.
+- **A page has been superseded.** Archive it rather than leaving it to be found
+  and believed.
+
+Moving a page rewrites the `[[wikilinks]]` that pointed at it, so refiling
+never leaves a dangling link behind.
+
+There is no delete, deliberately. `archive` moves a page under `archive/`,
+where it can still be found. Nothing you do to this vault should be
+unrecoverable by the person who owns it.
+
 ## What not to do
 
 - **Do not paste secrets into `record_work`.** It is memory, and memory is read
