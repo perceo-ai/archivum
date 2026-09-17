@@ -35,11 +35,18 @@ import {
   type McpDevice,
   type McpSettings,
   type PairingToken,
+  type ProvisioningToken,
+  type IssuedProvisioningToken,
+  getProvisioningTokens,
+  issueProvisioningToken,
+  revokeProvisioningToken,
+  mintDeviceKey,
 } from '../api';
 import { Button } from '../components/ui/Button';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/Card';
 import { Badge } from '../components/ui/Badge';
 import { Input } from '../components/ui/Input';
+import { ProvisioningPanel, WebConnectorPanel } from '../components/ProvisioningPanel';
 import { DevicesPanel } from '../components/DevicesPanel';
 import VaultRepair from '../surfaces/VaultRepair';
 import CodeRepos from '../surfaces/CodeRepos';
@@ -60,6 +67,10 @@ export default function SettingsPage() {
   const [mcpSettings, setMcpSettings] = useState<McpSettings | null>(null);
   const [devices, setDevices] = useState<McpDevice[]>([]);
   const [pairing, setPairing] = useState<PairingToken | null>(null);
+  const [provisioningTokens, setProvisioningTokens] = useState<ProvisioningToken[]>([]);
+  const [issuedProvisioning, setIssuedProvisioning] = useState<IssuedProvisioningToken | null>(null);
+  const [webClientKey, setWebClientKey] = useState<string | null>(null);
+  const [webClientUrl, setWebClientUrl] = useState<string>('');
   const [llmDraft, setLlmDraft] = useState({
     llm_extraction_provider: 'ollama',
     llm_synthesis_provider: 'ollama',
@@ -183,13 +194,22 @@ export default function SettingsPage() {
     }
   }, []);
 
+  const fetchProvisioning = useCallback(async () => {
+    try {
+      setProvisioningTokens(await getProvisioningTokens());
+    } catch (e) {
+      setDevicesError(e instanceof Error ? e.message : 'Failed to load provisioning tokens');
+    }
+  }, []);
+
   useEffect(() => {
     fetchInvites();
     fetchAudioSupport();
     fetchLlmSettings();
     fetchMcpSettings();
     fetchDevices();
-  }, [fetchAudioSupport, fetchInvites, fetchLlmSettings, fetchMcpSettings, fetchDevices]);
+    fetchProvisioning();
+  }, [fetchAudioSupport, fetchInvites, fetchLlmSettings, fetchMcpSettings, fetchDevices, fetchProvisioning]);
 
   async function handleLinkDevice() {
     setDevicesError(null);
@@ -215,6 +235,42 @@ export default function SettingsPage() {
     setPairing(null);
     setPairingCopied(false);
     await fetchDevices();
+  }
+
+  async function handleIssueProvisioning() {
+    setDevicesError(null);
+    try {
+      const issued = await issueProvisioningToken({ name: 'Agent setup' });
+      setIssuedProvisioning(issued);
+      await fetchProvisioning();
+    } catch (e) {
+      setDevicesError(e instanceof Error ? e.message : 'Failed to issue a provisioning token');
+    }
+  }
+
+  async function handleRevokeProvisioning(tokenId: string, revokeDevices: boolean) {
+    setDevicesError(null);
+    try {
+      await revokeProvisioningToken(tokenId, { revokeDevices });
+      await fetchProvisioning();
+      // Revoking devices alongside the token changes the device list too, so
+      // re-read it rather than leaving keys on screen that no longer work.
+      if (revokeDevices) await fetchDevices();
+    } catch (e) {
+      setDevicesError(e instanceof Error ? e.message : 'Failed to revoke provisioning token');
+    }
+  }
+
+  async function handleMintWebClientKey() {
+    setDevicesError(null);
+    try {
+      const minted = await mintDeviceKey('Web client');
+      setWebClientKey(minted.key);
+      setWebClientUrl(minted.mcp_url);
+      await fetchDevices();
+    } catch (e) {
+      setDevicesError(e instanceof Error ? e.message : 'Failed to mint a key');
+    }
   }
 
   async function handleRevokeDevice(deviceId: string) {
@@ -609,6 +665,25 @@ export default function SettingsPage() {
                   />
                 </>
               )}
+            </div>
+
+            <div className="subtle-divider mt-4 border-t pt-4">
+              <ProvisioningPanel
+                tokens={provisioningTokens}
+                issued={issuedProvisioning}
+                onIssue={handleIssueProvisioning}
+                onRevoke={handleRevokeProvisioning}
+                onDismiss={() => setIssuedProvisioning(null)}
+              />
+            </div>
+
+            <div className="subtle-divider mt-4 border-t pt-4">
+              <WebConnectorPanel
+                mcpUrl={webClientUrl || mcpSettings?.endpoint?.replace(/\/sse$/, '/mcp') || ''}
+                deviceKey={webClientKey}
+                onMintKey={handleMintWebClientKey}
+                onDismiss={() => setWebClientKey(null)}
+              />
             </div>
           </SettingsCard>
 

@@ -156,7 +156,15 @@ async def register_repo(*, path: Path, wiki_id: str, name: str | None = None) ->
     """
     resolved = path.expanduser().resolve()
     if not resolved.is_dir():
-        raise RepoError(f"'{path}' is not a directory on this server")
+        # Almost always a path on the caller's machine rather than a typo: this
+        # route resolves paths on the server, and the server cannot see a
+        # laptop's disk. Saying only "not a directory" sends people hunting for
+        # a mistake they did not make, so name the actual fix.
+        raise RepoError(
+            f"'{path}' is not a directory on this server. If that path is on "
+            "another machine, index it from there instead: `archivum index "
+            f"{path}` uploads the repository and indexes it here."
+        )
 
     repo_name = validate_repo_name(name or resolved.name)
 

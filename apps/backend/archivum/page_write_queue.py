@@ -36,6 +36,16 @@ async def apply_page_write(
     # projection could not leave a visible row behind — the same worry that
     # `reindex_page` now handles properly, by treating the file and row as
     # canonical and letting projections degrade and be repaired later.
+    # Folders are rows, not just path segments. Creating the directory without
+    # the row leaves a folder the file tree cannot show and `rename_folder`
+    # reports as missing — which is what an agent writing `notes/one` used to
+    # produce, because this path skipped what `move` and `duplicate` both do.
+    # Imported here rather than at module scope: `api.pages` pulls in the whole
+    # route layer, and the queue is imported by the MCP server.
+    from archivum.api.pages import _ensure_parent_folders
+
+    await _ensure_parent_folders(final_slug, wiki_id)
+
     stored = ensure_frontmatter(clean_content, title=title, tags=tags)
     wiki_path = settings.wiki_dir / f"{final_slug}.md"
     wiki_path.parent.mkdir(parents=True, exist_ok=True)

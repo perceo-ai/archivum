@@ -1,14 +1,42 @@
 ---
 name: archivum-memory
-description: Use when working in a repository Archivum has indexed - before debugging an error, before changing unfamiliar code, and after finishing a piece of work. Archivum remembers what broke before, what fixed it, and why the code is the way it is.
+description: Use when working in any repository on a machine linked to Archivum - before debugging an error, before changing unfamiliar code, and after finishing a piece of work. Archivum remembers what broke before, what fixed it, and why the code is the way it is. If this repository is not indexed yet, indexing it is the first thing to do, not a reason to skip this skill.
 ---
 
 # Archivum memory
 
-Archivum is memory that remembers your code and the work you did on it.
-It already holds the graph of this repository, the sessions that changed it, and
-the fixes that settled past bugs. This skill is about *consulting* that before
-you act, so you are not solving something you already solved.
+Archivum is memory that remembers your code and the work you did on it: the
+graph of a repository, the sessions that changed it, and the fixes that settled
+past bugs. This skill is about *consulting* that before you act, so you are not
+solving something you already solved.
+
+## First, is this repository indexed?
+
+`list_repositories` answers it. If this repository is not there, index it before
+anything else — from the correct side of the wire.
+
+**The repository is on the machine you are working on.** This is the normal
+case, and it is a shell command rather than a tool, because the server cannot
+read this machine's disk:
+
+```
+archivum index
+```
+
+**The repository lives on the server itself.** Only then can the tool do it:
+
+```
+index_repository(path="<absolute path on the server>")
+```
+
+Calling `index_repository` with a path on your own machine fails with `'...' is
+not a directory on this server`. That is not a typo to hunt for — it means the
+call was made from the wrong side. Use `archivum index`.
+
+An unindexed repository is the normal state of a machine that was linked
+recently. It is a reason to run one command, not a reason to stop reading —
+`recall_fix` and `record_work` work regardless, and every later question in this
+skill gets better answers once the code graph exists.
 
 ## The rule
 
@@ -48,8 +76,8 @@ Follow the graph from there: `graph_neighbors` for what a symbol connects to,
 
 ## When you finish
 
-Sessions are captured automatically, so you do not have to do anything for the
-work to be remembered. But automatic capture infers; you *know*. When a piece of
+`record_work` is how work gets remembered. Session capture, where it is running,
+infers what happened from a transcript; this is you stating it. When a piece of
 work mattered — a non-obvious bug, a decision with a reason, a gotcha worth
 warning the next person about — say so plainly:
 
@@ -65,6 +93,41 @@ record_work(
 Be specific about the *cause*. "Fixed the test" is worth nothing in six months.
 "The fixture shared a connection across event loops, so the second test saw a
 closed socket" is worth a great deal.
+
+## Keep the vault usable as you go
+
+Writing a page is half the job. A vault nobody tidies becomes a vault nobody
+searches, and you are the one adding to it.
+
+While you work, when you notice it:
+
+```
+organize_vault(operations=[
+  {"op": "create_folder", "path": "projects/kigali"},
+  {"op": "move",          "slug": "inbox/kigali-notes", "to": "projects/kigali/notes"},
+  {"op": "archive",       "slug": "notes/superseded-plan"},
+])
+```
+
+Operations run in order, so make the folder before you file into it. One
+failure does not stop the rest, and each operation reports its own outcome —
+read them, because a move that was refused is a page still sitting in `inbox`.
+
+Worth doing:
+
+- **A page that landed in `inbox` has found its home.** Move it.
+- **Two pages say the same thing.** Rewrite the better one to cover both, then
+  archive the other. Check `get_page(slug, include_backlinks=True)` first so
+  you know what pointed at it.
+- **A page has been superseded.** Archive it rather than leaving it to be found
+  and believed.
+
+Moving a page rewrites the `[[wikilinks]]` that pointed at it, so refiling
+never leaves a dangling link behind.
+
+There is no delete, deliberately. `archive` moves a page under `archive/`,
+where it can still be found. Nothing you do to this vault should be
+unrecoverable by the person who owns it.
 
 ## What not to do
 

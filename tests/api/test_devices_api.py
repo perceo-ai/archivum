@@ -361,3 +361,188 @@ def test_a_localhost_install_still_redeems_to_a_localhost_sse_url(devices_client
 
     assert response.status_code == 200
     assert response.json()["sse_url"] == f"http://localhost:{settings.mcp_port}/sse"
+
+
+# ── Provisioning: the reusable token an agent links itself with ───────────────
+
+
+def _issue_provisioning(client, **body) -> tuple[str, str]:
+    """Issue a token and return (raw token, the secret inside it)."""
+    from archivum.devices.provisioning import PROVISION_PREFIX
+
+    response = client.post("/api/mcp/provisioning-tokens", json=body)
+    assert response.status_code == 200, response.text
+    token = response.json()["token"]
+    _base, secret = decode_pairing_token(token, prefix=PROVISION_PREFIX)
+    return token, secret
+
+
+def test_owner_can_issue_a_provisioning_token(devices_client):
+    body = devices_client.post("/api/mcp/provisioning-tokens", json={"name": "dotfiles"}).json()
+
+    assert body["token"].startswith("arch1p_")
+    # The name of the variable to export is part of the response because the
+    # whole feature is "an agent finds this in the environment".
+    assert body["env_var"] == "ARCHIVUM_PROVISION_TOKEN"
+    assert "secret_hash" not in body
+
+
+def test_issuing_a_provisioning_token_requires_the_owner(devices_client):
+    devices_client.cookies.clear()
+
+    response = devices_client.post("/api/mcp/provisioning-tokens", json={})
+
+    assert response.status_code == 401
+
+
+def test_provision_returns_a_device_key_and_both_transport_urls(devices_client):
+    _token, secret = _issue_provisioning(devices_client)
+
+    body = devices_client.post(
+        "/api/mcp/pairing/provision",
+        json={"secret": secret, "device_name": "laptop"},
+    ).json()
+
+    assert body["key"].startswith("amk_")
+    # Both, because which one a client needs is not the CLI's guess to make:
+    # a streamable-HTTP client pointed at /sse fails with 405.
+    assert body["sse_url"].endswith("/sse")
+    assert body["mcp_url"].endswith("/mcp")
+
+
+def test_provision_refuses_an_unknown_secret(devices_client):
+    response = devices_client.post(
+        "/api/mcp/pairing/provision",
+        json={"secret": "never-issued", "device_name": "laptop"},
+    )
+
+    assert response.status_code == 400
+    assert response.json()["detail"]["code"] == "provisioning_refused"
+
+
+def test_provision_needs_no_owner_session(devices_client):
+    """The point of the flow: the machine linking itself is not logged in."""
+    _token, secret = _issue_provisioning(devices_client)
+    devices_client.cookies.clear()
+
+    response = devices_client.post(
+        "/api/mcp/pairing/provision",
+        json={"secret": secret, "device_name": "laptop"},
+    )
+
+    assert response.status_code == 200
+
+
+def test_the_same_provisioning_token_links_several_machines(devices_client):
+    _token, secret = _issue_provisioning(devices_client)
+
+    first = devices_client.post(
+        "/api/mcp/pairing/provision", json={"secret": secret, "device_name": "laptop"}
+    ).json()
+    second = devices_client.post(
+        "/api/mcp/pairing/provision", json={"secret": secret, "device_name": "desktop"}
+    ).json()
+
+    assert first["key"] != second["key"]
+
+
+def test_device_cap_is_enforced_over_http(devices_client):
+    _token, secret = _issue_provisioning(devices_client, device_cap=1)
+    devices_client.post(
+        "/api/mcp/pairing/provision", json={"secret": secret, "device_name": "one"}
+    )
+
+    response = devices_client.post(
+        "/api/mcp/pairing/provision", json={"secret": secret, "device_name": "two"}
+    )
+
+    assert response.status_code == 400
+
+
+def test_revoking_a_provisioning_token_stops_further_linking(devices_client):
+    _token, secret = _issue_provisioning(devices_client)
+    token_id = devices_client.get("/api/mcp/provisioning-tokens").json()[0]["id"]
+
+    devices_client.delete(f"/api/mcp/provisioning-tokens/{token_id}")
+
+    response = devices_client.post(
+        "/api/mcp/pairing/provision", json={"secret": secret, "device_name": "laptop"}
+    )
+    assert response.status_code == 400
+
+
+def test_listing_provisioning_tokens_hides_the_hash(devices_client):
+    _issue_provisioning(devices_client, name="dotfiles")
+
+    listed = devices_client.get("/api/mcp/provisioning-tokens").json()
+
+    assert [t["name"] for t in listed] == ["dotfiles"]
+    assert all("secret_hash" not in token for token in listed)
+
+
+# ── Client registry ───────────────────────────────────────────────────────────
+
+
+def test_client_registry_requires_a_device_key(devices_client):
+    assert devices_client.get("/api/mcp/clients").status_code == 401
+
+
+def test_client_registry_lists_every_client_with_resolved_urls(devices_client):
+    _token, secret = _issue_provisioning(devices_client)
+    key = devices_client.post(
+        "/api/mcp/pairing/provision", json={"secret": secret, "device_name": "laptop"}
+    ).json()["key"]
+
+    body = devices_client.get(
+        "/api/mcp/clients", headers={"Authorization": f"Bearer {key}"}
+    ).json()
+
+    ids = {client["id"] for client in body["clients"]}
+    assert {"claude", "cursor", "codex", "hermes", "openclaw"} <= ids
+    # Resolved server-side: only the server knows whether it sits behind a
+    # proxy, so a client that guessed would write the wrong hostname.
+    assert body["urls"]["sse"].endswith("/sse")
+    assert body["urls"]["streamable-http"].endswith("/mcp")
+
+
+def test_client_registry_includes_browser_clients(devices_client):
+    """claude.ai and ChatGPT cannot run an installer, so they are listed for
+    copy-paste rather than detected."""
+    _token, secret = _issue_provisioning(devices_client)
+    key = devices_client.post(
+        "/api/mcp/pairing/provision", json={"secret": secret, "device_name": "laptop"}
+    ).json()["key"]
+
+    body = devices_client.get(
+        "/api/mcp/clients", headers={"Authorization": f"Bearer {key}"}
+    ).json()
+
+    assert {c["id"] for c in body["web_clients"]} == {"claude-web", "chatgpt"}
+
+
+def test_owner_can_mint_a_key_for_a_browser_client(devices_client):
+    """claude.ai has no machine to run an installer on, so the key is minted here."""
+    body = devices_client.post("/api/mcp/devices", json={"name": "claude.ai"}).json()
+
+    assert body["key"].startswith("amk_")
+    assert body["mcp_url"].endswith("/mcp")
+    # Listed like any other device, which is what keeps it revocable per row.
+    assert "claude.ai" in [d["name"] for d in devices_client.get("/api/mcp/devices").json()["devices"]]
+
+
+def test_minting_a_device_key_requires_the_owner(devices_client):
+    devices_client.cookies.clear()
+
+    assert devices_client.post("/api/mcp/devices", json={"name": "x"}).status_code == 401
+
+
+def test_a_path_on_another_machine_is_told_how_to_index_itself(tmp_path):
+    """The failure that motivated the upload path should teach the fix."""
+    import asyncio
+
+    from archivum.code_repos import RepoError, register_repo
+
+    with pytest.raises(RepoError) as caught:
+        asyncio.run(register_repo(path=tmp_path / "nope", wiki_id="default"))
+
+    assert "archivum index" in str(caught.value)

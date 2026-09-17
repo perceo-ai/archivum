@@ -197,3 +197,21 @@ def test_sse_rejects_a_revoked_device_key(tmp_path, monkeypatch):
     )
 
     assert response.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_a_provisioning_token_never_authenticates_mcp():
+    """A mint-only secret must not become a read-everything one.
+
+    Provisioning tokens live in their own table, so this would hold by accident
+    even without the prefix check. It is asserted because the separation is the
+    entire reason the key class exists: the token sits in a dotfile or a shell
+    profile, which is exactly the kind of place a credential leaks from.
+    """
+    from archivum.devices.provisioning import PROVISION_PREFIX
+
+    verifier = server.DeviceBearerTokenVerifier(f"{PROVISION_PREFIX}pasted-into-env")
+
+    # Even set as the legacy shared key — the one value that is otherwise
+    # accepted by constant-time comparison without touching the database.
+    assert await verifier.verify_token(f"{PROVISION_PREFIX}pasted-into-env") is None
