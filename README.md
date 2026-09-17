@@ -357,6 +357,7 @@ docker compose down
 
 - [Documentation index](docs/README.md)
 - [Agent access: linking machines, keys, and skills](docs/architecture/agent-access.md)
+- [Agent setup UX: diagrams of every setup, indexing, and capture path](docs/architecture/agent-setup-ux.md)
 - [Infrastructure and storage](docs/architecture/infra.md)
 - [Ingest pipeline](docs/architecture/ingest.md)
 - [MCP server tools](docs/architecture/mcp.md)
