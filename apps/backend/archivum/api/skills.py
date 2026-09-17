@@ -41,6 +41,9 @@ _VALID_NAME = re.compile(r"^[a-z0-9][a-z0-9-]{0,63}$")
 class PushSkillRequest(BaseModel):
     name: str = Field(min_length=1, max_length=64)
     content: str = Field(min_length=1)
+    # The `updated_at` this machine last saw. Absent means "I have not seen a
+    # stored version", which is only safe when there is none.
+    base_updated_at: str | None = None
 
 
 def _slug_for(name: str) -> str:
@@ -96,12 +99,35 @@ async def push_skill(
     body: PushSkillRequest,
     device: dict[str, Any] = Depends(require_device),
 ) -> dict[str, Any]:
-    """Store a skill from this machine, so every other machine can have it."""
+    """Store a skill from this machine, so every other machine can have it.
+
+    Refused if the stored copy moved on since this machine last pulled. Pages
+    keep no history here, so a blind overwrite destroys the other machine's
+    edit with nothing to recover it from — the one outcome sync must not have.
+    """
+    existing = await read_skill(body.name, wiki_id=device["wiki_id"])
+    if existing is not None and body.base_updated_at != existing["updated_at"]:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "detail": (
+                    f"'{body.name}' changed in the vault since this machine last "
+                    "pulled it. Pull first, reconcile, then push."
+                ),
+                "code": "skill_conflict",
+                "stored_updated_at": existing["updated_at"],
+            },
+        )
+
     row = await write_skill(
         name=body.name, content=body.content, wiki_id=device["wiki_id"]
     )
     logger.info("Skill pushed", extra={"skill": body.name, "wiki_id": device["wiki_id"]})
-    return {"name": body.name, "slug": row.get("slug", _slug_for(body.name))}
+    return {
+        "name": body.name,
+        "slug": row.get("slug", _slug_for(body.name)),
+        "updated_at": row.get("updated_at"),
+    }
 
 
 @router.get("")

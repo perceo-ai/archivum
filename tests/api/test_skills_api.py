@@ -45,8 +45,12 @@ def client(tmp_path):
     token = create_access_token("owner", "owner", "default", settings)
 
     stored: dict[str, dict] = {}
+    clock = {"n": 0}
 
     async def fake_write(*, name, content, wiki_id):
+        # A real page write moves updated_at; a fake that pins it would make
+        # the conflict check untestable.
+        clock["n"] += 1
         # Shaped like a real page row, because the route reads `updated_at`
         # off it — a fake that omits a field the code uses tests nothing.
         stored[name] = {
@@ -54,12 +58,14 @@ def client(tmp_path):
             "title": name,
             "content": content,
             "wiki_id": wiki_id,
-            "updated_at": "2026-09-17T00:00:00Z",
+            "updated_at": f"2026-09-17T00:00:{clock['n']:02d}Z",
         }
         return stored[name]
 
     async def fake_list(*, wiki_id):
-        return [{"name": n, "updated_at": "2026-09-17T00:00:00Z"} for n in sorted(stored)]
+        return [
+            {"name": n, "updated_at": stored[n]["updated_at"]} for n in sorted(stored)
+        ]
 
     async def fake_read(name, *, wiki_id):
         return stored.get(name)
@@ -168,10 +174,59 @@ def test_pushing_the_same_name_replaces_rather_than_duplicates(client):
     """Editing a skill on one machine and pushing must update, not fork."""
     key = _device_key(client)
     headers = {"Authorization": f"Bearer {key}"}
-    client.post("/api/skills", json={"name": "runbook", "content": "v1"}, headers=headers)
+    first = client.post(
+        "/api/skills", json={"name": "runbook", "content": "v1"}, headers=headers
+    ).json()
 
-    client.post("/api/skills", json={"name": "runbook", "content": "v2"}, headers=headers)
+    client.post(
+        "/api/skills",
+        json={"name": "runbook", "content": "v2", "base_updated_at": first["updated_at"]},
+        headers=headers,
+    )
 
     listed = client.get("/api/skills", headers=headers).json()["skills"]
     assert len(listed) == 1
     assert client.get("/api/skills/runbook", headers=headers).json()["content"] == "v2"
+
+
+def test_a_stale_machine_cannot_silently_destroy_another_machines_edit(client):
+    """Pages keep no history, so a blind overwrite is unrecoverable.
+
+    Machine A and machine B both hold v1. B pushes v2. A, still holding v1,
+    pushes its own edit — and used to win, deleting B's work with nothing left
+    to restore it from.
+    """
+    key = _device_key(client)
+    headers = {"Authorization": f"Bearer {key}"}
+    v1 = client.post(
+        "/api/skills", json={"name": "runbook", "content": "v1"}, headers=headers
+    ).json()
+    client.post(
+        "/api/skills",
+        json={"name": "runbook", "content": "from machine B", "base_updated_at": v1["updated_at"]},
+        headers=headers,
+    )
+
+    stale = client.post(
+        "/api/skills",
+        json={"name": "runbook", "content": "from machine A", "base_updated_at": v1["updated_at"]},
+        headers=headers,
+    )
+
+    assert stale.status_code == 409
+    assert stale.json()["detail"]["code"] == "skill_conflict"
+    # B's edit survives.
+    assert client.get("/api/skills/runbook", headers=headers).json()["content"] == "from machine B"
+
+
+def test_a_first_push_needs_no_base_version(client):
+    """Nothing stored means nothing to clobber."""
+    key = _device_key(client)
+
+    response = client.post(
+        "/api/skills",
+        json={"name": "brand-new", "content": "x"},
+        headers={"Authorization": f"Bearer {key}"},
+    )
+
+    assert response.status_code == 200

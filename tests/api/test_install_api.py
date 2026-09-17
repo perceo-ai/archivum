@@ -110,7 +110,7 @@ def test_the_tarball_is_byte_identical_across_builds():
 
 
 def test_the_tarball_carries_the_commands_the_stack_needs(install_client):
-    """index and watch are how B and C reach a machine the server cannot read."""
+    """index and skills are how a machine the server cannot read takes part."""
     import io
     import tarfile
 
@@ -120,4 +120,7 @@ def test_the_tarball_carries_the_commands_the_stack_needs(install_client):
         names = tar.getnames()
 
     assert "src/index-repo.js" in names
-    assert "src/watch.js" in names
+    assert "src/skills.js" in names
+    # The transcript watcher was removed: transcript storage is outside the
+    # product definition, so shipping it would put it back on every machine.
+    assert "src/watch.js" not in names

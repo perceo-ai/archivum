@@ -48,7 +48,6 @@ def _clients() -> list[dict[str, Any]]:
             },
             "transport": _SSE,
             "skill_dir": "~/.claude/skills",
-            "transcripts": ["~/.claude/projects"],
         },
         {
             "id": "cursor",
@@ -58,7 +57,6 @@ def _clients() -> list[dict[str, Any]]:
             "path": "~/.cursor/mcp.json",
             "key_path": ["mcpServers", "archivum"],
             "transport": _SSE,
-            "transcripts": [],
         },
         {
             "id": "codex",
@@ -68,7 +66,6 @@ def _clients() -> list[dict[str, Any]]:
             "path": "~/.codex/config.toml",
             "key_path": ["mcp_servers", "archivum"],
             "transport": _STREAMABLE,
-            "transcripts": ["~/.codex/sessions"],
         },
         {
             "id": "hermes",
@@ -83,7 +80,6 @@ def _clients() -> list[dict[str, Any]]:
             # a reference. One fewer file with a live credential in it.
             "env_file": "~/.hermes/.env",
             "env_var": "ARCHIVUM_KEY",
-            "transcripts": ["~/.hermes/sessions"],
         },
         {
             "id": "openclaw",
@@ -99,7 +95,6 @@ def _clients() -> list[dict[str, Any]]:
             "key_path": ["mcpServers", "archivum"],
             "transport": _STREAMABLE,
             "unverified": True,
-            "transcripts": [],
         },
     ]
 
@@ -146,12 +141,3 @@ def client_registry(*, sse_url: str, streamable_url: str) -> dict[str, Any]:
         "clients": _clients(),
         "web_clients": _web_clients(),
     }
-
-
-def transcript_dirs() -> dict[str, list[str]]:
-    """Where each client writes sessions, for the capture watcher.
-
-    Kept on the same entries as the config paths so the two cannot drift: a
-    client added for configuration is a client capture already knows about.
-    """
-    return {c["id"]: c.get("transcripts", []) for c in _clients()}

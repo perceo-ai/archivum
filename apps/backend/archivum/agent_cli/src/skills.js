@@ -65,6 +65,16 @@ export async function pushSkills(
   { home = os.homedir(), only, fetchImpl = fetch, log = console.log } = {},
 ) {
   const state = loadState(home);
+  // What the vault holds right now, so a push can say which version it is
+  // replacing. Without that the server cannot tell an update from a
+  // clobber, and the loser of a race never learns it lost.
+  const stored = new Map();
+  try {
+    const { skills } = await api(state, "", { fetchImpl });
+    for (const skill of skills ?? []) stored.set(skill.name, skill.updated_at);
+  } catch {
+    // An older server cannot report versions; the push below still works.
+  }
   const all = localSkills(home);
   const chosen = only ? all.filter((s) => [].concat(only).includes(s.name)) : all;
 
@@ -84,7 +94,11 @@ export async function pushSkills(
       continue;
     }
     try {
-      await api(state, "", { method: "POST", body: skill, fetchImpl });
+      await api(state, "", {
+        method: "POST",
+        body: { ...skill, base_updated_at: stored.get(skill.name) ?? null },
+        fetchImpl,
+      });
       log(`  pushed ${skill.name}`);
       pushed += 1;
     } catch (error) {

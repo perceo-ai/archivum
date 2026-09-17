@@ -52,7 +52,7 @@ Archivum keeps markdown editable for humans while maintaining rebuildable semant
 | Served installer | Verified | `GET /install`, `/install.ps1`, and `/install/cli.tar.gz` serve a vendored, dependency-free CLI. Verified end to end against a local http server on 2026-09-17; not yet verified from inside the Docker image. |
 | Client registry | Verified | `GET /api/mcp/clients` describes Claude Code, Cursor, Codex, Hermes Agent, and OpenClaw plus browser connectors; the CLI is a generic executor of it. OpenClaw's config path is seeded from documentation and flagged `unverified` — confirm against an install. |
 | Cross-machine code indexing | Verified | `archivum index` walks via `git ls-files`, uploads, and the server runs the existing pipeline on the staged tree. Archive extraction refuses traversal, links, device nodes, and gzip bombs (13 tests). Not yet run against a live server. |
-| Cross-machine session capture | Verified | `archivum watch` sweeps transcript directories from the registry, redacts secrets client-side, and posts to `/api/sources/capture/upload`, which reuses the existing importers. Not yet run against a live server. |
+| Cross-machine session capture | Removed | `archivum watch` sweeps transcript directories from the registry, redacts secrets client-side, and posts to `/api/sources/capture/upload`, which reuses the existing importers. Not yet run against a live server. |
 | Life OS workflows | Started | Daily/projects/tasks routes and UI exist. They are not the main public positioning. |
 
 ## Verification Log

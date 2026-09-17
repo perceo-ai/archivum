@@ -42,7 +42,11 @@ marker="$marker_dir/$session_id"
 # nag a session we cannot see.
 [ -n "$transcript" ] && [ -r "$transcript" ] || exit 0
 
-if grep -q "record_work" "$transcript" 2>/dev/null; then
+# The serialized tool-call field, not the bare word. Reading this repository's
+# CLAUDE.md, AGENTS.md or skill puts "record_work" in the transcript, so a
+# substring match counted discussing the tool as calling it — and then
+# suppressed the reminder for the rest of the session.
+if grep -q '"name":"record_work"' "$transcript" 2>/dev/null; then
   : > "$marker" 2>/dev/null
   exit 0
 fi

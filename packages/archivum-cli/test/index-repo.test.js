@@ -8,6 +8,7 @@ import { execFileSync, spawnSync } from "node:child_process";
 import {
   gitTrackedFiles,
   indexCommand,
+  discardArchive,
   packFiles,
   selectFiles,
   uploadRepo,
@@ -198,4 +199,55 @@ test("index refuses a directory with nothing indexable rather than uploading not
     indexCommand([], { home, cwd: root, spawnImpl: noGit, fetchImpl: async () => ({ ok: true }) }),
     /no text files/,
   );
+});
+
+test("a filename that tar would read as an option is refused, not packed", () => {
+  // git permits these names. GNU tar reads `-T` lines as arguments, so
+  // `--checkpoint-action=exec=...` in a repository would run a command on the
+  // machine doing the indexing.
+  const root = tempRepo({ "app.ts": "x\n" });
+
+  assert.throws(
+    () => packFiles(root, ["--checkpoint=1", "--checkpoint-action=exec=sh evil.sh"]),
+    /begin with "-"/,
+  );
+});
+
+test("packed paths are written so tar cannot mistake one for a flag", () => {
+  const root = tempRepo({ "app.ts": "x\n" });
+  const archive = packFiles(root, ["app.ts"]);
+
+  try {
+    const listing = execFileSync("tar", ["-tzf", archive], { encoding: "utf8" });
+    // `./app.ts` rather than `app.ts`: a leading ./ can never be read as an option.
+    assert.match(listing, /\.\/app\.ts/);
+  } finally {
+    discardArchive(archive);
+  }
+});
+
+test("the archive lives in a private directory, not a predictable temp path", () => {
+  const root = tempRepo({ "app.ts": "x\n" });
+
+  const archive = packFiles(root, ["app.ts"]);
+
+  try {
+    // A PID-derived name under the shared temp dir is readable by other local
+    // users and pre-creatable as a symlink.
+    assert.ok(!archive.includes(String(process.pid)));
+    assert.match(path.dirname(archive), /archivum-pack-/);
+    assert.equal(fs.statSync(path.dirname(archive)).mode & 0o077, 0);
+  } finally {
+    discardArchive(archive);
+  }
+});
+
+test("discardArchive removes the whole private directory", () => {
+  const root = tempRepo({ "app.ts": "x\n" });
+  const archive = packFiles(root, ["app.ts"]);
+  const dir = path.dirname(archive);
+
+  discardArchive(archive);
+
+  assert.equal(fs.existsSync(dir), false);
 });

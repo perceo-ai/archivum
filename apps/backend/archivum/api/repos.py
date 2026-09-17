@@ -28,7 +28,12 @@ from archivum.code_repos import (
     scope_for,
     validate_repo_name,
 )
-from archivum.code_uploads import UploadError, staging_dir, unpack_repo_archive
+from archivum.code_uploads import (
+    MAX_ARCHIVE_BYTES,
+    UploadError,
+    staging_dir,
+    unpack_repo_archive,
+)
 from archivum.config import Settings, get_settings
 from archivum.db import sqlite
 
@@ -170,12 +175,25 @@ async def upload_repo(
         settings.code_cache_dir.resolve(), wiki_id=wiki_id, repo_name=repo_name
     )
 
-    # Streamed to disk rather than read into memory: the cap is enforced on the
-    # unpack, and holding a quarter-gigabyte upload in RAM to find that out
-    # would be its own denial of service.
+    # Streamed to disk rather than read into memory, and counted as it goes.
+    # Writing the whole request first and checking the size afterwards lets one
+    # device key fill the disk before anything refuses it — the cap has to bite
+    # while the bytes are arriving, not once they have all landed.
+    received = 0
     with tempfile.NamedTemporaryFile(suffix=".tar.gz", delete=False) as staged:
         staged_path = Path(staged.name)
         while chunk := await archive.read(1024 * 1024):
+            received += len(chunk)
+            if received > MAX_ARCHIVE_BYTES:
+                staged.close()
+                staged_path.unlink(missing_ok=True)
+                raise HTTPException(
+                    status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                    detail={
+                        "detail": "Archive is larger than this server accepts",
+                        "code": "archive_too_large",
+                    },
+                )
             staged.write(chunk)
     try:
         unpack_repo_archive(staged_path, destination)

@@ -103,30 +103,45 @@ class ProvisioningService:
         *,
         fingerprint: str | None = None,
     ) -> tuple[dict[str, Any], str]:
-        """Exchange a provisioning secret for a fresh device key."""
-        row = await self._live_token(secret)
+        """Exchange a provisioning secret for a fresh device key.
 
-        # Re-running setup on a machine replaces that machine's key rather than
-        # adding a second one, which is what `connect` already does on re-run.
-        # Doing this before the cap check is deliberate: a machine reinstalling
-        # repeatedly must not exhaust the cap it already occupies one slot of.
-        replaced = await self._revoke_fingerprint(row["id"], fingerprint)
-        if not replaced and await self._live_device_count(row["id"]) >= row["device_cap"]:
-            raise ProvisioningError(
-                "This provisioning token has reached its device limit. "
-                "Revoke a device or issue a new token from Settings."
+        The whole exchange runs in one write transaction. Checked and minted
+        separately, two concurrent redemptions both saw room under the cap and
+        both minted; and a redemption that passed the liveness check just
+        before `revoke(revoke_devices=True)` inserted a live key *after* the
+        revocation. That defeats both controls that exist to contain a leaked
+        token. `BEGIN IMMEDIATE` takes the write lock up front, so a second
+        caller waits rather than reading a count that is about to change.
+        """
+        await self.conn.execute("BEGIN IMMEDIATE")
+        try:
+            row = await self._live_token(secret)
+
+            # Re-running setup on a machine replaces that machine's key rather
+            # than adding a second one, which is what `connect` already does on
+            # re-run. Before the cap check on purpose: a machine reinstalling
+            # repeatedly must not exhaust the cap it already occupies a slot of.
+            replaced = await self._revoke_fingerprint(row["id"], fingerprint)
+            if not replaced and await self._live_device_count(row["id"]) >= row["device_cap"]:
+                raise ProvisioningError(
+                    "This provisioning token has reached its device limit. "
+                    "Revoke a device or issue a new token from Settings."
+                )
+
+            device, raw_key = await self.devices.mint(
+                device_name,
+                wiki_id=row["wiki_id"],
+                provisioned_by=row["id"],
+                fingerprint=fingerprint,
+                commit=False,
             )
-
-        device, raw_key = await self.devices.mint(
-            device_name,
-            wiki_id=row["wiki_id"],
-            provisioned_by=row["id"],
-            fingerprint=fingerprint,
-        )
-        await self.conn.execute(
-            "UPDATE provisioning_tokens SET last_used_at=datetime('now') WHERE id=?",
-            (row["id"],),
-        )
+            await self.conn.execute(
+                "UPDATE provisioning_tokens SET last_used_at=datetime('now') WHERE id=?",
+                (row["id"],),
+            )
+        except BaseException:
+            await self.conn.rollback()
+            raise
         await self.conn.commit()
         return device, raw_key
 

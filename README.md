@@ -189,27 +189,6 @@ what is left. The server runs the same embedding, graph, and page pipeline it
 uses for a local path. Afterwards `retrieve_code_context` and `recall_fix` work
 against that repository from every machine you have linked.
 
-## Capture sessions
-
-Agent transcripts live on the machine the agent ran on. To have them reach the
-vault:
-
-```bash
-archivum watch              # sweep every minute
-archivum watch --once       # a single pass
-```
-
-The watcher reads the transcript directories your vault's client registry names,
-and sends anything that changed. **Secrets are stripped before anything leaves
-the machine** — provider keys, GitHub and Slack tokens, private key blocks,
-Archivum's own keys, and `KEY=value` assignments. That is a set of shapes, not a
-guarantee: a transcript is everything typed in a session, and this is the largest
-privacy surface in Archivum. Run the watcher only for machines whose sessions you
-want stored.
-
-Capture is content-addressed, so re-sending an unchanged transcript is a no-op
-rather than a duplicate.
-
 ### Per-device keys
 
 Every linked machine gets its own `amk_…` key. Settings lists them by name, with
@@ -322,7 +301,6 @@ Memory for agents:
 - ✅ Server-driven client registry — supporting a new agent is a server-side edit, not a CLI release
 - ✅ Skills that follow you (`archivum skills push` / `pull`) — write a procedure once, have it on every linked machine
 - ✅ Cross-machine code indexing (`archivum index`) — index a repo from the machine it lives on
-- ✅ Cross-machine session capture (`archivum watch`) — transcripts redacted before they leave the machine
 - ✅ Governed memory assets — typed, versioned, reviewable memory that agents can be equipped with by name
 - ✅ Deterministic session distillation — captured conversations become cited memory with no LLM call
 - ✅ Semantic search over the vault (Qdrant)
@@ -353,7 +331,6 @@ they are not listed above.
 
 ```bash
 archivum index                      # index the repository in the current directory
-archivum watch                      # send this machine's agent transcripts to the vault
 ./update.sh                         # back up precious data, pull/update, and restart
 ./update.sh --no-backup             # update without creating a pre-update backup
 node packages/archivum-cli/src/index.js recovery backup

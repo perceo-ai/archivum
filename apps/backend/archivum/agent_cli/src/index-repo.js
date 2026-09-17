@@ -117,11 +117,36 @@ export function selectFiles(root, { spawnImpl = spawnSync } = {}) {
   return { selected, skipped };
 }
 
-/** Pack the chosen files. Shells out to `tar`, which every target platform has. */
+/** Pack the chosen files. Shells out to `tar`, which every target platform has.
+ *
+ * Two things here are security, not style.
+ *
+ * Every path is written as `./name`. GNU tar reads `-T` lines as arguments, so
+ * a tracked file called `--checkpoint-action=exec=sh x` — a name git permits —
+ * would otherwise be read as an option and run a command from the repository
+ * on the machine doing the indexing. A leading `./` makes every line a path
+ * and nothing else. Names that still begin with `-` after that are refused
+ * rather than escaped, because a name needing an escape is not a name we
+ * expected.
+ *
+ * The archive is built inside a private directory created with mkdtemp, not at
+ * a predictable path in the shared temp directory. It holds the packed source
+ * tree for the length of the upload; on a shared host a predictable path is
+ * readable by other users and pre-creatable as a symlink.
+ */
 export function packFiles(root, files, { spawnImpl = spawnSync } = {}) {
-  const listFile = path.join(os.tmpdir(), `archivum-files-${process.pid}.txt`);
-  const archive = path.join(os.tmpdir(), `archivum-repo-${process.pid}.tar.gz`);
-  fs.writeFileSync(listFile, `${files.join("\n")}\n`);
+  const unsafe = files.filter((file) => file.startsWith("-"));
+  if (unsafe.length > 0) {
+    throw new Error(
+      `Refusing to pack ${unsafe.length} file(s) whose names begin with "-": ` +
+        `${unsafe.slice(0, 3).join(", ")}. Such names are read as options by tar.`,
+    );
+  }
+
+  const workDir = fs.mkdtempSync(path.join(os.tmpdir(), "archivum-pack-"));
+  const listFile = path.join(workDir, "files.txt");
+  const archive = path.join(workDir, "repo.tar.gz");
+  fs.writeFileSync(listFile, `${files.map((file) => `./${file}`).join("\n")}\n`, { mode: 0o600 });
   try {
     const result = spawnImpl(
       "tar",
@@ -134,6 +159,15 @@ export function packFiles(root, files, { spawnImpl = spawnSync } = {}) {
     return archive;
   } finally {
     fs.rmSync(listFile, { force: true });
+  }
+}
+
+/** Remove the private directory an archive was packed into. */
+export function discardArchive(archive) {
+  try {
+    fs.rmSync(path.dirname(archive), { recursive: true, force: true });
+  } catch {
+    // Cleanup failing must not fail an upload that already succeeded.
   }
 }
 
@@ -202,6 +236,6 @@ export async function indexCommand(
     );
     console.log("  Your agents can now use retrieve_code_context and recall_fix for this repo.");
   } finally {
-    fs.rmSync(archive, { force: true });
+    discardArchive(archive);
   }
 }

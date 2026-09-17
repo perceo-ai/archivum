@@ -313,6 +313,9 @@ async def organize_vault(
     }
 
 
+_ARCHIVE_PREFIX = "archive"
+
+
 async def _apply_organize_op(op: str, operation: dict[str, Any], wiki_id: str) -> str:
     """Run one operation by delegating to the same code the browser calls.
 
@@ -334,7 +337,12 @@ async def _apply_organize_op(op: str, operation: dict[str, Any], wiki_id: str) -
 
     if op == "archive":
         (slug,) = _require_fields(operation, "slug")
-        target = f"archive/{slug}"
+        # Retrying must not bury the page deeper. A second archive of
+        # `archive/notes/x` used to produce `archive/archive/notes/x`, so a
+        # retry after a timeout hid content instead of being a no-op.
+        if slug.startswith(f"{_ARCHIVE_PREFIX}/"):
+            return f"{slug} is already archived"
+        target = f"{_ARCHIVE_PREFIX}/{slug}"
         await move_page_to_slug(slug, target, wiki_id, settings)
         return f"{slug} -> {target}"
 

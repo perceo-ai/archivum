@@ -23,6 +23,7 @@ class DeviceRepository:
         *,
         provisioned_by: str | None = None,
         fingerprint: str | None = None,
+        commit: bool = True,
     ) -> tuple[dict[str, Any], str]:
         """Create a device and return it with its raw key.
 
@@ -41,7 +42,11 @@ class DeviceRepository:
             "VALUES (?,?,?,?,?,?)",
             (device_id, wiki_id, name, hash_token(raw_key), provisioned_by, fingerprint),
         )
-        await self.conn.commit()
+        # The provisioning flow mints inside its own transaction, where an
+        # early commit would release the write lock that makes the cap check
+        # and this insert one atomic step.
+        if commit:
+            await self.conn.commit()
         device = await self.get(device_id)
         assert device is not None
         return device, raw_key

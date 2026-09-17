@@ -409,11 +409,6 @@ export async function connectCommand(
     }
   }
 
-  // Recorded now that the manifest is in hand: `archivum watch` reads these
-  // rather than carrying its own idea of where each client writes sessions.
-  const transcriptDirs = [
-    ...new Set(selected.flatMap((client) => client.transcripts ?? [])),
-  ];
   saveState(home, {
     device_id: details.device_id,
     base_url: baseUrl,
@@ -421,7 +416,6 @@ export async function connectCommand(
     key: details.key,
     linked_at: new Date().toISOString(),
     clients: selected.map((client) => client.id),
-    transcript_dirs: transcriptDirs,
   });
 
   const written = [];

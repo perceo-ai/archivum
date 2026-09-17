@@ -7,7 +7,6 @@ import { stackCommand } from "./stack.js";
 import { mcpCommand } from "./mcp.js";
 import { connectCommand } from "./connect.js";
 import { indexCommand } from "./index-repo.js";
-import { watchCommand } from "./watch.js";
 import { skillsCommand } from "./skills.js";
 import { wikiCommand } from "./api.js";
 import { configCommand } from "./config.js";
@@ -27,7 +26,6 @@ async function main(argv) {
   if (command === "mcp") return mcpCommand(args);
   if (command === "connect") return connectCommand(args);
   if (command === "index") return indexCommand(args);
-  if (command === "watch") return watchCommand(args);
   if (command === "skills") return skillsCommand(args);
   if (command === "wiki") return wikiCommand(args);
   if (command === "config") return configCommand(args);
