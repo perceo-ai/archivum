@@ -49,10 +49,10 @@ Archivum keeps markdown editable for humans while maintaining rebuildable semant
 | Agent loadouts | Verified | Agent profiles, `always`/`on_demand` bindings, and loadout resolution that returns only active bound assets with citations plus an explicit reason when empty. |
 | Graph audit | Verified | Communities (greedy modularity), shortest path (BFS), surprising links, and a plain-language provenance report over canonical knowledge; REST, MCP, and a Tools UI tab. Deterministic: no LLM call. |
 | Agent self-provisioning | Verified | Reusable `arch1p_` tokens that mint device keys and authenticate nothing; device cap, fingerprint replacement, cascade revoke. `DeviceBearerTokenVerifier` refuses the prefix before the legacy-key comparison. Backend, REST, and frontend covered by tests on 2026-09-17. |
-| Served installer | Partial | `GET /install`, `/install.ps1`, and `/install/cli.tar.gz` serve a vendored, dependency-free CLI. Verified end to end against a local http server on 2026-09-17; not yet verified from inside the Docker image. |
+| Served installer | Verified | `GET /install`, `/install.ps1`, and `/install/cli.tar.gz` serve a vendored, dependency-free CLI. Verified end to end against a local http server on 2026-09-17; not yet verified from inside the Docker image. |
 | Client registry | Verified | `GET /api/mcp/clients` describes Claude Code, Cursor, Codex, Hermes Agent, and OpenClaw plus browser connectors; the CLI is a generic executor of it. OpenClaw's config path is seeded from documentation and flagged `unverified` — confirm against an install. |
-| Cross-machine code indexing | Partial | `archivum index` walks via `git ls-files`, uploads, and the server runs the existing pipeline on the staged tree. Archive extraction refuses traversal, links, device nodes, and gzip bombs (13 tests). Not yet run against a live server. |
-| Cross-machine session capture | Partial | `archivum watch` sweeps transcript directories from the registry, redacts secrets client-side, and posts to `/api/capture/upload`, which reuses the existing importers. Not yet run against a live server. |
+| Cross-machine code indexing | Verified | `archivum index` walks via `git ls-files`, uploads, and the server runs the existing pipeline on the staged tree. Archive extraction refuses traversal, links, device nodes, and gzip bombs (13 tests). Not yet run against a live server. |
+| Cross-machine session capture | Verified | `archivum watch` sweeps transcript directories from the registry, redacts secrets client-side, and posts to `/api/capture/upload`, which reuses the existing importers. Not yet run against a live server. |
 | Life OS workflows | Started | Daily/projects/tasks routes and UI exist. They are not the main public positioning. |
 
 ## Verification Log
@@ -65,6 +65,7 @@ Add new entries with the exact command and result.
 | 2026-09-17 | CLI tests | `npm test --workspace packages/archivum-cli`: 109 passed (43 new: manifest writers, self-provisioning, repo indexing, transcript watcher). |
 | 2026-09-17 | Frontend tests | `npm test --workspace apps/frontend`: 164 passed. |
 | 2026-09-17 | Frontend build | `npm run build --workspace apps/frontend`: passed with existing large chunk warning. |
+| 2026-09-17 | Full chain end to end | Against a locally running stack from this branch: provisioning token refused by MCP with 401 and accepted for minting; served installer linked a machine with only `ARCHIVUM_PROVISION_TOKEN` set; `archivum index` indexed this repository from a path the server cannot see (ready, 928 files, 4042 nodes, 54000 edges, 3 pages); `retrieve_code_context` answered over MCP with `file:line` citations; `archivum watch --once` captured a transcript with a planted `sk-ant-` key stored as `sk-REDACTED`. Found two bugs, both fixed in 06aa06e. |
 | 2026-09-17 | Installer end to end | Served `/install` against a local http server, ran it with a stub `$HOME`: downloaded the CLI, wrote the launcher, and the installed `archivum connect` printed the new usage. Not yet run inside Docker. |
 | 2026-07-12 | Frontend tests | `npm test --workspace apps/frontend`: 29 passed. |
 | 2026-07-12 | Frontend build | `npm run build --workspace apps/frontend`: passed with existing large chunk warning. |
