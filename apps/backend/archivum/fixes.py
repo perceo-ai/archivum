@@ -69,14 +69,30 @@ class Fix:
         return symptom_key(self.symptom)
 
 
+# A quoted span of a few words is a value inside a message. A longer one is the
+# message. Dropping the first is what makes two KeyErrors one problem; dropping
+# the second throws away everything distinctive about the failure.
+_MAX_QUOTED_VALUE_WORDS = 3
+
+
+def _drop_short_values(match: re.Match[str]) -> str:
+    inner = match.group(0)[1:-1]
+    return " " if len(inner.split()) <= _MAX_QUOTED_VALUE_WORDS else f" {inner} "
+
+
 def symptom_key(symptom: str) -> str:
     """A stable key for "the same shape of trouble".
 
     `KeyError: 'slug'` and `KeyError: 'title'` are one problem seen twice, so
     quoted values, numbers and paths are dropped before comparing. Without that,
     every occurrence would look novel and memory would never recognise anything.
+
+    Only *short* quoted spans are dropped. Quoting the whole error message is
+    how errors are actually reported, and stripping that leaves a key made of
+    the words around the error rather than the error — `transcript watcher
+    reported`, which matches nothing anyone would later paste.
     """
-    text = _QUOTED_RE.sub("", symptom)
+    text = _QUOTED_RE.sub(_drop_short_values, symptom)
     text = _PATHISH_RE.sub("", text)
     text = _NUMBER_RE.sub("", text)
     return " ".join(text.lower().split())
@@ -145,9 +161,23 @@ def _verification(conversation: Conversation) -> tuple[str, bool]:
     return "", False
 
 
-def extract_fix(conversation: Conversation) -> Fix | None:
-    """The fix this session performed, or None if it did not perform one."""
-    if classify_session(conversation) != "bugfix":
+def extract_fix(conversation: Conversation, *, stated: bool = False) -> Fix | None:
+    """The fix this session performed, or None if it did not perform one.
+
+    `stated` marks work an agent reported deliberately through `record_work`,
+    as opposed to a transcript nobody annotated. The difference matters: the
+    classifier below infers intent from keywords, which is the best available
+    guess for a raw transcript and the wrong question for a deliberate call.
+    An agent calling `record_work` has already decided this mattered, and
+    "Decided to store skills as vault pages" contains no word the classifier
+    knows — so inference silently dropped exactly the decisions and plainly
+    described failures this is meant to keep.
+
+    What stays true either way: something must have changed, and the session
+    must not have ended failing. Stating that work happened is not the same as
+    work happening.
+    """
+    if not stated and classify_session(conversation) != "bugfix":
         return None
 
     changed = touched_paths(conversation)

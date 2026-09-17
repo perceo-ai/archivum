@@ -833,14 +833,31 @@ async def record_work(
             conversation=conversation,
             source_id=captured.source_id,
             wiki_id=wiki_id,
+            # You are telling us this mattered. Do not re-derive that from
+            # keywords in your own sentence.
+            stated=True,
         )
         await connection.commit()
-    return {
+
+    # Whether this comes back from `recall_fix` later is the only thing the
+    # caller actually cares about, and it is not the same as "stored". Saying
+    # `recorded: true` while nothing is retrievable is how an agent does
+    # everything right and the knowledge still disappears.
+    recallable = bool(changed_paths)
+    result = {
         "recorded": True,
+        "recallable": recallable,
         "id": recorded.id,
         "kind": recorded.properties.get("kind", "unknown"),
         "source_id": captured.source_id,
     }
+    if not recallable:
+        result["note"] = (
+            "Stored, but `recall_fix` will not return this: nothing was listed in "
+            "changed_paths, so there is no work to come back to. Pass the files you "
+            "changed if you want this findable later."
+        )
+    return result
 
 
 @mcp.tool()
