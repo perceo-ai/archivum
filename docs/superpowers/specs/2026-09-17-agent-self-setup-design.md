@@ -151,7 +151,7 @@ client language.
 - Redaction runs before anything leaves the machine: provider keys, GitHub and
   Slack tokens, Google keys, AWS ids, PEM private-key blocks, Archivum's own
   `amk_`/`arch1_`/`arch1p_` keys, and `KEY=value` assignments.
-- `POST /api/capture/upload` is device-authenticated and reuses `connector_for`
+- `POST /api/sources/capture/upload` is device-authenticated and reuses `connector_for`
   and `CaptureStore`. Capture is content-addressed, so re-sending an unchanged
   transcript deduplicates rather than duplicating — which is what lets the
   watcher re-send whenever it is unsure.

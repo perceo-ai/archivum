@@ -94,8 +94,10 @@ def test_the_tarball_is_byte_identical_across_builds():
     """So a machine re-running the install line sees the same artifact.
 
     Two timestamps have to be pinned, not one: the tar members carry their own
-    mtimes, and the gzip wrapper carries a separate one. Building twice inside
-    the same second hides the second, so the clock is moved between builds.
+    mtimes, and the gzip wrapper carries a separate one. Comparing two builds
+    only catches the wrapper when they straddle a second boundary, which is why
+    the wrapper's mtime is asserted directly instead — that fails on every run
+    if the stream goes back to `tarfile.open(mode="w:gz")`.
     """
     first = build_cli_tarball()
     with patch("archivum.api.install.gzip.GzipFile", wraps=gzip.GzipFile) as spy:

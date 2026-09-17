@@ -176,7 +176,7 @@ export function WebConnectorPanel({
         <p className="mt-1 text-xs leading-5 text-muted-foreground">
           Browser assistants are configured by pasting a URL and a header. This
           needs the vault reachable over public HTTPS — a connector cannot reach
-          a address on your own network.
+          an address on your own network.
         </p>
       </div>
 

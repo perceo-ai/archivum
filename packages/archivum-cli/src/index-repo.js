@@ -81,7 +81,9 @@ function looksBinary(file) {
 export function selectFiles(root, { spawnImpl = spawnSync } = {}) {
   const candidates = gitTrackedFiles(root, { spawnImpl }) ?? walkFiles(root);
   const selected = [];
-  const skipped = { binary: 0, large: 0, extension: 0 };
+  // Counted apart rather than together: 'skipped 400 non-source' reads as a
+  // problem when it is really node_modules, and as noise when it is not.
+  const skipped = { binary: 0, large: 0, extension: 0, directory: 0 };
 
   for (const relative of candidates) {
     if (SKIP_EXTENSIONS.has(path.extname(relative).toLowerCase())) {
@@ -89,7 +91,7 @@ export function selectFiles(root, { spawnImpl = spawnSync } = {}) {
       continue;
     }
     if (relative.split(path.sep).some((part) => SKIP_DIRECTORIES.has(part))) {
-      skipped.extension += 1;
+      skipped.directory += 1;
       continue;
     }
     const absolute = path.join(root, relative);
@@ -180,6 +182,7 @@ export async function indexCommand(
   console.log(`archivum: sending ${selected.length} files from ${root}`);
   const noise = [
     skipped.extension ? `${skipped.extension} non-source` : null,
+    skipped.directory ? `${skipped.directory} in build or vendor dirs` : null,
     skipped.binary ? `${skipped.binary} binary` : null,
     skipped.large ? `${skipped.large} over 2MB` : null,
   ].filter(Boolean);
