@@ -158,6 +158,21 @@ For **claude.ai** and **ChatGPT**, which are configured in a browser rather than
 on a machine, Settings → Agent Access has a panel with the connector URL and a
 key to paste. Those need the vault reachable over public HTTPS.
 
+## Carry your skills
+
+A skill is a repeatable procedure — the thing you would otherwise re-explain at
+the start of every session. They live in `~/.claude/skills/` on one machine,
+which is the same problem `CLAUDE.md` has.
+
+```bash
+archivum skills push          # send this machine's skills to the vault
+archivum skills pull          # install the vault's skills here
+```
+
+Linking a machine pulls them automatically, so a new laptop arrives with the
+procedures you already wrote. They are stored as ordinary pages under `skills/`
+— markdown on disk, editable in the browser, versioned like anything else.
+
 ## Index your code
 
 Indexing resolves paths on the server, which cannot see your laptop's disk. So
@@ -305,6 +320,7 @@ Memory for agents:
 - ✅ Per-device MCP keys — one revocable key per linked machine
 - ✅ One-command linking for Claude Code, Cursor, Codex, Hermes Agent, and OpenClaw, plus paste-in setup for claude.ai and ChatGPT
 - ✅ Server-driven client registry — supporting a new agent is a server-side edit, not a CLI release
+- ✅ Skills that follow you (`archivum skills push` / `pull`) — write a procedure once, have it on every linked machine
 - ✅ Cross-machine code indexing (`archivum index`) — index a repo from the machine it lives on
 - ✅ Cross-machine session capture (`archivum watch`) — transcripts redacted before they leave the machine
 - ✅ Governed memory assets — typed, versioned, reviewable memory that agents can be equipped with by name

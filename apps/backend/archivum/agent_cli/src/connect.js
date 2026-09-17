@@ -4,6 +4,7 @@ import path from "node:path";
 import { randomUUID } from "node:crypto";
 
 import { parseOptions, writeFileAtomic } from "./util.js";
+import { pullSkills } from "./skills.js";
 import {
   BUILTIN_CLIENTS,
   CLIENT_WRITERS,
@@ -442,6 +443,21 @@ export async function connectCommand(
     ? await installSkill({ home, skillUrl: details.skill_url, fetchImpl })
     : null;
 
+  // The point of storing skills in the vault is that linking a machine is the
+  // only step. A server that has none, or is too old to serve them, must not
+  // turn a working link into a failure.
+  let pulledSkills = 0;
+  try {
+    const { pulled } = await pullSkills({
+      home,
+      fetchImpl,
+      log: () => {},
+    });
+    pulledSkills = pulled;
+  } catch {
+    pulledSkills = 0;
+  }
+
   const verification = await verifyConnection({
     sseUrl: details.sse_url,
     key: details.key,
@@ -455,6 +471,9 @@ export async function connectCommand(
     console.log("  no MCP client detected on this machine — configure one by hand with the values below");
   }
   if (skillPath) console.log(`  installed ${skillPath}`);
+  if (pulledSkills > 0) {
+    console.log(`  installed ${pulledSkills} skill${pulledSkills === 1 ? "" : "s"} from the vault`);
+  }
   if (retired) {
     console.log(
       retired.revoked
