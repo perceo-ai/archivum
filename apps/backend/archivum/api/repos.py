@@ -10,20 +10,26 @@ read an arbitrary directory and hand back the result.
 from __future__ import annotations
 
 import logging
+import tempfile
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
 from pydantic import BaseModel
 
+from archivum.api.devices import require_device
 from archivum.auth import CurrentUser, get_current_user, require_owner
 from archivum.code_repos import (
     CodeRepo,
     RepoError,
     get_repo,
+    index_repo,
     list_repos,
     register_repo,
     scope_for,
+    validate_repo_name,
 )
+from archivum.code_uploads import UploadError, staging_dir, unpack_repo_archive
+from archivum.config import Settings, get_settings
 from archivum.db import sqlite
 
 logger = logging.getLogger(__name__)
@@ -138,3 +144,56 @@ async def forget(
             (scope, current_user.wiki_id),
         )
         await conn.commit()
+
+
+@router.post("/upload", response_model=RepoSummary)
+async def upload_repo(
+    name: str = Form(...),
+    archive: UploadFile = File(...),
+    device: dict = Depends(require_device),
+    settings: Settings = Depends(get_settings),
+) -> RepoSummary:
+    """Index a repository the server cannot reach on disk.
+
+    Authenticated by device key rather than an owner session because the caller
+    is a linked machine, not a browser. That is also why this is less
+    privileged than `POST /api/repos`: registering a path makes the server read
+    an arbitrary directory of its own, while this only reads what was sent.
+    """
+    wiki_id = device["wiki_id"]
+    try:
+        repo_name = validate_repo_name(name)
+    except RepoError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+    destination = staging_dir(
+        settings.code_cache_dir.resolve(), wiki_id=wiki_id, repo_name=repo_name
+    )
+
+    # Streamed to disk rather than read into memory: the cap is enforced on the
+    # unpack, and holding a quarter-gigabyte upload in RAM to find that out
+    # would be its own denial of service.
+    with tempfile.NamedTemporaryFile(suffix=".tar.gz", delete=False) as staged:
+        staged_path = Path(staged.name)
+        while chunk := await archive.read(1024 * 1024):
+            staged.write(chunk)
+    try:
+        unpack_repo_archive(staged_path, destination)
+    except UploadError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    finally:
+        staged_path.unlink(missing_ok=True)
+
+    try:
+        repo = await register_repo(path=destination, wiki_id=wiki_id, name=repo_name)
+        # Run rather than queue: the caller is a CLI waiting on the answer, and
+        # a queued upload that fails later is indistinguishable from a slow one.
+        repo = await index_repo(repo, settings=settings)
+    except RepoError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+    logger.info(
+        "Indexed uploaded repository",
+        extra={"repo": repo_name, "wiki_id": wiki_id, "files": repo.files},
+    )
+    return _to_summary(repo)

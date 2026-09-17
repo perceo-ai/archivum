@@ -1,6 +1,6 @@
 # Archivum Project Progress
 
-_Last updated: 2026-08-18_
+_Last updated: 2026-09-17_
 
 Archivum keeps markdown editable for humans while maintaining rebuildable semantic and graph indexes for search, citations, and agent context. Canonical knowledge is owner-centered at `person:self`; retrieval and MCP context preserve citations, confidence, and extraction method.
 
@@ -48,6 +48,11 @@ Archivum keeps markdown editable for humans while maintaining rebuildable semant
 | Skill memory | Verified | Skills are extracted only from sessions with real successful tool calls and no recorded failure; steps come from the recorded calls, and skills register as `draft` pending human activation. |
 | Agent loadouts | Verified | Agent profiles, `always`/`on_demand` bindings, and loadout resolution that returns only active bound assets with citations plus an explicit reason when empty. |
 | Graph audit | Verified | Communities (greedy modularity), shortest path (BFS), surprising links, and a plain-language provenance report over canonical knowledge; REST, MCP, and a Tools UI tab. Deterministic: no LLM call. |
+| Agent self-provisioning | Verified | Reusable `arch1p_` tokens that mint device keys and authenticate nothing; device cap, fingerprint replacement, cascade revoke. `DeviceBearerTokenVerifier` refuses the prefix before the legacy-key comparison. Backend, REST, and frontend covered by tests on 2026-09-17. |
+| Served installer | Partial | `GET /install`, `/install.ps1`, and `/install/cli.tar.gz` serve a vendored, dependency-free CLI. Verified end to end against a local http server on 2026-09-17; not yet verified from inside the Docker image. |
+| Client registry | Verified | `GET /api/mcp/clients` describes Claude Code, Cursor, Codex, Hermes Agent, and OpenClaw plus browser connectors; the CLI is a generic executor of it. OpenClaw's config path is seeded from documentation and flagged `unverified` — confirm against an install. |
+| Cross-machine code indexing | Partial | `archivum index` walks via `git ls-files`, uploads, and the server runs the existing pipeline on the staged tree. Archive extraction refuses traversal, links, device nodes, and gzip bombs (13 tests). Not yet run against a live server. |
+| Cross-machine session capture | Partial | `archivum watch` sweeps transcript directories from the registry, redacts secrets client-side, and posts to `/api/capture/upload`, which reuses the existing importers. Not yet run against a live server. |
 | Life OS workflows | Started | Daily/projects/tasks routes and UI exist. They are not the main public positioning. |
 
 ## Verification Log
@@ -56,6 +61,11 @@ Add new entries with the exact command and result.
 
 | Date | Check | Result |
 |---|---|---|
+| 2026-09-17 | Backend pytest | `cd apps/backend && uv run --group dev pytest ../../tests -q`: 1176 passed (45 new: provisioning tokens, client registry, installer, upload safety, capture upload). |
+| 2026-09-17 | CLI tests | `npm test --workspace packages/archivum-cli`: 109 passed (43 new: manifest writers, self-provisioning, repo indexing, transcript watcher). |
+| 2026-09-17 | Frontend tests | `npm test --workspace apps/frontend`: 164 passed. |
+| 2026-09-17 | Frontend build | `npm run build --workspace apps/frontend`: passed with existing large chunk warning. |
+| 2026-09-17 | Installer end to end | Served `/install` against a local http server, ran it with a stub `$HOME`: downloaded the CLI, wrote the launcher, and the installed `archivum connect` printed the new usage. Not yet run inside Docker. |
 | 2026-07-12 | Frontend tests | `npm test --workspace apps/frontend`: 29 passed. |
 | 2026-07-12 | Frontend build | `npm run build --workspace apps/frontend`: passed with existing large chunk warning. |
 | 2026-07-12 | Docker clean boot | `docker compose down && docker compose up -d --build`: passed after frontend/backend startup ordering fix. |

@@ -1,14 +1,28 @@
 ---
 name: archivum-memory
-description: Use when working in a repository Archivum has indexed - before debugging an error, before changing unfamiliar code, and after finishing a piece of work. Archivum remembers what broke before, what fixed it, and why the code is the way it is.
+description: Use when working in any repository on a machine linked to Archivum - before debugging an error, before changing unfamiliar code, and after finishing a piece of work. Archivum remembers what broke before, what fixed it, and why the code is the way it is. If this repository is not indexed yet, indexing it is the first thing to do, not a reason to skip this skill.
 ---
 
 # Archivum memory
 
-Archivum is memory that remembers your code and the work you did on it.
-It already holds the graph of this repository, the sessions that changed it, and
-the fixes that settled past bugs. This skill is about *consulting* that before
-you act, so you are not solving something you already solved.
+Archivum is memory that remembers your code and the work you did on it: the
+graph of a repository, the sessions that changed it, and the fixes that settled
+past bugs. This skill is about *consulting* that before you act, so you are not
+solving something you already solved.
+
+## First, is this repository indexed?
+
+`list_repositories` answers it. If this repository is not there, index it before
+anything else:
+
+```
+index_repository(path="<absolute path to the repo root>")
+```
+
+An unindexed repository is the normal state of a machine that was linked
+recently. It is a reason to run one command, not a reason to stop reading —
+`recall_fix` and `record_work` work regardless, and every later question in this
+skill gets better answers once the code graph exists.
 
 ## The rule
 
@@ -48,8 +62,8 @@ Follow the graph from there: `graph_neighbors` for what a symbol connects to,
 
 ## When you finish
 
-Sessions are captured automatically, so you do not have to do anything for the
-work to be remembered. But automatic capture infers; you *know*. When a piece of
+`record_work` is how work gets remembered. Session capture, where it is running,
+infers what happened from a transcript; this is you stating it. When a piece of
 work mattered — a non-obvious bug, a decision with a reason, a gotcha worth
 warning the next person about — say so plainly:
 

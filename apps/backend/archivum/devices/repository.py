@@ -17,18 +17,29 @@ class DeviceRepository:
         self.conn = conn
 
     async def mint(
-        self, name: str, wiki_id: str = "default"
+        self,
+        name: str,
+        wiki_id: str = "default",
+        *,
+        provisioned_by: str | None = None,
+        fingerprint: str | None = None,
     ) -> tuple[dict[str, Any], str]:
         """Create a device and return it with its raw key.
 
         The raw key is returned exactly once. Only its hash is persisted, so a
         lost key cannot be recovered — it can only be revoked and replaced.
+
+        `provisioned_by` and `fingerprint` are set when a provisioning token
+        minted the key, and stay NULL for the pairing flow, which has neither a
+        reusable parent token to count against nor a machine identity to match.
         """
         device_id = f"dev_{secrets.token_urlsafe(12)}"
         raw_key = f"{KEY_PREFIX}{secrets.token_urlsafe(32)}"
         await self.conn.execute(
-            "INSERT INTO device_keys (id, wiki_id, name, key_hash) VALUES (?,?,?,?)",
-            (device_id, wiki_id, name, hash_token(raw_key)),
+            "INSERT INTO device_keys "
+            "(id, wiki_id, name, key_hash, provisioned_by, fingerprint) "
+            "VALUES (?,?,?,?,?,?)",
+            (device_id, wiki_id, name, hash_token(raw_key), provisioned_by, fingerprint),
         )
         await self.conn.commit()
         device = await self.get(device_id)

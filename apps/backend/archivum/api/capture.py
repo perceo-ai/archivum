@@ -5,11 +5,13 @@ from __future__ import annotations
 import dataclasses
 import json
 import logging
+import tempfile
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
 from pydantic import BaseModel
 
+from archivum.api.devices import require_device
 from archivum.db import sqlite
 from archivum.auth import CurrentUser, require_writer
 from archivum.capture.importers import connector_for
@@ -143,3 +145,60 @@ async def capture_import_endpoint(
 
 def _rescope(conv: Conversation, scope: str) -> Conversation:
     return dataclasses.replace(conv, scope=scope)
+
+
+@router.post("/capture/upload", response_model=CaptureImportResponse)
+async def capture_upload_endpoint(
+    transcript: UploadFile = File(...),
+    filename: str = Form(""),
+    scope: str = Form("personal"),
+    device: dict = Depends(require_device),
+    settings: Settings = Depends(get_settings),
+) -> CaptureImportResponse:
+    """Capture a transcript from a machine the server cannot read.
+
+    `/capture/import` resolves a path on the server, which is correct for a
+    file already there and impossible for a laptop's `~/.claude/projects`. The
+    bytes come over the wire instead and meet the same importers, so there is
+    one parser rather than one per client language.
+
+    Authenticated by device key: the caller is a linked machine running the
+    watcher, not a browser session.
+    """
+    # The importer chooses on extension, so the original name has to survive
+    # the upload — a temp file called `tmpXXXX` matches no connector.
+    suffix = Path(filename or transcript.filename or "transcript.jsonl").suffix or ".jsonl"
+    with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as staged:
+        staged_path = Path(staged.name)
+        while chunk := await transcript.read(1024 * 1024):
+            staged.write(chunk)
+
+    try:
+        connector = connector_for(staged_path)
+        if connector is None:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail={"detail": f"no importer for {suffix}", "code": "no_importer"},
+            )
+        try:
+            result = connector.parse(staged_path)
+        except (json.JSONDecodeError, ValueError, OSError):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail={"detail": "cannot parse transcript", "code": "unparseable_source"},
+            )
+
+        store = CaptureStore(wiki_id=device["wiki_id"], settings=settings)
+        responses: list[CaptureResponse] = []
+        for conv in result.conversations:
+            scoped = conv if scope == "personal" else _rescope(conv, scope)
+            captured = await store.capture(scoped)
+            # Capture is content-addressed, so re-uploading an unchanged
+            # transcript is a no-op rather than a duplicate. That is what lets
+            # the watcher be simple and re-send when unsure.
+            if not captured.deduplicated:
+                await sqlite.enqueue_distillation(captured.source_id, device["wiki_id"])
+            responses.append(_to_response(captured))
+        return CaptureImportResponse(interface=result.interface, results=responses)
+    finally:
+        staged_path.unlink(missing_ok=True)

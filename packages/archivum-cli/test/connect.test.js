@@ -264,11 +264,14 @@ test("connectCommand refuses to write any client config when the redeem response
   assert.equal(fs.existsSync(path.join(home, ".archivum", "connection.json")), false);
 });
 
-test("connectCommand saves state before running client writers, so a writer failure still leaves the key recoverable", async () => {
+test("a client whose config cannot be written does not cost the others theirs", async (t) => {
   const home = tempHome();
-  // A pre-existing .claude.json that is not valid JSON makes writeClaudeConfig
-  // throw (see clients.js's readJson) — simulating a mid-loop writer failure.
+  const logs = [];
+  t.mock.method(console, "log", (msg) => logs.push(msg));
+  // A pre-existing .claude.json that is not valid JSON makes the Claude writer
+  // throw (see clients.js's readJson) — a mid-loop writer failure.
   fs.writeFileSync(path.join(home, ".claude.json"), "{not valid json");
+  fs.mkdirSync(path.join(home, ".cursor"), { recursive: true });
   const fetchImpl = async (url) => {
     if (url.endsWith("/pairing/redeem")) {
       return {
@@ -280,8 +283,21 @@ test("connectCommand saves state before running client writers, so a writer fail
   };
   const token = encode("https://vault.example.com", "s3cr3t");
 
-  await assert.rejects(connectCommand([token, "--client", "claude"], { home, fetchImpl, spawnImpl: noClaudeCli }));
+  // Not fatal: once a machine links five clients at once, one unreadable
+  // config file must not decide the outcome for the other four.
+  await connectCommand([token, "--client", "claude", "--client", "cursor"], {
+    home,
+    fetchImpl,
+    spawnImpl: noClaudeCli,
+  });
 
+  const output = logs.join("\n");
+  assert.match(output, /skipped Claude Code/);
+  assert.match(output, /is not valid JSON/);
+  // The one that could be written, was.
+  assert.ok(fs.existsSync(path.join(home, ".cursor", "mcp.json")));
+  // And the key is on disk either way, which is what makes a half-link
+  // recoverable by hand rather than by re-issuing a token.
   const state = JSON.parse(fs.readFileSync(path.join(home, ".archivum", "connection.json"), "utf8"));
   assert.equal(state.device_id, "dev_1");
   assert.equal(state.key, "amk_1");
@@ -563,4 +579,150 @@ test("a first link revokes nothing and says nothing about a previous key", async
 
   assert.equal(calls.filter((call) => call.method === "DELETE").length, 0);
   assert.ok(!logs.some((line) => /previous device key/.test(line)));
+});
+
+// ── Self-provisioning: the path an agent takes with nobody watching ───────────
+
+import {
+  PROVISION_ENV_VAR,
+  decodeProvisioningToken,
+  fetchClientRegistry,
+  machineFingerprint,
+  provision,
+} from "../src/connect.js";
+
+function encodeProvision(baseUrl, secret) {
+  const payload = Buffer.from(JSON.stringify({ u: baseUrl, s: secret })).toString("base64url");
+  return `arch1p_${payload}`;
+}
+
+const REGISTRY = {
+  version: 1,
+  urls: { sse: "https://vault.example.com/sse", "streamable-http": "https://vault.example.com/mcp" },
+  clients: [
+    {
+      id: "hermes", label: "Hermes Agent", detect: [".hermes"], method: "yaml",
+      path: "~/.hermes/config.yaml", key_path: ["mcp_servers", "archivum"],
+      transport: "streamable-http", env_file: "~/.hermes/.env", env_var: "ARCHIVUM_KEY",
+    },
+  ],
+  web_clients: [{ id: "claude-web", label: "claude.ai" }],
+};
+
+function provisioningFetch({ registry = REGISTRY } = {}) {
+  const calls = [];
+  const fetchImpl = async (url, init = {}) => {
+    calls.push({ url, method: init.method, body: init.body && JSON.parse(init.body) });
+    if (url.endsWith("/pairing/provision")) {
+      return {
+        ok: true,
+        json: async () => ({
+          device_id: "dev_auto", key: "amk_auto",
+          sse_url: "https://vault.example.com/sse",
+          mcp_url: "https://vault.example.com/mcp",
+        }),
+      };
+    }
+    if (url.endsWith("/api/mcp/clients")) {
+      return registry ? { ok: true, json: async () => registry } : { ok: false, status: 404 };
+    }
+    return { ok: true, status: 200, body: { cancel: async () => {} } };
+  };
+  return { calls, fetchImpl };
+}
+
+test("decodeProvisioningToken recovers the url and refuses a pairing token", () => {
+  const decoded = decodeProvisioningToken(encodeProvision("https://v.example", "s"));
+
+  assert.equal(decoded.baseUrl, "https://v.example");
+  // The two prefixes are distinct so a token cannot be used on the wrong flow.
+  assert.throws(() => decodeProvisioningToken(encode("https://v.example", "s")), /provisioning token/i);
+});
+
+test("the machine fingerprint is stable across runs", () => {
+  const home = tempHome();
+
+  assert.equal(machineFingerprint(home), machineFingerprint(home));
+});
+
+test("provision posts the fingerprint so a re-run replaces this machine's key", async () => {
+  const calls = [];
+  const fetchImpl = async (url, init) => {
+    calls.push({ url, body: JSON.parse(init.body) });
+    return { ok: true, json: async () => ({ device_id: "d", key: "amk_1", sse_url: "https://v/sse" }) };
+  };
+
+  await provision({
+    baseUrl: "https://vault.example.com", secret: "s",
+    deviceName: "laptop", fingerprint: "fp-1", fetchImpl,
+  });
+
+  assert.equal(calls[0].url, "https://vault.example.com/api/mcp/pairing/provision");
+  assert.equal(calls[0].body.fingerprint, "fp-1");
+});
+
+test("connectCommand --auto links using only the environment variable", async (t) => {
+  const home = tempHome();
+  fs.mkdirSync(path.join(home, ".hermes"), { recursive: true });
+  t.mock.method(console, "log", () => {});
+  const { calls, fetchImpl } = provisioningFetch();
+
+  // No token argument anywhere: this is the whole point of the flow.
+  await connectCommand(["--auto"], {
+    home, fetchImpl, spawnImpl: noClaudeCli,
+    env: { [PROVISION_ENV_VAR]: encodeProvision("https://vault.example.com", "s3cr3t") },
+  });
+
+  assert.ok(calls.some((c) => c.url.endsWith("/pairing/provision")));
+  const state = JSON.parse(fs.readFileSync(path.join(home, ".archivum", "connection.json"), "utf8"));
+  assert.equal(state.key, "amk_auto");
+});
+
+test("a client only the server knows about is configured without a CLI release", async (t) => {
+  const home = tempHome();
+  fs.mkdirSync(path.join(home, ".hermes"), { recursive: true });
+  t.mock.method(console, "log", () => {});
+  const { fetchImpl } = provisioningFetch();
+
+  await connectCommand(["--auto"], {
+    home, fetchImpl, spawnImpl: noClaudeCli,
+    env: { [PROVISION_ENV_VAR]: encodeProvision("https://vault.example.com", "s") },
+  });
+
+  // Hermes exists nowhere in this CLI's code — it came down in the manifest.
+  const config = fs.readFileSync(path.join(home, ".hermes", "config.yaml"), "utf8");
+  assert.match(config, /archivum:/);
+  assert.match(config, /url: "https:\/\/vault\.example\.com\/mcp"/);
+});
+
+test("a server too old to serve a manifest still links the built-in clients", async (t) => {
+  const home = tempHome();
+  fs.mkdirSync(path.join(home, ".cursor"), { recursive: true });
+  t.mock.method(console, "log", () => {});
+  const { fetchImpl } = provisioningFetch({ registry: null });
+
+  await connectCommand(["--auto"], {
+    home, fetchImpl, spawnImpl: noClaudeCli,
+    env: { [PROVISION_ENV_VAR]: encodeProvision("https://vault.example.com", "s") },
+  });
+
+  assert.ok(fs.existsSync(path.join(home, ".cursor", "mcp.json")));
+});
+
+test("fetchClientRegistry returns null rather than throwing when the route is absent", async () => {
+  const result = await fetchClientRegistry({
+    baseUrl: "https://v", key: "amk_1",
+    fetchImpl: async () => ({ ok: false, status: 404 }),
+  });
+
+  assert.equal(result, null);
+});
+
+test("connect explains the environment variable when there is no token at all", async () => {
+  const home = tempHome();
+
+  await assert.rejects(
+    connectCommand([], { home, fetchImpl: async () => ({ ok: false }), env: {} }),
+    new RegExp(PROVISION_ENV_VAR),
+  );
 });

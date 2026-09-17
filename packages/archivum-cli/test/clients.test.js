@@ -245,3 +245,139 @@ test("the claude config writer leaves no temp file behind on success", () => {
     [],
   );
 });
+
+// ── Manifest-driven writing ───────────────────────────────────────────────────
+
+import { writeClientConfig, detectFromManifest } from "../src/clients.js";
+
+const URLS = { sse: "https://v.example/sse", "streamable-http": "https://v.example/mcp" };
+
+const hermesEntry = {
+  id: "hermes",
+  label: "Hermes Agent",
+  detect: [".hermes"],
+  method: "yaml",
+  path: "~/.hermes/config.yaml",
+  key_path: ["mcp_servers", "archivum"],
+  transport: "streamable-http",
+  env_file: "~/.hermes/.env",
+  env_var: "ARCHIVUM_KEY",
+};
+
+test("a yaml client gets its entry nested under an existing top-level key", () => {
+  const home = tempHome();
+  fs.mkdirSync(path.join(home, ".hermes"), { recursive: true });
+  // A duplicate `mcp_servers:` would be invalid YAML, so an existing key must
+  // be merged into rather than appended after.
+  fs.writeFileSync(
+    path.join(home, ".hermes", "config.yaml"),
+    "model: hermes-4\nmcp_servers:\n  fs:\n    command: npx\n",
+  );
+
+  writeClientConfig(hermesEntry, { home, urls: URLS, key: "amk_abc" });
+
+  const written = fs.readFileSync(path.join(home, ".hermes", "config.yaml"), "utf8");
+  assert.equal(written.match(/^mcp_servers:/gm).length, 1);
+  assert.match(written, /model: hermes-4/);
+  assert.match(written, /fs:/);
+  assert.match(written, /archivum:/);
+});
+
+test("a yaml client with no config at all gets the top-level key created", () => {
+  const home = tempHome();
+  fs.mkdirSync(path.join(home, ".hermes"), { recursive: true });
+
+  writeClientConfig(hermesEntry, { home, urls: URLS, key: "amk_abc" });
+
+  const written = fs.readFileSync(path.join(home, ".hermes", "config.yaml"), "utf8");
+  assert.match(written, /^mcp_servers:/m);
+  assert.match(written, /url: "https:\/\/v\.example\/mcp"/);
+});
+
+test("a client that resolves env vars gets a reference, never the key itself", () => {
+  const home = tempHome();
+  fs.mkdirSync(path.join(home, ".hermes"), { recursive: true });
+
+  writeClientConfig(hermesEntry, { home, urls: URLS, key: "amk_secret" });
+
+  const config = fs.readFileSync(path.join(home, ".hermes", "config.yaml"), "utf8");
+  const env = fs.readFileSync(path.join(home, ".hermes", ".env"), "utf8");
+  // The config is the file people paste into issues and sync to dotfile repos.
+  assert.ok(!config.includes("amk_secret"));
+  assert.match(config, /\$\{env:ARCHIVUM_KEY\}/);
+  assert.match(env, /^ARCHIVUM_KEY=amk_secret$/m);
+});
+
+test("re-linking replaces the key in the env file rather than appending a second", () => {
+  const home = tempHome();
+  fs.mkdirSync(path.join(home, ".hermes"), { recursive: true });
+  fs.writeFileSync(path.join(home, ".hermes", ".env"), "OTHER=1\nARCHIVUM_KEY=amk_old\n");
+
+  writeClientConfig(hermesEntry, { home, urls: URLS, key: "amk_new" });
+
+  const env = fs.readFileSync(path.join(home, ".hermes", ".env"), "utf8");
+  assert.ok(!env.includes("amk_old"));
+  assert.match(env, /OTHER=1/);
+  assert.equal(env.match(/ARCHIVUM_KEY=/g).length, 1);
+});
+
+test("re-linking a yaml client does not stack duplicate blocks", () => {
+  const home = tempHome();
+  fs.mkdirSync(path.join(home, ".hermes"), { recursive: true });
+
+  writeClientConfig(hermesEntry, { home, urls: URLS, key: "amk_1" });
+  writeClientConfig(hermesEntry, { home, urls: URLS, key: "amk_2" });
+
+  const written = fs.readFileSync(path.join(home, ".hermes", "config.yaml"), "utf8");
+  assert.equal(written.match(/archivum:/g).length, 1);
+});
+
+test("a streamable-http json client records the transport it needs", () => {
+  const home = tempHome();
+  const entry = {
+    id: "openclaw",
+    label: "OpenClaw",
+    method: "json",
+    path: "~/.openclaw/openclaw.json",
+    key_path: ["mcpServers", "archivum"],
+    transport: "streamable-http",
+  };
+
+  writeClientConfig(entry, { home, urls: URLS, key: "amk_abc" });
+
+  const written = JSON.parse(fs.readFileSync(path.join(home, ".openclaw", "openclaw.json"), "utf8"));
+  // Omitting this leaves the client on SSE, where it fails with 405 rather
+  // than degrading to something that works.
+  assert.equal(written.mcpServers.archivum.transport, "streamable-http");
+  assert.equal(written.mcpServers.archivum.url, "https://v.example/mcp");
+});
+
+test("a json client merges into a nested key path without dropping siblings", () => {
+  const home = tempHome();
+  fs.mkdirSync(path.join(home, ".openclaw"), { recursive: true });
+  fs.writeFileSync(
+    path.join(home, ".openclaw", "openclaw.json"),
+    JSON.stringify({ mcp: { servers: { other: { url: "x" } } }, theme: "dark" }),
+  );
+  const entry = {
+    id: "openclaw", label: "OpenClaw", method: "json",
+    path: "~/.openclaw/openclaw.json",
+    key_path: ["mcp", "servers", "archivum"], transport: "sse",
+  };
+
+  writeClientConfig(entry, { home, urls: URLS, key: "amk_abc" });
+
+  const written = JSON.parse(fs.readFileSync(path.join(home, ".openclaw", "openclaw.json"), "utf8"));
+  assert.equal(written.theme, "dark");
+  assert.equal(written.mcp.servers.other.url, "x");
+  assert.ok(written.mcp.servers.archivum);
+});
+
+test("detection reads the manifest, so a new client needs no code change", () => {
+  const home = tempHome();
+  fs.mkdirSync(path.join(home, ".hermes"), { recursive: true });
+
+  const found = detectFromManifest(home, [hermesEntry, { id: "nope", detect: [".nope"] }]);
+
+  assert.deepEqual(found.map((c) => c.id), ["hermes"]);
+});

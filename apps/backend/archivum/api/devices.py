@@ -11,7 +11,9 @@ from pydantic import BaseModel, Field
 from archivum.auth import CurrentUser, require_owner
 from archivum.config import Settings, get_settings
 from archivum.db import sqlite
+from archivum.devices.clients import client_registry
 from archivum.devices.pairing import PairingError, PairingService
+from archivum.devices.provisioning import ProvisioningError, ProvisioningService
 from archivum.devices.repository import DeviceRepository
 
 router = APIRouter(prefix="/api/mcp", tags=["mcp"])
@@ -24,6 +26,25 @@ _PUBLIC_FIELDS = ("id", "name", "created_at", "last_seen_at", "revoked_at")
 class RedeemRequest(BaseModel):
     secret: str = Field(min_length=1)
     device_name: str = Field(min_length=1, max_length=120)
+
+
+class ProvisionRequest(BaseModel):
+    secret: str = Field(min_length=1)
+    device_name: str = Field(min_length=1, max_length=120)
+    # Stable per machine, supplied by the CLI. Its only job is letting a
+    # machine that re-runs setup replace its own key instead of accumulating a
+    # second one, so it is matched, never trusted.
+    fingerprint: str | None = Field(default=None, max_length=200)
+
+
+class MintDeviceRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=120)
+
+
+class IssueProvisioningTokenRequest(BaseModel):
+    name: str = Field(default="", max_length=120)
+    ttl_seconds: int | None = Field(default=None, ge=60)
+    device_cap: int | None = Field(default=None, ge=1, le=1000)
 
 
 def _public(device: dict[str, Any]) -> dict[str, Any]:
@@ -136,6 +157,162 @@ async def redeem_pairing_token(
         "vault_name": settings.owner_username or "Archivum",
         "skill_url": f"{_api_base(request, settings)}/api/mcp/skill",
     }
+
+
+def _streamable_url(sse_url: str) -> str:
+    """The `/mcp` sibling of a resolved `/sse` URL.
+
+    One app serves both transports off one port, so the difference is the path
+    and nothing else. Derived rather than separately configured because two
+    settings that must agree are two settings that will eventually disagree.
+    """
+    if sse_url.endswith("/sse"):
+        return f"{sse_url[: -len('/sse')]}/mcp"
+    return sse_url
+
+
+@router.post("/provisioning-tokens")
+async def issue_provisioning_token(
+    body: IssueProvisioningTokenRequest,
+    request: Request,
+    current_user: CurrentUser = Depends(require_owner),
+    settings: Settings = Depends(get_settings),
+) -> dict[str, Any]:
+    """Mint a reusable token an agent can link itself with.
+
+    Returned once. Unlike a pairing token this is meant to live in a shell
+    profile or secret manager, so the response says plainly what it can and
+    cannot do rather than leaving that to documentation nobody reads.
+    """
+    async with sqlite.get_db() as conn:
+        token, record = await ProvisioningService(conn).issue(
+            _api_base(request, settings),
+            wiki_id=current_user.wiki_id,
+            name=body.name,
+            ttl_seconds=body.ttl_seconds,
+            device_cap=body.device_cap,
+        )
+    return {
+        "token": token,
+        "env_var": "ARCHIVUM_PROVISION_TOKEN",
+        **record,
+    }
+
+
+@router.get("/provisioning-tokens")
+async def list_provisioning_tokens(
+    current_user: CurrentUser = Depends(require_owner),
+) -> list[dict[str, Any]]:
+    async with sqlite.get_db() as conn:
+        return await ProvisioningService(conn).list_tokens(wiki_id=current_user.wiki_id)
+
+
+@router.delete("/provisioning-tokens/{token_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def revoke_provisioning_token(
+    token_id: str,
+    revoke_devices: bool = False,
+    current_user: CurrentUser = Depends(require_owner),
+) -> None:
+    """Retire a token. `revoke_devices` is the answer to a leak, not to rotation."""
+    async with sqlite.get_db() as conn:
+        revoked = await ProvisioningService(conn).revoke(
+            token_id, revoke_devices=revoke_devices
+        )
+    if not revoked:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Unknown token")
+
+
+@router.post("/pairing/provision")
+async def provision_device(
+    body: ProvisionRequest,
+    request: Request,
+    settings: Settings = Depends(get_settings),
+) -> dict[str, str]:
+    """Exchange a provisioning secret for this machine's own device key."""
+    # Resolved before minting for the reason redeem does it: a server that
+    # cannot name its own MCP endpoint should fail before it hands out a
+    # credential pointing at the wrong machine.
+    try:
+        sse_url = _sse_url(request, settings)
+    except SseUrlUnresolved as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail={"detail": str(exc), "code": "mcp_url_unresolved"},
+        ) from exc
+
+    async with sqlite.get_db() as conn:
+        try:
+            device, raw_key = await ProvisioningService(conn).provision(
+                body.secret, body.device_name, fingerprint=body.fingerprint
+            )
+        except ProvisioningError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail={"detail": str(exc), "code": "provisioning_refused"},
+            ) from exc
+    return {
+        "device_id": device["id"],
+        "key": raw_key,
+        "sse_url": sse_url,
+        "mcp_url": _streamable_url(sse_url),
+        "vault_name": settings.owner_username or "Archivum",
+        "skill_url": f"{_api_base(request, settings)}/api/mcp/skill",
+    }
+
+
+@router.post("/devices", status_code=status.HTTP_201_CREATED)
+async def mint_device_key(
+    body: MintDeviceRequest,
+    request: Request,
+    current_user: CurrentUser = Depends(require_owner),
+    settings: Settings = Depends(get_settings),
+) -> dict[str, Any]:
+    """Mint a key directly, for clients that cannot run an installer.
+
+    claude.ai and ChatGPT are configured by pasting a URL and a header into a
+    browser, so there is no machine to run `connect` and no pairing token to
+    redeem. The key is returned once and appears in the device list like any
+    other, which is what keeps it revocable per row.
+    """
+    try:
+        sse_url = _sse_url(request, settings)
+    except SseUrlUnresolved as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail={"detail": str(exc), "code": "mcp_url_unresolved"},
+        ) from exc
+
+    async with sqlite.get_db() as conn:
+        device, raw_key = await DeviceRepository(conn).mint(
+            body.name, wiki_id=current_user.wiki_id
+        )
+    return {
+        **_public(device),
+        "key": raw_key,
+        "sse_url": sse_url,
+        "mcp_url": _streamable_url(sse_url),
+    }
+
+
+@router.get("/clients")
+async def get_client_registry(
+    request: Request,
+    _device: dict[str, Any] = Depends(require_device),
+    settings: Settings = Depends(get_settings),
+) -> dict[str, Any]:
+    """What to write, and where, for every client this server knows about.
+
+    Served rather than compiled into the CLI so that supporting a new agent is
+    a server-side edit every linked machine picks up on its next run.
+    """
+    try:
+        sse_url = _sse_url(request, settings)
+    except SseUrlUnresolved as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail={"detail": str(exc), "code": "mcp_url_unresolved"},
+        ) from exc
+    return client_registry(sse_url=sse_url, streamable_url=_streamable_url(sse_url))
 
 
 SKILL_PATH = (

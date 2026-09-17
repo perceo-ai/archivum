@@ -18,6 +18,7 @@ from starlette.routing import BaseRoute
 
 from archivum.capture.schema import Conversation, ToolCall, Turn
 from archivum.code_repos import index_repo, list_repos, register_repo, scope_for
+from archivum.devices.provisioning import PROVISION_PREFIX
 from archivum.devices.repository import DeviceRepository
 from archivum.fixes import recall_fixes
 from archivum.sessions import record_session_work
@@ -72,6 +73,14 @@ class DeviceBearerTokenVerifier:
         self._api_key = api_key
 
     async def verify_token(self, token: str) -> AccessToken | None:
+        # A provisioning token mints device keys and reads nothing. It lives in
+        # a different table, so it would fail the lookup below anyway — but the
+        # whole point of splitting the key classes is that this never depends
+        # on where a row happens to be stored. Refuse it by prefix, before the
+        # legacy comparison, so an operator who pastes one into MCP_API_KEY
+        # cannot turn a mint-only secret into a read-everything one.
+        if token.startswith(PROVISION_PREFIX):
+            return None
         if self._api_key and hmac.compare_digest(token, self._api_key):
             return AccessToken(token=token, client_id="archivum-legacy-key", scopes=[])
         async with sqlite.get_db() as conn:

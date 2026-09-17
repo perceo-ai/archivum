@@ -16,6 +16,7 @@ from archivum.api import entries as entries_routes
 from archivum.api import auth as auth_routes
 from archivum.api import devices as devices_routes
 from archivum.api import export as export_routes
+from archivum.api import install as install_routes
 from archivum.api import folders as folders_routes
 from archivum.api import ingest as ingest_routes
 from archivum.api import life_os as life_os_routes
@@ -256,6 +257,7 @@ def create_app() -> FastAPI:
     app.include_router(capture_preview_router)
     app.include_router(system_router)
     app.include_router(devices_routes.router)
+    app.include_router(install_routes.router)
     app.include_router(share_routes.router)
     app.include_router(share_routes.mgmt_router)
     app.include_router(sharing_routes.router)

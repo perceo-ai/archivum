@@ -35,7 +35,7 @@ describe('DevicesPanel', () => {
     expect(html).toContain('work laptop / claude');
   });
 
-  it('shows a command that works today rather than an unpublished npx package', () => {
+  it('tells the new machine to install from this vault, not to clone a repo', () => {
     const html = renderToString(
       <DevicesPanel
         devices={[]}
@@ -46,12 +46,15 @@ describe('DevicesPanel', () => {
       />,
     );
 
-    expect(html).toContain('git clone https://github.com/pranavkannepalli/archivum.git');
-    expect(html).toContain('node packages/archivum-cli/src/index.js connect arch1_xyz');
-    // The npx form is named only as what this becomes once published; it must
-    // never be the line the user is told to run against a live token.
+    // The vault serves its own installer, so linking is one line and the CLI
+    // version can never drift from the server it talks to.
+    expect(html).toContain('/install | sh');
+    expect(html).toContain('archivum connect arch1_xyz');
+    // A clone was the old instruction and is the thing this replaced.
+    expect(html).not.toContain('git clone');
+    // npx must never be the line run against a live token: the package is not
+    // on public npm, so that name resolves to somebody else's package.
     expect(html).not.toContain('npx archivum@latest connect arch1_xyz');
-    expect(html).toContain('once the CLI is on public npm');
     expect(html).toContain('15 minutes');
   });
 

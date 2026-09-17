@@ -38,6 +38,20 @@ Two constraints on how this is written:
   trip plus ranking, so it is slower per call. The honest and stronger claim is
   less context for the same answer, and the same memory on every machine.
 
+## Use Archivum
+
+This repository is the product. Agents working in it use it, and the fastest way
+to find a gap is to hit it yourself.
+
+- Before debugging: `recall_fix(symptom="<the error>")`. An empty answer says so.
+- Before changing unfamiliar code: `retrieve_code_context(query=..., repo="archivum")`.
+- If `list_repositories` does not list this repo, `index_repository` it first.
+- When work mattered, `record_work(...)` with the cause, not just the symptom.
+
+The `archivum-memory` skill covers this in full and is installed by
+`archivum connect`. If Archivum is unreachable, say so and carry on — memory is
+an advantage, not a dependency.
+
 ## Agent Source of Truth
 
 Read these before making product/docs changes:
