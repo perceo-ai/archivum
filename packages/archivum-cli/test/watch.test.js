@@ -202,6 +202,26 @@ test("one rejected transcript does not stop the others and is not retried foreve
   assert.ok(Object.keys(readSeen(home)).length === 2);
 });
 
+test("uploadTranscript posts to the route the capture router actually serves", async () => {
+  // The capture router is mounted at /api/sources, not /api. Getting this
+  // wrong is a 404 that only shows up against a running server, which is
+  // exactly how it was found.
+  let seen = null;
+
+  await uploadTranscript({
+    baseUrl: "https://v.example",
+    key: "amk_1",
+    file: "session.jsonl",
+    text: "{}",
+    fetchImpl: async (url) => {
+      seen = url;
+      return { ok: true, json: async () => ({ interface: "x", results: [] }) };
+    },
+  });
+
+  assert.equal(seen, "https://v.example/api/sources/capture/upload");
+});
+
 test("uploadTranscript surfaces the server's reason", async () => {
   await assert.rejects(
     uploadTranscript({

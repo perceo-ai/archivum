@@ -14,6 +14,7 @@ this endpoint.
 
 from __future__ import annotations
 
+import gzip
 import io
 import tarfile
 from pathlib import Path
@@ -40,9 +41,16 @@ def _api_base(request: Request, settings: Settings) -> str:
 
 
 def build_cli_tarball() -> bytes:
-    """Pack the vendored CLI. Deterministic, so a re-download is a no-op."""
+    """Pack the vendored CLI. Deterministic, so a re-download is a no-op.
+
+    The gzip *wrapper* carries its own timestamp, separately from the tar
+    members inside it. `mode="w:gz"` writes the current time there, which makes
+    two builds of identical source differ by a few bytes — so the stream is
+    built explicitly with `mtime=0` rather than through tarfile's shorthand.
+    """
     buffer = io.BytesIO()
-    with tarfile.open(fileobj=buffer, mode="w:gz", compresslevel=9) as tar:
+    gz = gzip.GzipFile(fileobj=buffer, mode="wb", compresslevel=9, mtime=0)
+    with gz, tarfile.open(fileobj=gz, mode="w") as tar:
         for path in sorted(CLI_ROOT.rglob("*")):
             if not path.is_file() or path.suffix not in _ALLOWED_SUFFIXES:
                 continue

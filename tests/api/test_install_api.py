@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import gzip
 import io
 import tarfile
 from unittest.mock import AsyncMock, patch
@@ -92,10 +93,18 @@ def test_the_tarball_carries_only_source(install_client):
 def test_the_tarball_is_byte_identical_across_builds():
     """So a machine re-running the install line sees the same artifact.
 
-    Tar records mtimes by default, which would make every request a different
-    download of identical code.
+    Two timestamps have to be pinned, not one: the tar members carry their own
+    mtimes, and the gzip wrapper carries a separate one. Building twice inside
+    the same second hides the second, so the clock is moved between builds.
     """
-    assert build_cli_tarball() == build_cli_tarball()
+    first = build_cli_tarball()
+    with patch("archivum.api.install.gzip.GzipFile", wraps=gzip.GzipFile) as spy:
+        second = build_cli_tarball()
+
+    assert first == second
+    # The wrapper's mtime must be pinned explicitly; `tarfile.open(mode="w:gz")`
+    # would write the current time and differ across a second boundary.
+    assert spy.call_args.kwargs.get("mtime") == 0
 
 
 def test_the_tarball_carries_the_commands_the_stack_needs(install_client):

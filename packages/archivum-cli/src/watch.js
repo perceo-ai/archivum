@@ -96,7 +96,7 @@ export async function uploadTranscript({ baseUrl, key, file, text, fetchImpl = f
   const form = new FormData();
   form.append("transcript", new Blob([text], { type: "application/json" }), path.basename(file));
   form.append("filename", path.basename(file));
-  const response = await fetchImpl(`${baseUrl}/api/capture/upload`, {
+  const response = await fetchImpl(`${baseUrl}/api/sources/capture/upload`, {
     method: "POST",
     headers: { Authorization: `Bearer ${key}` },
     body: form,
