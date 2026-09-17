@@ -13,11 +13,25 @@ solving something you already solved.
 ## First, is this repository indexed?
 
 `list_repositories` answers it. If this repository is not there, index it before
-anything else:
+anything else — from the correct side of the wire.
+
+**The repository is on the machine you are working on.** This is the normal
+case, and it is a shell command rather than a tool, because the server cannot
+read this machine's disk:
 
 ```
-index_repository(path="<absolute path to the repo root>")
+archivum index
 ```
+
+**The repository lives on the server itself.** Only then can the tool do it:
+
+```
+index_repository(path="<absolute path on the server>")
+```
+
+Calling `index_repository` with a path on your own machine fails with `'...' is
+not a directory on this server`. That is not a typo to hunt for — it means the
+call was made from the wrong side. Use `archivum index`.
 
 An unindexed repository is the normal state of a machine that was linked
 recently. It is a reason to run one command, not a reason to stop reading —
