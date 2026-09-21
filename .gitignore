@@ -61,3 +61,8 @@ Thumbs.db
 # Caddy generated certs (in dev)
 caddy/*.pem
 caddy/*.key
+
+# Launch video composition: regenerable render/preview output
+docs/launch/composition/snapshots/
+docs/launch/composition/.hyperframes/
+docs/launch/composition/node_modules/

@@ -1,0 +1,464 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=1920, height=1080">
+    <title>Archivum — brag</title>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <script src="assets/music/audio-bands.js"></script>
+    <style>
+      /* ---- Fonts: shipped locally, variable weights ---- */
+      @font-face {
+        font-family: 'Instrument Sans';
+        src: url('assets/fonts/InstrumentSans-latin.woff2') format('woff2');
+        font-weight: 400 700;
+        font-style: normal;
+        font-display: block;
+      }
+      @font-face {
+        font-family: 'JetBrains Mono';
+        src: url('assets/fonts/JetBrainsMono-latin.woff2') format('woff2');
+        font-weight: 400 700;
+        font-style: normal;
+        font-display: block;
+      }
+
+      /* ---- Archivum design tokens, lifted from apps/frontend/src/styles/tokens.css ---- */
+      :root {
+        --n-0: #0b0b0c;
+        --n-1: #111112;
+        --n-2: #17171a;
+        --a-400: #a58aff;
+        --a-500: #8b6cff;
+        --ok: #3fb950;
+        --warn: #d8a232;
+        --text: #f2f2f4;
+        --text-2: #a4a4ae;
+        --text-3: #8a8a95;
+        --border: rgba(255, 255, 255, 0.075);
+        --border-strong: rgba(255, 255, 255, 0.13);
+        --accent-soft: rgba(139, 108, 255, 0.14);
+        --sans: 'Instrument Sans', system-ui, sans-serif;
+        --mono: 'JetBrains Mono', ui-monospace, monospace;
+      }
+
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      html, body {
+        width: 1920px; height: 1080px; overflow: hidden;
+        background: var(--n-0);
+        font-family: var(--sans);
+        color: var(--text);
+        -webkit-font-smoothing: antialiased;
+      }
+      #root { position: relative; width: 100%; height: 100%; overflow: hidden; }
+
+      /* ---- Persistent background layer (untimed: positions itself) ---- */
+      #bg { position: absolute; inset: 0; overflow: hidden; }
+      #bg-glow-a, #bg-glow-b { position: absolute; border-radius: 50%; }
+      #bg-glow-a {
+        left: -320px; bottom: -420px; width: 1400px; height: 1400px;
+        background: radial-gradient(circle, rgba(139,108,255,0.30) 0%, rgba(139,108,255,0.10) 42%, rgba(139,108,255,0) 70%);
+      }
+      #bg-glow-b {
+        right: -420px; top: -520px; width: 1320px; height: 1320px;
+        background: radial-gradient(circle, rgba(139,108,255,0.20) 0%, rgba(139,108,255,0.06) 45%, rgba(139,108,255,0) 70%);
+      }
+      #bg-grid {
+        position: absolute; inset: 0;
+        background-image:
+          linear-gradient(to right, rgba(255,255,255,0.030) 2px, transparent 2px),
+          linear-gradient(to bottom, rgba(255,255,255,0.030) 2px, transparent 2px);
+        background-size: 160px 160px;
+      }
+      #bg-vignette {
+        position: absolute; inset: 0;
+        background: radial-gradient(ellipse at 50% 46%, rgba(11,11,12,0) 38%, rgba(11,11,12,0.86) 100%);
+      }
+      #bg-rule-top, #bg-rule-bottom {
+        position: absolute; left: 140px; right: 140px; height: 2px;
+        background: var(--border);
+      }
+      #bg-rule-top { top: 88px; }
+      #bg-rule-bottom { bottom: 88px; }
+
+      /* ---- Shared primitives, matching the app's tokens ---- */
+      .scene { position: absolute; inset: 0; }
+      .eyebrow {
+        font-family: var(--sans);
+        font-size: 22px; font-weight: 600; letter-spacing: 0.16em;
+        text-transform: uppercase; color: var(--text-3);
+      }
+      .panel {
+        position: absolute;
+        background: var(--n-1);
+        border: 2px solid var(--border-live, var(--border));
+        border-radius: 16px;
+      }
+      .chip {
+        display: inline-flex; align-items: center; gap: 12px;
+        height: 48px; padding: 0 20px; border-radius: 999px;
+        font-family: var(--mono); font-size: 22px; font-weight: 500;
+        border: 2px solid transparent; white-space: nowrap;
+      }
+      .chip-accent { background: var(--accent-soft); color: var(--a-400); }
+      .chip-warn { background: rgba(216,162,50,0.16); color: var(--warn); }
+      .dot { width: 12px; height: 12px; border-radius: 50%; flex: none; }
+      .mono { font-family: var(--mono); }
+
+      /* ---- Terminal ---- */
+      .term-dots { position: absolute; top: 26px; left: 30px; display: flex; gap: 12px; }
+      .term-dots i { width: 14px; height: 14px; border-radius: 50%; background: rgba(255,255,255,0.12); display: block; }
+      .trow { position: absolute; left: 56px; font-family: var(--mono); font-size: 24px; line-height: 34px; white-space: nowrap; }
+      .typeline { position: relative; display: inline-block; }
+      .typeline .txt { display: inline-block; white-space: pre; }
+      .typeline .cur {
+        position: absolute; top: 2px; left: 0; width: 14.4px; height: 30px;
+        background: var(--a-500);
+      }
+      .ok { color: var(--text-2); }
+      .ok b { color: var(--ok); font-weight: 700; }
+      .ok em { color: var(--a-400); font-style: normal; }
+
+      /* ---- Scene 1 ---- */
+      #s1-head {
+        position: absolute; left: 140px; top: 322px; width: 940px;
+        font-size: 88px; font-weight: 700; line-height: 1.06; letter-spacing: -0.03em;
+      }
+      #s1-head .ln { display: block; }
+      #s1-card { left: 1180px; top: 392px; width: 600px; height: 248px; padding: 44px; }
+      #s1-path { font-family: var(--mono); font-size: 32px; font-weight: 500; color: var(--text); }
+      #s1-sub { margin-top: 26px; }
+
+      /* ---- Scene 2 ---- */
+      #s2-lock { position: absolute; left: 140px; top: 372px; display: flex; align-items: center; gap: 32px; }
+      #s2-lock img { width: 104px; height: 104px; display: block; }
+      #s2-word { font-size: 104px; font-weight: 700; letter-spacing: -0.035em; }
+      #s2-rule { position: absolute; left: 140px; top: 512px; width: 560px; height: 5px; background: var(--a-500); transform-origin: left center; }
+      #s2-line { position: absolute; left: 140px; top: 566px; width: 1180px; font-size: 48px; font-weight: 500; line-height: 1.24; color: var(--text); }
+      #s2-mono { position: absolute; left: 140px; top: 676px; font-family: var(--mono); font-size: 28px; color: var(--text-3); }
+      #s2-ghost { position: absolute; right: 150px; top: 286px; width: 520px; height: 520px; }
+      #s2-ghost .pg {
+        position: absolute; width: 400px; height: 480px;
+        background: var(--n-1); border: 2px solid var(--border-strong); border-radius: 14px;
+        padding: 40px 36px;
+      }
+      #s2-ghost .pg:nth-child(1) { left: 0; top: 34px; transform: rotate(-5deg); opacity: 0.5; }
+      #s2-ghost .pg:nth-child(2) { left: 56px; top: 20px; transform: rotate(-2deg); opacity: 0.75; }
+      #s2-ghost .pg:nth-child(3) { left: 112px; top: 0; }
+      #s2-ghost .pg i { display: block; height: 12px; border-radius: 6px; background: rgba(255,255,255,0.10); margin-bottom: 22px; }
+      #s2-ghost .pg i.a { width: 62%; background: rgba(165,138,255,0.55); height: 14px; margin-bottom: 34px; }
+      #s2-ghost .pg i.b { width: 100%; }
+      #s2-ghost .pg i.c { width: 84%; }
+      #s2-ghost .pg i.d { width: 92%; }
+      #s2-ghost .pg i.e { width: 46%; }
+
+      /* ---- Scene 3 ---- */
+      #s3-eyebrow { position: absolute; left: 1040px; top: 268px; }
+      #s3-term { left: 140px; top: 320px; width: 840px; height: 460px; }
+      #s3-devices { left: 1040px; top: 320px; width: 740px; height: 460px; padding: 54px 36px; }
+      #s3-devices .dev {
+        display: flex; align-items: center; gap: 20px;
+        font-family: var(--mono); font-size: 24px; line-height: 40px; color: var(--text-2);
+        padding: 14px 0; border-bottom: 2px solid var(--border);
+      }
+      #s3-devices .dev:last-child { border-bottom: 0; }
+      #s3-devices .dev .nm { width: 300px; color: var(--text); }
+      #s3-devices .dev .ky { width: 210px; color: var(--a-400); }
+      #s3-devices .dev .ls { color: var(--text-3); }
+      #card { left: 1040px; top: 320px; width: 740px; height: 460px; padding: 44px; }
+      #card-label { margin-bottom: 22px; }
+      #card-code {
+        background: var(--n-0); border: 2px solid var(--border); border-radius: 10px;
+        padding: 24px 28px; font-family: var(--mono); font-size: 23px; line-height: 1.5;
+        color: var(--a-400); white-space: pre;
+      }
+      #card-answer { margin-top: 28px; font-size: 34px; font-weight: 600; line-height: 1.30; }
+      #card-answer code { font-family: var(--mono); font-size: 31px; color: var(--a-400); }
+      #card-cite { position: absolute; left: 44px; bottom: 40px; }
+
+      /* ---- Scene 4 ---- */
+      #s4-row { left: 300px; top: 336px; width: 1320px; height: 148px; padding: 0 40px; display: flex; align-items: center; justify-content: space-between; }
+      #s4-row .title { font-family: var(--mono); font-size: 28px; color: var(--text-2); }
+      #s4-line { position: absolute; left: 300px; top: 540px; width: 1320px; text-align: center; font-size: 76px; font-weight: 700; letter-spacing: -0.025em; }
+      #s4-out { position: absolute; left: 0; right: 0; top: 356px; display: flex; flex-direction: column; align-items: center; }
+      #s4-out .lock { display: flex; align-items: center; gap: 28px; }
+      #s4-out .lock img { width: 88px; height: 88px; display: block; }
+      #s4-out .word { font-size: 92px; font-weight: 700; letter-spacing: -0.035em; }
+      #s4-rule { margin-top: 34px; width: 420px; height: 5px; background: var(--a-500); transform-origin: center; }
+      #s4-claim { margin-top: 40px; font-size: 52px; font-weight: 600; }
+      #s4-mono { margin-top: 28px; font-family: var(--mono); font-size: 30px; color: var(--text-3); }
+    </style>
+  </head>
+  <body>
+    <div data-hf-id="hf-27jo" id="root" data-composition-id="main" data-start="0" data-duration="24.02" data-width="1920" data-height="1080" data-fps="30">
+      <!-- Persistent background: no data-start, so it positions itself -->
+      <div data-hf-id="hf-mk2m" id="bg" aria-hidden="true" data-layout-allow-overflow="true">
+        <div data-hf-id="hf-w770" id="bg-glow-a"></div>
+        <div data-hf-id="hf-4v2v" id="bg-glow-b"></div>
+        <div data-hf-id="hf-r3kh" id="bg-grid"></div>
+        <div data-hf-id="hf-s60r" id="bg-vignette"></div>
+        <div data-hf-id="hf-ne1h" id="bg-rule-top"></div>
+        <div data-hf-id="hf-dit9" id="bg-rule-bottom"></div>
+      </div>
+
+      <!-- ============ Scene 1 — the stranded laptop ============ -->
+      <section data-hf-id="hf-1oir" id="s1" class="clip scene" data-start="0" data-duration="4.79" data-track-index="1">
+        <div data-hf-id="hf-4o1t" id="s1-inner" class="scene">
+          <h1 data-hf-id="hf-zro6" id="s1-head">
+            <span data-hf-id="hf-w6oc" class="ln">Your agents’ memory</span>
+            <span data-hf-id="hf-69qw" class="ln">is stuck on</span>
+            <span data-hf-id="hf-njdj" class="ln">one laptop.</span>
+          </h1>
+          <div data-hf-id="hf-z4ub" id="s1-card" class="panel">
+            <div data-hf-id="hf-mlza" id="s1-path">~/.claude/CLAUDE.md</div>
+            <div data-hf-id="hf-hpr4" id="s1-sub" class="eyebrow">this laptop only</div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============ Scene 2 — Archivum ============ -->
+      <section data-hf-id="hf-rw9l" id="s2" class="clip scene" data-start="4.39" data-duration="4.75" data-track-index="2">
+        <div data-hf-id="hf-rsw6" id="s2-inner" class="scene">
+          <div data-hf-id="hf-bvaf" id="s2-ghost" aria-hidden="true">
+            <div data-hf-id="hf-knbj" class="pg"></div>
+            <div data-hf-id="hf-k6r3" class="pg"></div>
+            <div data-hf-id="hf-jsg2" class="pg">
+              <i data-hf-id="hf-784d" class="a"></i><i data-hf-id="hf-b68e" class="b"></i><i data-hf-id="hf-f4cf" class="c"></i><i data-hf-id="hf-j2gg" class="d"></i><i data-hf-id="hf-c9qq" class="b"></i><i data-hf-id="hf-ju49" class="e"></i>
+            </div>
+          </div>
+          <div data-hf-id="hf-6ezq" id="s2-lock">
+            <img data-hf-id="hf-4dmt" id="s2-mark" src="assets/img/perceo-logo.png" alt="Archivum">
+            <div data-hf-id="hf-804e" id="s2-word">Archivum</div>
+          </div>
+          <div data-hf-id="hf-dx9d" id="s2-rule"></div>
+          <div data-hf-id="hf-nnyl" id="s2-line">Memory your agents use. Memory you can audit.</div>
+          <div data-hf-id="hf-68v7" id="s2-mono">self-hosted · markdown on your disk</div>
+        </div>
+      </section>
+
+      <!-- ============ Scene 3 — link a machine, index, recall ============ -->
+      <section data-hf-id="hf-tf1p" id="s3" class="clip scene" data-start="8.74" data-duration="11.32" data-track-index="3">
+        <div data-hf-id="hf-0f0r" id="s3-inner" class="scene">
+          <div data-hf-id="hf-93gu" id="s3-eyebrow" class="eyebrow">Any machine</div>
+          <div data-hf-id="hf-iktg" id="s3-devices" class="panel">
+            <div data-hf-id="hf-wpnx" class="dev"><span data-hf-id="hf-8ph6" class="dot" style="background: var(--ok)"></span><span data-hf-id="hf-tmbm" class="nm">macbook-pro</span><span data-hf-id="hf-57m9" class="ky">amk_9f2c…</span><span data-hf-id="hf-keze" class="ls">now</span></div>
+            <div data-hf-id="hf-mgm9" class="dev"><span data-hf-id="hf-wqe6" class="dot" style="background: var(--ok)"></span><span data-hf-id="hf-sewx" class="nm">studio-desktop</span><span data-hf-id="hf-f2nt" class="ky">amk_41ab…</span><span data-hf-id="hf-6g7o" class="ls">2d</span></div>
+            <div data-hf-id="hf-nnjc" class="dev"><span data-hf-id="hf-x4p7" class="dot" style="background: var(--ok)"></span><span data-hf-id="hf-dl6n" class="nm">ci-runner-03</span><span data-hf-id="hf-j66y" class="ky">amk_7e10…</span><span data-hf-id="hf-zkuc" class="ls">6h</span></div>
+          </div>
+
+          <div data-hf-id="hf-9p4x" id="s3-term" class="panel">
+            <div data-hf-id="hf-5ywz" class="term-dots"><i data-hf-id="hf-wt6k"></i><i data-hf-id="hf-zeb8"></i><i data-hf-id="hf-y7e5"></i></div>
+
+            <!-- phase 1 -->
+            <div data-hf-id="hf-j1mi" id="t-cmd1" class="trow" style="top: 112px;">
+              <span data-hf-id="hf-ht7j" class="typeline"><span data-hf-id="hf-7vi7" class="txt">$ curl -fsSL https://your-archivum/install | sh</span><span data-hf-id="hf-4bi1" class="cur"></span></span>
+            </div>
+            <div data-hf-id="hf-hh8t" id="t-ok1" class="trow ok" style="top: 218px;"><b data-hf-id="hf-gl6q">✓</b> CLI installed</div>
+            <div data-hf-id="hf-73h9" id="t-ok2" class="trow ok" style="top: 280px;"><b data-hf-id="hf-vgrq">✓</b> device key minted <em data-hf-id="hf-4osf">amk_9f2c…</em></div>
+            <div data-hf-id="hf-5lwm" id="t-ok3" class="trow ok" style="top: 342px;"><b data-hf-id="hf-vv2r">✓</b> configured Claude Code · Cursor · Codex · Hermes</div>
+
+            <!-- phase 2 -->
+            <div data-hf-id="hf-swrh" id="t-cmd2" class="trow" style="top: 112px;">
+              <span data-hf-id="hf-5dpb" class="typeline"><span data-hf-id="hf-cq4y" class="txt">$ archivum index</span><span data-hf-id="hf-so3x" class="cur"></span></span>
+            </div>
+            <div data-hf-id="hf-1hrz" id="t-walk" class="trow" style="top: 218px; color: var(--text-3);">walking repository · honouring .gitignore</div>
+            <div data-hf-id="hf-eb6t" id="t-res" class="trow ok" style="top: 280px;">847 files · 12,304 chunks · uploaded</div>
+            <div data-hf-id="hf-z5x1" id="t-note" class="trow ok" style="top: 342px;"><b data-hf-id="hf-w9ds">✓</b> code graph rebuilt on the server</div>
+          </div>
+
+          <div data-hf-id="hf-5dve" id="card" class="panel">
+            <div data-hf-id="hf-jrxn" id="card-label" class="eyebrow">A different machine</div>
+            <div data-hf-id="hf-9lgo" id="card-code">recall_fix(
+  symptom="405 Method Not Allowed"
+)</div>
+            <div data-hf-id="hf-sb9v" id="card-answer">Streamable-HTTP client pointed at <code data-hf-id="hf-ux06">/sse</code>. Use <code data-hf-id="hf-s0p3">/mcp</code>.</div>
+            <div data-hf-id="hf-2lpq" id="card-cite" class="chip chip-accent"><span data-hf-id="hf-n1ds" class="dot" style="background: var(--a-400)"></span>docs/architecture/agent-access.md</div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============ Scene 4 — nothing enters without you ============ -->
+      <section data-hf-id="hf-i3is" id="s4" class="clip scene" data-start="19.66" data-duration="4.36" data-track-index="4">
+        <div data-hf-id="hf-2cvs" id="s4-inner" class="scene">
+          <div data-hf-id="hf-dyye" id="s4-row" class="panel">
+            <span data-hf-id="hf-rtzd" class="title">mcp streamable-http transport</span>
+            <span data-hf-id="hf-mtmw" class="chip chip-warn"><span data-hf-id="hf-ski4" class="dot" style="background: var(--warn)"></span>waiting for review</span>
+          </div>
+          <div data-hf-id="hf-4vay" id="s4-line">Nothing enters without you.</div>
+
+          <div data-hf-id="hf-vf6j" id="s4-out">
+            <div data-hf-id="hf-fhcd" class="lock">
+              <img data-hf-id="hf-mv03" id="s4-mark" src="assets/img/perceo-logo.png" alt="Archivum">
+              <div data-hf-id="hf-cyo1" class="word">Archivum</div>
+            </div>
+            <div data-hf-id="hf-2k83" id="s4-rule"></div>
+            <div data-hf-id="hf-9dvb" id="s4-claim">Memory you can open.</div>
+            <div data-hf-id="hf-ngav" id="s4-mono">your data, your disk.</div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============ Audio ============ -->
+      <!-- Music bed: level lives in the automation lane (fade in 0.6s, fade out over the last 1.2s) -->
+      <audio data-hf-id="hf-kyw9" id="music" data-start="0" data-duration="24.02" data-track-index="10" data-automation="{&quot;version&quot;:1,&quot;lanes&quot;:[{&quot;target&quot;:&quot;volume&quot;,&quot;points&quot;:[{&quot;t&quot;:0,&quot;v&quot;:0},{&quot;t&quot;:0.6,&quot;v&quot;:0.30},{&quot;t&quot;:22.82,&quot;v&quot;:0.30},{&quot;t&quot;:24.02,&quot;v&quot;:0}]}]}" src="assets/music/happy-beats-business-moves-vol-12-by-ende-dot-app.mp3"></audio>
+
+      <audio data-hf-id="hf-999f" id="sfx-chip" data-start="0.25" data-duration="0.11" data-track-index="11" data-volume="0.45" src="assets/sfx/interface/drop_001.ogg"></audio>
+      <audio data-hf-id="hf-ca1d" id="sfx-rule" data-start="5.05" data-duration="0.13" data-track-index="12" data-volume="0.40" src="assets/sfx/interface/bong_001.ogg"></audio>
+
+      <audio data-hf-id="hf-sja4" id="kp1-k0" data-start="9.1" data-duration="0.25" data-track-index="20" data-volume="0.20" src="assets/sfx/keyboard/keypress-001.wav"></audio>
+      <audio data-hf-id="hf-80zj" id="kp1-k1" data-start="9.194" data-duration="0.25" data-track-index="21" data-volume="0.20" src="assets/sfx/keyboard/keypress-003.wav"></audio>
+      <audio data-hf-id="hf-0f8c" id="kp1-k2" data-start="9.287" data-duration="0.25" data-track-index="22" data-volume="0.20" src="assets/sfx/keyboard/keypress-005.wav"></audio>
+      <audio data-hf-id="hf-xd0b" id="kp1-k3" data-start="9.381" data-duration="0.25" data-track-index="23" data-volume="0.20" src="assets/sfx/keyboard/keypress-007.wav"></audio>
+      <audio data-hf-id="hf-6qes" id="kp1-k4" data-start="9.474" data-duration="0.25" data-track-index="20" data-volume="0.20" src="assets/sfx/keyboard/keypress-009.wav"></audio>
+      <audio data-hf-id="hf-pn57" id="kp1-k5" data-start="9.568" data-duration="0.25" data-track-index="21" data-volume="0.20" src="assets/sfx/keyboard/keypress-011.wav"></audio>
+      <audio data-hf-id="hf-a4l5" id="kp1-k6" data-start="9.662" data-duration="0.25" data-track-index="22" data-volume="0.20" src="assets/sfx/keyboard/keypress-014.wav"></audio>
+      <audio data-hf-id="hf-6ed3" id="kp1-k7" data-start="9.755" data-duration="0.25" data-track-index="23" data-volume="0.20" src="assets/sfx/keyboard/keypress-017.wav"></audio>
+      <audio data-hf-id="hf-6usw" id="kp1-k8" data-start="9.849" data-duration="0.25" data-track-index="20" data-volume="0.20" src="assets/sfx/keyboard/keypress-001.wav"></audio>
+      <audio data-hf-id="hf-y3e3" id="kp1-k9" data-start="9.943" data-duration="0.25" data-track-index="21" data-volume="0.20" src="assets/sfx/keyboard/keypress-003.wav"></audio>
+      <audio data-hf-id="hf-qpmn" id="kp1-k10" data-start="10.036" data-duration="0.25" data-track-index="22" data-volume="0.20" src="assets/sfx/keyboard/keypress-005.wav"></audio>
+      <audio data-hf-id="hf-3beo" id="kp1-k11" data-start="10.13" data-duration="0.25" data-track-index="23" data-volume="0.20" src="assets/sfx/keyboard/keypress-007.wav"></audio>
+      <audio data-hf-id="hf-d0aq" id="kp2-k0" data-start="14.4" data-duration="0.25" data-track-index="24" data-volume="0.20" src="assets/sfx/keyboard/keypress-001.wav"></audio>
+      <audio data-hf-id="hf-l39w" id="kp2-k1" data-start="14.525" data-duration="0.25" data-track-index="25" data-volume="0.20" src="assets/sfx/keyboard/keypress-003.wav"></audio>
+      <audio data-hf-id="hf-2kpx" id="kp2-k2" data-start="14.65" data-duration="0.25" data-track-index="26" data-volume="0.20" src="assets/sfx/keyboard/keypress-005.wav"></audio>
+      <audio data-hf-id="hf-t4al" id="kp2-k3" data-start="14.775" data-duration="0.25" data-track-index="27" data-volume="0.20" src="assets/sfx/keyboard/keypress-007.wav"></audio>
+
+      <audio data-hf-id="hf-96mh" id="sfx-ok1" data-start="10.37" data-duration="0.11" data-track-index="13" data-volume="0.55" src="assets/sfx/interface/drop_001.ogg"></audio>
+      <audio data-hf-id="hf-9bjm" id="sfx-ok2" data-start="11.46" data-duration="0.11" data-track-index="14" data-volume="0.55" src="assets/sfx/interface/drop_001.ogg"></audio>
+      <audio data-hf-id="hf-bdrn" id="sfx-ok3" data-start="12.55" data-duration="0.11" data-track-index="15" data-volume="0.55" src="assets/sfx/interface/drop_001.ogg"></audio>
+      <audio data-hf-id="hf-bb36" id="sfx-card" data-start="16.38" data-duration="0.60" data-track-index="16" data-volume="0.45" src="assets/sfx/casino/card-slide-3.ogg"></audio>
+      <audio data-hf-id="hf-hw4h" id="sfx-cite" data-start="18.56" data-duration="1.48" data-track-index="17" data-volume="0.55" src="assets/sfx/impact/impactBell_heavy_000.ogg"></audio>
+      <audio data-hf-id="hf-8hg1" id="sfx-hold" data-start="19.66" data-duration="0.19" data-track-index="18" data-volume="0.45" src="assets/sfx/interface/drop_002.ogg"></audio>
+    </div>
+
+    <script>
+      var EASE = "power3.out"; // stand-in for the app's cubic-bezier(0.32, 0.72, 0, 1)
+      var CHAR_W = 14.4;       // JetBrains Mono advance is 0.6em; terminal type is 24px
+
+      // Monospace type-on: size each line to its own character count so the
+      // clip-path steps land exactly on character boundaries.
+      function typeOn(tl, rowId, at, dur) {
+        var row = document.getElementById(rowId);
+        var txt = row.querySelector(".txt");
+        var cur = row.querySelector(".cur");
+        var n = txt.textContent.length;
+        txt.style.width = n + "ch";
+        // Resting state at t=0 so a seek before the type-on never inherits
+        // whichever fromTo happened to be authored last.
+        tl.set(txt, { clipPath: "inset(0 100% 0 0)" }, 0);
+        tl.set(cur, { x: 0, opacity: 1 }, 0);
+        tl.fromTo(txt, { clipPath: "inset(0 100% 0 0)" },
+          { clipPath: "inset(0 0% 0 0)", duration: dur, ease: "steps(" + n + ")", immediateRender: false }, at);
+        tl.fromTo(cur, { x: 0 },
+          { x: n * CHAR_W, duration: dur, ease: "steps(" + n + ")", immediateRender: false }, at);
+        return n;
+      }
+
+      var tl = gsap.timeline({ paused: true });
+
+      // ---------- ambient background ----------
+      tl.fromTo("#bg-glow-a", { scale: 0.94 }, { scale: 1.06, duration: 12.01, ease: "sine.inOut", yoyo: true, repeat: 1 }, 0);
+      tl.fromTo("#bg-glow-b", { scale: 1.05 }, { scale: 0.95, duration: 8.0, ease: "sine.inOut", yoyo: true, repeat: 2 }, 0);
+      tl.fromTo("#bg-grid", { y: 0 }, { y: -40, duration: 24.02, ease: "none" }, 0);
+
+      // ---------- Scene 1 — the stranded laptop (0 - 4.79) ----------
+      tl.fromTo("#s1-inner", { opacity: 0 }, { opacity: 1, duration: 0.35, ease: "none" }, 0);
+      tl.fromTo("#s1-card", { opacity: 0, y: 28, scale: 0.985 },
+        { opacity: 1, y: 0, scale: 1, duration: 0.6, ease: EASE }, 0.30);
+      tl.fromTo("#s1-head .ln", { opacity: 0, y: 44 },
+        { opacity: 1, y: 0, duration: 0.62, ease: EASE, stagger: 0.13 }, 0.70);
+      // the chip goes grey: the problem, stated without copy
+      tl.to("#s1-card", { filter: "grayscale(1)", opacity: 0.42, duration: 0.7, ease: "sine.inOut" }, 3.60);
+      tl.to("#s1-inner", { opacity: 0, duration: 0.40, ease: "none" }, 4.39);
+
+      // ---------- Scene 2 — Archivum (4.39 - 9.14) ----------
+      tl.fromTo("#s2-inner", { opacity: 0 }, { opacity: 1, duration: 0.40, ease: "none" }, 4.39);
+      tl.fromTo("#s2-lock", { opacity: 0, x: -36 }, { opacity: 1, x: 0, duration: 0.7, ease: EASE }, 4.60);
+      tl.fromTo("#s2-ghost", { opacity: 0, x: 60 }, { opacity: 1, x: 0, duration: 1.1, ease: EASE }, 4.60);
+      tl.fromTo("#s2-rule", { scaleX: 0 }, { scaleX: 1, duration: 0.72, ease: "power2.inOut" }, 5.05);
+      tl.fromTo("#s2-line", { opacity: 0, y: 30 }, { opacity: 1, y: 0, duration: 0.55, ease: EASE }, 5.42);
+      tl.fromTo("#s2-mono", { opacity: 0, y: 22 }, { opacity: 1, y: 0, duration: 0.5, ease: EASE }, 6.02);
+      tl.to("#s2-ghost", { y: -20, duration: 3.5, ease: "sine.inOut" }, 5.3);
+      tl.to("#s2-inner", { opacity: 0, duration: 0.40, ease: "none" }, 8.74);
+
+      // ---------- Scene 3 — link, index, recall (8.74 - 20.06) ----------
+      tl.fromTo("#s3-inner", { opacity: 0 }, { opacity: 1, duration: 0.40, ease: "none" }, 8.74);
+      // beat-locked: 8.74s (strong cue)
+      tl.fromTo("#s3-term", { opacity: 0, y: 46 }, { opacity: 1, y: 0, duration: 0.62, ease: EASE }, 8.74);
+      tl.fromTo("#s3-eyebrow", { opacity: 0, x: 26 }, { opacity: 1, x: 0, duration: 0.5, ease: EASE }, 8.90);
+      tl.fromTo("#s3-devices", { opacity: 0, x: 34 }, { opacity: 1, x: 0, duration: 0.8, ease: EASE }, 9.00);
+
+      // phase 1: the install one-liner types, then three confirmations land
+      tl.set(["#t-cmd2", "#t-walk", "#t-res", "#t-note", "#card"], { opacity: 0 }, 0);
+      tl.set("#t-cmd1", { opacity: 1 }, 8.74);
+      typeOn(tl, "t-cmd1", 9.10, 1.10);
+      tl.to("#t-cmd1 .cur", { opacity: 0, duration: 0.2, ease: "none" }, 10.30);
+      // beat-grid: ok1 10.37s, ok2 11.46s, ok3 12.55s (every other beat at 109.96 BPM)
+      tl.fromTo("#t-ok1", { opacity: 0, y: 18 }, { opacity: 1, y: 0, duration: 0.42, ease: EASE }, 10.37);
+      tl.fromTo("#t-ok2", { opacity: 0, y: 18 }, { opacity: 1, y: 0, duration: 0.42, ease: EASE }, 11.46);
+      tl.fromTo("#t-ok3", { opacity: 0, y: 18 }, { opacity: 1, y: 0, duration: 0.42, ease: EASE }, 12.55);
+
+      // the turn: phase 1 clears, phase 2 takes the same panel
+      tl.to(["#t-cmd1", "#t-ok1", "#t-ok2", "#t-ok3"], { opacity: 0, duration: 0.34, ease: "none" }, 14.20);
+      tl.set("#t-cmd2", { opacity: 1 }, 14.30);
+      typeOn(tl, "t-cmd2", 14.40, 0.50);
+      tl.to("#t-cmd2 .cur", { opacity: 0, duration: 0.2, ease: "none" }, 14.92);
+      tl.fromTo("#t-walk", { opacity: 0, y: 16 }, { opacity: 1, y: 0, duration: 0.42, ease: EASE }, 15.00);
+      tl.fromTo("#t-res", { opacity: 0, y: 16 }, { opacity: 1, y: 0, duration: 0.42, ease: EASE }, 15.55);
+      tl.fromTo("#t-note", { opacity: 0, y: 16 }, { opacity: 1, y: 0, duration: 0.42, ease: EASE }, 16.10);
+      // the right column hands over: linked devices out, the asking machine in
+      tl.to(["#s3-devices", "#s3-eyebrow"], { opacity: 0, duration: 0.36, ease: "none" }, 16.06);
+
+      // the payoff: a different machine asks, and gets a cited answer
+      tl.fromTo("#card", { opacity: 0, x: 72 }, { opacity: 1, x: 0, duration: 0.62, ease: EASE }, 16.38);
+      tl.fromTo("#card-label", { opacity: 0 }, { opacity: 1, duration: 0.3, ease: "none" }, 16.50);
+      tl.fromTo("#card-code", { opacity: 0, y: 20 }, { opacity: 1, y: 0, duration: 0.45, ease: EASE }, 16.80);
+      // beat-locked: 17.47s (strong cue)
+      tl.fromTo("#card-answer", { opacity: 0, y: 24 }, { opacity: 1, y: 0, duration: 0.5, ease: EASE }, 17.47);
+      // beat-locked: 18.56s (strong cue) — the citation is the claim, so it gets the only bell
+      tl.fromTo("#card-cite", { opacity: 0, y: 18, scale: 0.97 },
+        { opacity: 1, y: 0, scale: 1, duration: 0.5, ease: EASE }, 18.56);
+      tl.to("#s3-inner", { opacity: 0, duration: 0.40, ease: "none" }, 19.66);
+
+      // ---------- Scene 4 — nothing enters without you (19.66 - 24.02) ----------
+      tl.set("#s4-out", { opacity: 0 }, 0);
+      tl.fromTo("#s4-inner", { opacity: 0 }, { opacity: 1, duration: 0.40, ease: "none" }, 19.66);
+      tl.fromTo("#s4-row", { opacity: 0, y: 30 }, { opacity: 1, y: 0, duration: 0.55, ease: EASE }, 19.66);
+      tl.fromTo("#s4-line", { opacity: 0, y: 30 }, { opacity: 1, y: 0, duration: 0.55, ease: EASE }, 19.90);
+      tl.to(["#s4-row", "#s4-line"], { opacity: 0, duration: 0.34, ease: "none" }, 21.50);
+      tl.to("#s4-out", { opacity: 1, duration: 0.01, ease: "none" }, 21.84);
+      tl.fromTo("#s4-out .lock", { opacity: 0, y: 26 }, { opacity: 1, y: 0, duration: 0.55, ease: EASE }, 21.84);
+      tl.fromTo("#s4-rule", { scaleX: 0 }, { scaleX: 1, duration: 0.6, ease: "power2.inOut" }, 22.00);
+      tl.fromTo("#s4-claim", { opacity: 0, y: 22 }, { opacity: 1, y: 0, duration: 0.5, ease: EASE }, 22.05);
+      // beat-grid: 22.37s
+      tl.fromTo("#s4-mono", { opacity: 0, y: 18 }, { opacity: 1, y: 0, duration: 0.45, ease: EASE }, 22.37);
+
+      // ---------- audio-reactive: the violet ambience and the panel edges breathe ----------
+      // Subtle only: nothing that carries text moves more than a few percent.
+      (function () {
+        var A = window.AUDIO_BANDS;
+        if (!A) return;
+        var glowA = document.getElementById("bg-glow-a");
+        var glowB = document.getElementById("bg-glow-b");
+        for (var f = 0; f < A.totalFrames; f++) {
+          tl.call(
+            (function (rms, bass) {
+              return function () {
+                glowA.style.opacity = (0.62 + 0.34 * bass).toFixed(3);
+                glowB.style.opacity = (0.58 + 0.30 * rms).toFixed(3);
+                document.documentElement.style.setProperty(
+                  "--border-live",
+                  "rgba(255,255,255," + (0.075 + 0.045 * rms).toFixed(4) + ")"
+                );
+              };
+            })(A.rms[f], A.bass[f]),
+            [],
+            f / A.fps
+          );
+        }
+      })();
+
+      window.__timelines["main"] = tl;
+      tl.seek(0);
+    </script>
+  </body>
+</html>
