@@ -1,0 +1,1 @@
+Introducing Archivum: self-hosted memory for your coding agents. One curl per machine, a markdown vault on your own disk, and every answer cited back to the page it came from — with nothing written to it until you say so.

@@ -29,6 +29,15 @@ Archivum does not replace `CLAUDE.md`. That file stays the right place for
 instructions that must load unconditionally. Archivum is for everything too large,
 too situational, or too easily forgotten to keep there.
 
+## See it
+
+[![Archivum — a 24-second tour](docs/launch/brag.jpg)](docs/launch/brag.mp4)
+
+Twenty-four seconds: memory stranded on one laptop, one `curl` to link a machine,
+`archivum index` on a repo, and a different machine getting a cited answer back.
+The video, its poster, and the project it renders from live in
+[`docs/launch/`](docs/launch/).
+
 ## Part of the Perceo stack
 
 Archivum is part of [Perceo](https://perceo.ai) — a local-first developer suite. Related tools:
