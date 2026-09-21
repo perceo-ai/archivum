@@ -87,29 +87,51 @@ and your `OWNER_PASSWORD`.
 
 ## Link your agents
 
-In Settings → Agent Access, click **Link a device**. Archivum shows a pairing
-token and the exact command to run on the machine you want to link — including
-the one running the server:
+Every machine you code on runs one line. Your server serves its own installer,
+so the URL names the server and the CLI can never be a different version than
+the vault it talks to.
+
+### Let agents link themselves
+
+In Settings → Agent Access, create a **provisioning token**. Put it in the
+environment of any machine — a shell profile, a dotfile repo, a secret manager —
+and an agent can set itself up with nobody watching:
 
 ```bash
-git clone https://github.com/pranavkannepalli/archivum.git
-cd archivum
-node packages/archivum-cli/src/index.js connect arch1_...
+export ARCHIVUM_PROVISION_TOKEN=arch1p_...
+curl -fsSL https://your-archivum/install | sh
 ```
 
-That writes MCP config for whichever of Claude Code, Cursor, and Codex it finds on
-the machine (Claude Code via `claude mcp add`), installs the `archivum-memory`
-skill into `~/.claude/skills/`, then calls the MCP endpoint it just configured
-with the new key and tells you whether it answered. If it did not, it says so and
-what to check, rather than reporting a link that does not work. The pairing token
-works once and expires after fifteen minutes, so issue a fresh one for each
-machine.
+That installs the CLI, mints this machine its own device key, writes MCP config
+for every client it finds, installs the `archivum-memory` skill, and then calls
+the endpoint it just configured to check the key actually works. If it does not,
+it says so and what to check rather than reporting a link that does not work.
 
-Re-running `connect` on a machine that is already linked revokes the key it held
-before, so one machine never accumulates two live keys.
+A provisioning token is reusable, which is what makes it usable by an agent. It
+pays for that by doing strictly less than a device key: it mints keys at one
+endpoint and **cannot read a single page**. It carries a device limit, every
+machine it links is listed and revocable on its own, and revoking the token can
+take every key it ever minted with it. Re-running setup on a machine replaces
+that machine's key rather than adding a second one.
 
-The machine needs no checkout and no `.env`: the server's URL travels inside the
-token, which is why one string is all you copy.
+Windows PowerShell:
+
+```powershell
+$env:ARCHIVUM_PROVISION_TOKEN = "arch1p_..."
+iwr https://your-archivum/install.ps1 | iex
+```
+
+### Or link one machine by hand
+
+Click **Link a device** for a single-use pairing token that expires in fifteen
+minutes:
+
+```bash
+curl -fsSL https://your-archivum/install | sh
+archivum connect arch1_...
+```
+
+Either way the machine needs no checkout, no `.env`, and no package registry.
 
 ```bash
 archivum connect --status   # what is linked here, and whether the key still authenticates
@@ -120,13 +142,52 @@ archivum connect --revoke   # revoke this machine's key and delete its local rec
 revocation, so a failed revoke never leaves you with a live key and no note of
 which device to revoke from Settings.
 
-> **Why the clone.** The CLI is published to GitHub Packages as
-> `@pranavkannepalli/archivum` and is not yet on the public npm registry, so
-> `npx archivum@latest connect <token>` does not resolve — and `archivum` on
-> public npm is a name this project does not own, which is not a package to hand
-> a live pairing token. The clone needs no `npm install` and no `.env`: the CLI
-> has no dependencies and `connect` reads none of the repo's config. It becomes
-> one `npx` line once the package is published.
+### Which clients
+
+`connect` configures whatever it finds: **Claude Code** (via `claude mcp add`),
+**Cursor**, **Codex**, **Hermes Agent**, and **OpenClaw**. Clients that resolve
+environment variables get a reference rather than the key itself — Hermes gets
+`${env:ARCHIVUM_KEY}` in `config.yaml` and the key in `~/.hermes/.env`, so the
+file you sync to a dotfile repo holds no live credential.
+
+What each client needs is **served by your vault**, not compiled into the CLI.
+Supporting a new agent is a server-side edit that every linked machine picks up
+on its next run — no reinstall, no release.
+
+For **claude.ai** and **ChatGPT**, which are configured in a browser rather than
+on a machine, Settings → Agent Access has a panel with the connector URL and a
+key to paste. Those need the vault reachable over public HTTPS.
+
+## Carry your skills
+
+A skill is a repeatable procedure — the thing you would otherwise re-explain at
+the start of every session. They live in `~/.claude/skills/` on one machine,
+which is the same problem `CLAUDE.md` has.
+
+```bash
+archivum skills push          # send this machine's skills to the vault
+archivum skills pull          # install the vault's skills here
+```
+
+Linking a machine pulls them automatically, so a new laptop arrives with the
+procedures you already wrote. They are stored as ordinary pages under `skills/`
+— markdown on disk, editable in the browser, versioned like anything else.
+
+## Index your code
+
+Indexing resolves paths on the server, which cannot see your laptop's disk. So
+index from the machine the code is on:
+
+```bash
+cd ~/code/my-project
+archivum index
+```
+
+The CLI walks the repository honouring `.gitignore` — it asks git rather than
+reimplementing the rules — skips binaries and anything over 2MB, and uploads
+what is left. The server runs the same embedding, graph, and page pipeline it
+uses for a local path. Afterwards `retrieve_code_context` and `recall_fix` work
+against that repository from every machine you have linked.
 
 ### Per-device keys
 
@@ -233,8 +294,13 @@ This command upserts those page records and reference edges. It does not remove 
 
 Memory for agents:
 
-- ✅ Per-device MCP keys — one revocable key per linked machine, issued by pairing token
-- ✅ One-command linking (`archivum connect`) for Claude Code, Cursor, and Codex
+- ✅ Zero-install setup — your vault serves its own installer; one `curl | sh` per machine
+- ✅ Agent self-provisioning — a reusable, mint-only token an agent redeems with nobody watching
+- ✅ Per-device MCP keys — one revocable key per linked machine
+- ✅ One-command linking for Claude Code, Cursor, Codex, Hermes Agent, and OpenClaw, plus paste-in setup for claude.ai and ChatGPT
+- ✅ Server-driven client registry — supporting a new agent is a server-side edit, not a CLI release
+- ✅ Skills that follow you (`archivum skills push` / `pull`) — write a procedure once, have it on every linked machine
+- ✅ Cross-machine code indexing (`archivum index`) — index a repo from the machine it lives on
 - ✅ Governed memory assets — typed, versioned, reviewable memory that agents can be equipped with by name
 - ✅ Deterministic session distillation — captured conversations become cited memory with no LLM call
 - ✅ Semantic search over the vault (Qdrant)
@@ -264,6 +330,7 @@ they are not listed above.
 ## Operations
 
 ```bash
+archivum index                      # index the repository in the current directory
 ./update.sh                         # back up precious data, pull/update, and restart
 ./update.sh --no-backup             # update without creating a pre-update backup
 node packages/archivum-cli/src/index.js recovery backup
@@ -283,6 +350,7 @@ docker compose down
 
 - [Documentation index](docs/README.md)
 - [Agent access: linking machines, keys, and skills](docs/architecture/agent-access.md)
+- [Agent setup UX: diagrams of every setup, indexing, and capture path](docs/architecture/agent-setup-ux.md)
 - [Infrastructure and storage](docs/architecture/infra.md)
 - [Ingest pipeline](docs/architecture/ingest.md)
 - [MCP server tools](docs/architecture/mcp.md)

@@ -13,17 +13,22 @@ type DevicesPanelProps = {
   onDismissPairing?: () => void;
 };
 
-// The command has to be the one that works today. The CLI is published to
-// GitHub Packages as @pranavkannepalli/archivum and not to public npm, so
-// `npx archivum@latest` either errors after a registry round trip — inside a
-// fifteen-minute window — or resolves to somebody else's `archivum` package,
+// This vault serves its own installer, which is why the command is one line
+// and names no package registry. `npx archivum@latest` is still not an option:
+// the CLI is published to GitHub Packages as @pranavkannepalli/archivum rather
+// than public npm, so it would either fail after a registry round trip — inside
+// a fifteen-minute window — or resolve to somebody else's `archivum` package,
 // which the user would then hand a token that redeems to full vault access.
-function connectCommand(token: string) {
-  return [
-    'git clone https://github.com/pranavkannepalli/archivum.git',
-    'cd archivum',
-    `node packages/archivum-cli/src/index.js connect ${token}`,
-  ].join('\n');
+export function installOrigin() {
+  // Same origin as the API the page is already talking to: the frontend
+  // container proxies /api to the backend, and /install sits beside it.
+  return typeof window === 'undefined' ? '' : window.location.origin;
+}
+
+// A pairing token is single-use and belongs on the `connect` line, not in the
+// environment variable named for the reusable kind. Two lines, no clone.
+function connectCommand(token: string, origin = installOrigin()) {
+  return [`curl -fsSL ${origin}/install | sh`, `archivum connect ${token}`].join('\n');
 }
 
 function formatDate(iso: string | null) {
@@ -66,8 +71,9 @@ export function DevicesPanel({
             {connectCommand(pairing.token)}
           </pre>
           <p className="mt-2 text-xs leading-5 text-muted-foreground">
-            Needs Node 20+ and nothing else. This becomes{' '}
-            <span className="font-mono">npx archivum@latest connect</span> once the CLI is on public npm.
+            Needs Node 20+ and nothing else — no checkout and no package
+            registry. The installer is served by this vault, so it always
+            matches the server it links to.
           </p>
           <p className="mt-2 text-xs leading-5 text-muted-foreground">
             This token works once and expires in 15 minutes.

@@ -24,21 +24,24 @@ class PairingError(Exception):
     """A pairing token was unknown, expired, or already redeemed."""
 
 
-def encode_pairing_token(base_url: str, secret: str) -> str:
+def encode_pairing_token(base_url: str, secret: str, *, prefix: str = TOKEN_PREFIX) -> str:
     """Pack the server URL and secret into one string the user copies.
 
     The URL travels inside the token so `archivum connect` needs no --host flag
-    and no .env — the whole point is that the second machine has neither.
+    and no .env — the whole point is that the second machine has neither. The
+    same reasoning applies to a provisioning token read from an environment
+    variable, which is why `prefix` is a parameter rather than a constant: the
+    two token classes differ in what they may do, not in how they are packed.
     """
     payload = json.dumps({"u": base_url, "s": secret}, separators=(",", ":"))
     encoded = base64.urlsafe_b64encode(payload.encode()).decode().rstrip("=")
-    return f"{TOKEN_PREFIX}{encoded}"
+    return f"{prefix}{encoded}"
 
 
-def decode_pairing_token(token: str) -> tuple[str, str]:
-    if not token.startswith(TOKEN_PREFIX):
+def decode_pairing_token(token: str, *, prefix: str = TOKEN_PREFIX) -> tuple[str, str]:
+    if not token.startswith(prefix):
         raise ValueError("Not an Archivum pairing token")
-    encoded = token[len(TOKEN_PREFIX):]
+    encoded = token[len(prefix):]
     padding = "=" * (-len(encoded) % 4)
     try:
         payload = json.loads(base64.urlsafe_b64decode(encoded + padding))

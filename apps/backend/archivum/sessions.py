@@ -90,8 +90,14 @@ async def record_session_work(
     conversation: Conversation,
     source_id: str,
     wiki_id: str,
+    stated: bool = False,
 ) -> KnowledgeObject:
-    """Record one captured session and link it to the code it changed."""
+    """Record one captured session and link it to the code it changed.
+
+    `stated` is set when an agent called `record_work` rather than when a
+    transcript was captured. It is passed through to `extract_fix`, which
+    otherwise decides by keyword whether the work was worth keeping.
+    """
     session_id = session_id_for(source_id)
     scope = f"wiki:{wiki_id}"
     kind = classify_session(conversation)
@@ -128,7 +134,7 @@ async def record_session_work(
 
     # A bug fix leaves a second record: what the trouble was and what settled
     # it. This is the one people actually come back for.
-    fix = extract_fix(conversation)
+    fix = extract_fix(conversation, stated=stated)
     if fix is not None:
         await repo.upsert_object(
             fix_to_object(fix, source_id=source_id, wiki_id=wiki_id)

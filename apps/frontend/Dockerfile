@@ -17,6 +17,21 @@ RUN printf '%s\n' \
     '  server_name _;' \
     '  root /usr/share/nginx/html;' \
     '  index index.html;' \
+    '' \
+    '  # Repository archives and uploads pass through this proxy. Nginx defaults' \
+    '  # to 1m, which rejects any real repository with a 413 before the backend' \
+    '  # sees it; the backend enforces its own limits while streaming.' \
+    '  client_max_body_size 512m;' \
+    '' \
+    '  # The installer lives on the backend, and `curl .../install | sh` hits' \
+    '  # this container first. Without this it falls through to the SPA and the' \
+    '  # machine pipes index.html into sh. `^~` so it beats the catch-all.' \
+    '  location ^~ /install {' \
+    '    proxy_pass http://backend:8000;' \
+    '    proxy_http_version 1.1;' \
+    '    proxy_set_header Host $host;' \
+    '    proxy_set_header X-Forwarded-Proto $scheme;' \
+    '  }' \
     '  location /api/ {' \
     '    proxy_pass http://backend:8000;' \
     '    proxy_http_version 1.1;' \

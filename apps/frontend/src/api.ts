@@ -1547,6 +1547,61 @@ export async function issuePairingToken(): Promise<PairingToken> {
   return res.json();
 }
 
+export type ProvisioningToken = {
+  id: string;
+  name: string;
+  created_at: string;
+  expires_at: string | null;
+  device_cap: number;
+  last_used_at: string | null;
+  revoked_at: string | null;
+};
+
+export type IssuedProvisioningToken = ProvisioningToken & { token: string; env_var: string };
+
+export async function issueProvisioningToken(body: {
+  name?: string;
+  ttl_seconds?: number | null;
+  device_cap?: number | null;
+}): Promise<IssuedProvisioningToken> {
+  const res = await apiFetch('/api/mcp/provisioning-tokens', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw new Error('Failed to issue a provisioning token');
+  return res.json();
+}
+
+export async function getProvisioningTokens(): Promise<ProvisioningToken[]> {
+  const res = await apiFetch('/api/mcp/provisioning-tokens');
+  if (!res.ok) throw new Error('Failed to load provisioning tokens');
+  return res.json();
+}
+
+export async function revokeProvisioningToken(
+  tokenId: string,
+  { revokeDevices = false }: { revokeDevices?: boolean } = {},
+): Promise<void> {
+  const res = await apiFetch(
+    `/api/mcp/provisioning-tokens/${encodeURIComponent(tokenId)}?revoke_devices=${revokeDevices}`,
+    { method: 'DELETE' },
+  );
+  if (!res.ok) throw new Error('Failed to revoke provisioning token');
+}
+
+export async function mintDeviceKey(
+  name: string,
+): Promise<McpDevice & { key: string; sse_url: string; mcp_url: string }> {
+  const res = await apiFetch('/api/mcp/devices', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name }),
+  });
+  if (!res.ok) throw new Error('Failed to mint a device key');
+  return res.json();
+}
+
 export async function revokeMcpDevice(deviceId: string): Promise<boolean> {
   const res = await apiFetch(`/api/mcp/devices/${encodeURIComponent(deviceId)}`, {
     method: 'DELETE',

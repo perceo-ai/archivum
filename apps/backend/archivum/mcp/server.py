@@ -18,6 +18,7 @@ from starlette.routing import BaseRoute
 
 from archivum.capture.schema import Conversation, ToolCall, Turn
 from archivum.code_repos import index_repo, list_repos, register_repo, scope_for
+from archivum.devices.provisioning import PROVISION_PREFIX
 from archivum.devices.repository import DeviceRepository
 from archivum.fixes import recall_fixes
 from archivum.sessions import record_session_work
@@ -72,6 +73,14 @@ class DeviceBearerTokenVerifier:
         self._api_key = api_key
 
     async def verify_token(self, token: str) -> AccessToken | None:
+        # A provisioning token mints device keys and reads nothing. It lives in
+        # a different table, so it would fail the lookup below anyway — but the
+        # whole point of splitting the key classes is that this never depends
+        # on where a row happens to be stored. Refuse it by prefix, before the
+        # legacy comparison, so an operator who pastes one into MCP_API_KEY
+        # cannot turn a mint-only secret into a read-everything one.
+        if token.startswith(PROVISION_PREFIX):
+            return None
         if self._api_key and hmac.compare_digest(token, self._api_key):
             return AccessToken(token=token, client_id="archivum-legacy-key", scopes=[])
         async with sqlite.get_db() as conn:
@@ -226,14 +235,21 @@ async def list_pages(wiki_id: str = "default") -> list[dict[str, Any]]:
 
 
 @mcp.tool()
-async def get_page(slug: str, wiki_id: str = "default") -> dict[str, Any]:
-    """Retrieve full markdown content by slug."""
+async def get_page(
+    slug: str, wiki_id: str = "default", include_backlinks: bool = False
+) -> dict[str, Any]:
+    """Retrieve full markdown content by slug.
+
+    `include_backlinks` adds what points at this page, which is what you want
+    before refiling or retiring it. It costs a graph query, so it is opt-in
+    rather than always on.
+    """
     _require_key()
     set_trace_id(new_trace_id("mcp-page"))
     row = await sqlite.get_page(slug, wiki_id)
     if not row:
         return {"error": "page_not_found", "slug": slug}
-    return {
+    page = {
         "slug": row["slug"],
         "title": row["title"],
         "content": row["content"],
@@ -242,6 +258,149 @@ async def get_page(slug: str, wiki_id: str = "default") -> dict[str, Any]:
         "updated_at": row["updated_at"],
         "authored_by": row["authored_by"],
     }
+    if include_backlinks:
+        page["backlinks"] = await graph.get_backlinks(slug, wiki_id)
+    return page
+
+
+@mcp.tool()
+async def organize_vault(
+    operations: list[dict[str, Any]], wiki_id: str = "default"
+) -> dict[str, Any]:
+    """Refile pages and reshape folders, several at a time.
+
+    Writing a page is only half of keeping a vault usable. This is the other
+    half: putting a page where it belongs, making somewhere to put it, and
+    retiring one that has had its day.
+
+    Operations apply in order, so a plan reads as a plan — create the folder,
+    then file into it. One failure does not abandon the rest; every operation
+    reports its own outcome, because a ten-step reorganisation that dies on
+    step three and says nothing leaves a vault half-moved.
+
+        {"op": "move",          "slug": "inbox/notes", "to": "projects/x/notes"}
+        {"op": "archive",       "slug": "notes/stale"}
+        {"op": "create_folder", "path": "projects/x"}
+        {"op": "rename_folder", "path": "notes", "to": "reference"}
+
+    There is deliberately no delete. Page deletion unlinks the file with no
+    trash and no history, so it is not a verb to hand an agent — `archive`
+    moves the page under `archive/` instead, where you can still find it.
+    """
+    _require_key()
+    set_trace_id(new_trace_id("mcp-organize"))
+
+    results: list[dict[str, Any]] = []
+    for index, operation in enumerate(operations):
+        op = str(operation.get("op", "")).strip()
+        try:
+            detail = await _apply_organize_op(op, operation, wiki_id)
+            results.append({"index": index, "op": op, "ok": True, "detail": detail})
+        except Exception as exc:  # noqa: BLE001 - reported per operation, never raised
+            results.append(
+                {"index": index, "op": op, "ok": False, "detail": _readable_error(exc)}
+            )
+
+    applied = sum(1 for r in results if r["ok"])
+    logger.info(
+        "MCP organize_vault",
+        extra={"wiki_id": wiki_id, "applied": applied, "failed": len(results) - applied},
+    )
+    return {
+        "applied": applied,
+        "failed": len(results) - applied,
+        "results": results,
+    }
+
+
+_ARCHIVE_PREFIX = "archive"
+
+
+async def _apply_organize_op(op: str, operation: dict[str, Any], wiki_id: str) -> str:
+    """Run one operation by delegating to the same code the browser calls.
+
+    Importing inside the function keeps the API layer out of this module's
+    import cycle; these are the workers behind the page and folder routes, not
+    the routes themselves, so no request or session is involved.
+    """
+    from archivum.api.folders import (
+        _ensure_parent_folders,
+        move_folder_tree,
+        validate_folder_path,
+    )
+    from archivum.api.pages import move_page_to_slug
+
+    if op == "move":
+        slug, target = _require_fields(operation, "slug", "to")
+        await move_page_to_slug(slug, target, wiki_id, settings)
+        return f"{slug} -> {target}"
+
+    if op == "archive":
+        (slug,) = _require_fields(operation, "slug")
+        # Retrying must not bury the page deeper. A second archive of
+        # `archive/notes/x` used to produce `archive/archive/notes/x`, so a
+        # retry after a timeout hid content instead of being a no-op.
+        if slug.startswith(f"{_ARCHIVE_PREFIX}/"):
+            return f"{slug} is already archived"
+        target = f"{_ARCHIVE_PREFIX}/{slug}"
+        await move_page_to_slug(slug, target, wiki_id, settings)
+        return f"{slug} -> {target}"
+
+    if op == "create_folder":
+        (path,) = _require_fields(operation, "path")
+        path = validate_folder_path(path)
+        if await sqlite.get_folder(path, wiki_id) or await sqlite.get_page(path, wiki_id):
+            raise ValueError(f"'{path}' already exists")
+        await _ensure_parent_folders(path, wiki_id)
+        await sqlite.create_folder(path, wiki_id)
+        return f"created {path}"
+
+    if op == "rename_folder":
+        path, target = _require_fields(operation, "path", "to")
+        await move_folder_tree(
+            validate_folder_path(path),
+            validate_folder_path(target),
+            bool(operation.get("recursive", True)),
+            wiki_id,
+            settings,
+        )
+        return f"{path} -> {target}"
+
+    if op == "delete":
+        # Named explicitly rather than falling through to "unknown": an agent
+        # that reaches for delete needs to be told what to reach for instead,
+        # or it simply tries again.
+        raise ValueError(
+            "There is no delete operation. Page deletion is unrecoverable here, "
+            "so use {'op': 'archive', 'slug': ...} to retire a page instead."
+        )
+
+    raise ValueError(f"Unknown operation '{op}'. Use move, archive, create_folder, or rename_folder.")
+
+
+def _require_fields(operation: dict[str, Any], *names: str) -> tuple[str, ...]:
+    values = []
+    for name in names:
+        value = operation.get(name)
+        if not isinstance(value, str) or not value.strip():
+            raise ValueError(f"'{operation.get('op')}' needs a '{name}'")
+        values.append(value.strip())
+    return tuple(values)
+
+
+def _readable_error(exc: Exception) -> str:
+    """Unwrap the HTTPException detail the page and folder workers raise.
+
+    They were written for a browser, so their reasons arrive as a dict inside
+    an exception. An agent reading `detail` should get the sentence, not the
+    envelope.
+    """
+    detail = getattr(exc, "detail", None)
+    if isinstance(detail, dict):
+        return str(detail.get("detail", detail))
+    if detail is not None:
+        return str(detail)
+    return str(exc) or exc.__class__.__name__
 
 
 @mcp.tool()
@@ -682,14 +841,31 @@ async def record_work(
             conversation=conversation,
             source_id=captured.source_id,
             wiki_id=wiki_id,
+            # You are telling us this mattered. Do not re-derive that from
+            # keywords in your own sentence.
+            stated=True,
         )
         await connection.commit()
-    return {
+
+    # Whether this comes back from `recall_fix` later is the only thing the
+    # caller actually cares about, and it is not the same as "stored". Saying
+    # `recorded: true` while nothing is retrievable is how an agent does
+    # everything right and the knowledge still disappears.
+    recallable = bool(changed_paths)
+    result = {
         "recorded": True,
+        "recallable": recallable,
         "id": recorded.id,
         "kind": recorded.properties.get("kind", "unknown"),
         "source_id": captured.source_id,
     }
+    if not recallable:
+        result["note"] = (
+            "Stored, but `recall_fix` will not return this: nothing was listed in "
+            "changed_paths, so there is no work to come back to. Pass the files you "
+            "changed if you want this findable later."
+        )
+    return result
 
 
 @mcp.tool()
