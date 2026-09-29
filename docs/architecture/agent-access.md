@@ -5,38 +5,48 @@ key, what that key can do, and what to do when the easy path does not fit.
 
 ## Linking a machine
 
-Two steps, one of them in the browser.
+Your vault serves its own installer at `/install` (`/install.ps1` on Windows).
+It needs Node 20+ and nothing else: no checkout, no `.env`, no package registry.
+The script downloads the CLI from the same server, so the CLI can never be a
+different version than the vault it talks to, and puts an `archivum` launcher in
+`~/.local/bin`.
 
-1. In Settings → Agent Access, click **Link a device**. Archivum issues a pairing
-   token — an `arch1_…` string that is single-use, expires after fifteen minutes,
-   and carries the server's own API base URL inside it.
-2. On the machine you are linking, run:
+There are two ways to hand it a credential.
+
+**A provisioning token, for machines and agents that set themselves up.** In
+Settings → Agent Access, create a provisioning token (`arch1p_…`). It is
+reusable, carries a device limit, and can only mint device keys; it cannot read
+a page. Put it in the machine's environment and run the line:
 
 ```bash
-git clone https://github.com/pranavkannepalli/archivum.git
-cd archivum
-node packages/archivum-cli/src/index.js connect arch1_...
+export ARCHIVUM_PROVISION_TOKEN=arch1p_...
+curl -fsSL https://your-archivum/install | sh
 ```
 
-That is the whole thing. `connect` reads nothing from the checkout it is run
-from — no `.env`, no `docker-compose.yml`. Everything it needs arrives in the
-token and in the redeem response, which is the point: the second laptop has
-neither a vault nor a configured repo.
+With the variable set, the installer runs `archivum connect --auto` itself.
 
-It needs Node 20+ and nothing else — the CLI has no dependencies, so there is no
-`npm install` step, and `connect` still reads no `.env`. The clone is a stand-in
-for one `npx` line: the CLI is published to GitHub Packages as
-`@pranavkannepalli/archivum` and not to the public npm registry, so
-`npx archivum@latest connect <token>` does not resolve today — and `archivum` on
-public npm is a name this project does not own, so it must not be the line anyone
-runs against a live pairing token. Settings prints the clone form for the same
-reason. It becomes `npx archivum@latest connect <token>` once the package is
-published.
+**A pairing token, for linking one machine by hand.** Click **Link a device**
+for an `arch1_…` token that works once, expires after fifteen minutes, and
+carries the server's own API base URL inside it:
+
+```bash
+curl -fsSL https://your-archivum/install | sh
+archivum connect arch1_...
+```
+
+Either way, `connect` reads nothing from the directory it runs in. Everything it
+needs arrives in the token and in the redeem response, which is the point: the
+second laptop has neither a vault nor a configured repo.
+
+Do not run `npx archivum`. The CLI is published to GitHub Packages as
+`@pranavkannepalli/archivum`, and the unscoped `archivum` on public npm belongs
+to someone else. It must never be the thing that sees a live token.
 
 In order, `connect`:
 
-1. Posts the token's secret to `POST /api/mcp/pairing/redeem`, which burns the
-   token and mints a device key (`amk_…`) named `<hostname> / <clients>` unless
+1. Posts the token's secret to `POST /api/mcp/pairing/redeem` (a pairing token,
+   which it burns) or `POST /api/mcp/pairing/provision` (a provisioning token,
+   which stays valid up to its device limit), and gets back a device key (`amk_…`) named `<hostname> / <clients>` unless
    you pass `--name`.
 2. Saves that key to `~/.archivum/connection.json`, mode `0600`, *before* it
    touches any client config. The token is spent the instant redeem returns, so a
@@ -56,8 +66,11 @@ In order, `connect`:
    (`~/.cursor/mcp.json`) and Codex (`~/.codex/config.toml`) are written directly,
    each at mode `0600`, tightening the file even if it already existed with
    looser permissions, and each written to a temp file and renamed into place so
-   an interrupted write cannot truncate a config. Pass
-   `--client claude|cursor|codex` to pin the set instead of detecting it. Codex
+   an interrupted write cannot truncate a config. Hermes Agent
+   (`~/.hermes/config.yaml`, with the key itself in `~/.hermes/.env`) and
+   OpenClaw (`~/.openclaw/openclaw.json`) come from the same server-side client
+   registry and are detected, not pinned: `--client claude|cursor|codex` pins the
+   set to the built-in writers instead of detecting it. Codex
    gets the streamable HTTP path (`/mcp`) of the same endpoint; Claude Code and
    Cursor get the SSE path.
 5. Installs the `archivum-memory` skill to `~/.claude/skills/archivum-memory/`,
