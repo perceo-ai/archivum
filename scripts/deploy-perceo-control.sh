@@ -75,7 +75,10 @@ echo "→ Rebuilding"
 guest "cd $APP_DIR && nohup docker compose build backend frontend mcp > /tmp/archivum-build.log 2>&1 & echo started"
 printf '  building'
 for _ in $(seq 1 120); do
-  if ! guest "pgrep -c -f 'docker-compose compose build' 2>/dev/null || echo 0" | grep -qv '^0$'; then
+  # `[d]ocker-compose` so the pattern cannot match the `bash -lc` running this
+  # very pgrep, whose command line contains the literal pattern. Unbracketed,
+  # the count never reached 0 and every deploy waited out the full 30 minutes.
+  if ! guest "pgrep -c -f '[d]ocker-compose compose build' 2>/dev/null || echo 0" | grep -qv '^0$'; then
     break
   fi
   printf '.'
@@ -101,7 +104,8 @@ guest "cd $APP_DIR && docker compose ps --format '{{.Service}} {{.Status}}'"
 api_host=$(guest "cd $APP_DIR && docker compose port backend 8000 2>/dev/null | head -1" | tr -d '\r\n')
 api_host=${api_host:-127.0.0.1:8000}
 echo "  api published on $api_host"
-guest "curl -fsS -o /dev/null -w 'api %{http_code}\n' http://$api_host/api/system/health || echo 'api health check failed'"
+# The backend has no health route; /install is public and served by it.
+guest "curl -fsS -o /dev/null -w 'api %{http_code}\n' http://$api_host/install || echo 'api check failed'"
 
 # The deploy is only real if the running process answers on something this
 # release added. A tick printed without checking is how the last one reported
