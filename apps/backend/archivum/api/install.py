@@ -120,6 +120,16 @@ if [ -n "${{ARCHIVUM_PROVISION_TOKEN:-}}" ]; then
   exec node "$CLI/src/index.js" connect --auto
 fi
 
+# Re-running the installer on a linked machine must not read as a failed
+# link, and must not touch the device key: the habits refresh is the useful
+# part of a re-run.
+if [ -f "$DEST/connection.json" ]; then
+  echo "archivum: this machine is already linked - leaving its device key alone."
+  node "$CLI/src/index.js" connect --status || true
+  node "$CLI/src/index.js" habits || true
+  exit 0
+fi
+
 echo ""
 echo "archivum: installed, but not linked - ARCHIVUM_PROVISION_TOKEN is not set."
 echo "  Issue a provisioning token in Settings -> Agent Access, then:"
@@ -170,6 +180,10 @@ Write-Host "archivum: installed $Launcher"
 if ($env:ARCHIVUM_PROVISION_TOKEN) {{
   Write-Host 'archivum: linking this machine'
   & node "$Cli\\src\\index.js" connect --auto
+}} elseif (Test-Path (Join-Path $Dest 'connection.json')) {{
+  Write-Host 'archivum: this machine is already linked - leaving its device key alone.'
+  & node "$Cli\\src\\index.js" connect --status
+  & node "$Cli\\src\\index.js" habits
 }} else {{
   Write-Host ''
   Write-Host 'archivum: installed, but not linked - ARCHIVUM_PROVISION_TOKEN is not set.'

@@ -5,6 +5,7 @@ import { randomUUID } from "node:crypto";
 
 import { parseOptions, writeFileAtomic } from "./util.js";
 import { pullSkills } from "./skills.js";
+import { habitsCommand } from "./habits.js";
 import {
   BUILTIN_CLIENTS,
   CLIENT_WRITERS,
@@ -467,6 +468,15 @@ export async function connectCommand(
   if (skillPath) console.log(`  installed ${skillPath}`);
   if (pulledSkills > 0) {
     console.log(`  installed ${pulledSkills} skill${pulledSkills === 1 ? "" : "s"} from the vault`);
+  }
+
+  // The wiring alone does not make an agent use the vault; the habits layer
+  // does. Best-effort for the same reason as the skill: a machine that is
+  // linked but missing a nudge is strictly better than a failed link.
+  try {
+    await habitsCommand([], { home, fetchImpl, log: (line) => console.log(`  ${line}`) });
+  } catch (error) {
+    console.log(`  habits setup failed: ${error.message} (run \`archivum habits\` to retry)`);
   }
   if (retired) {
     console.log(
