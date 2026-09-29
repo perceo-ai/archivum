@@ -1,14 +1,21 @@
 # Archivum
 
-Archivum is memory your coding agents use and you can audit. What your agents
-learn about your repos — decisions, fixes, architecture — lives in one vault you
-own, reviewed and cited, and follows you to every machine you work on.
+Archivum is memory your agents use and you can audit. Everything your agents
+learn about you and your work — decisions, fixes, architecture, preferences,
+projects — lives in one vault you own, reviewed and cited, and follows you to
+every machine and every agent you use.
+
+Coding assistants, personal assistants, one-off agents: they all read and write
+the same markdown vault on your disk over MCP. A new machine or a new agent
+starts with everything the others already know.
 
 ## Why
 
-**Same memory on every machine.** A `CLAUDE.md` lives on one laptop. Archivum
-lives on a server you run, and every machine you link reaches the same fixes, the
-same repo context, and the same decisions — one command per machine.
+**Same memory on every machine and every agent.** A `CLAUDE.md` lives on one
+laptop; a chatbot's memory lives in one vendor's cloud. Archivum lives on a server
+you run, and every machine and agent you link — Claude Code, Cursor, Codex,
+Hermes, OpenClaw, claude.ai, ChatGPT — reaches the same fixes, the same repo
+context, and the same decisions. One command per machine.
 
 **Less context for the same answer.** Retrieval is ranked and scoped, so an agent
 gets the passages that bear on the task instead of whole files pasted into the
@@ -59,7 +66,7 @@ Requirements:
 - An Anthropic, OpenRouter, or OpenAI-compatible key — or a local Ollama setup
 
 ```bash
-git clone https://github.com/pranavkannepalli/archivum.git
+git clone https://github.com/perceo-ai/archivum.git
 cd archivum
 ./install.sh
 ```
@@ -67,7 +74,7 @@ cd archivum
 Windows PowerShell:
 
 ```powershell
-git clone https://github.com/pranavkannepalli/archivum.git
+git clone https://github.com/perceo-ai/archivum.git
 cd archivum
 .\install.ps1
 ```

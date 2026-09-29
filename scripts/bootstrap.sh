@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-REPO_URL="${ARCHIVUM_REPO_URL:-https://github.com/pranavkannepalli/archivum.git}"
+REPO_URL="${ARCHIVUM_REPO_URL:-https://github.com/perceo-ai/archivum.git}"
 INSTALL_DIR="${ARCHIVUM_INSTALL_DIR:-$HOME/archivum}"
 BRANCH="${ARCHIVUM_BRANCH:-main}"
-RAW_BASE="${ARCHIVUM_RAW_BASE:-https://raw.githubusercontent.com/pranavkannepalli/archivum/$BRANCH}"
-FULL_CLONE="${ARCHIVUM_FULL_CLONE:-0}"
+RAW_BASE="${ARCHIVUM_RAW_BASE:-https://raw.githubusercontent.com/perceo-ai/archivum/$BRANCH}"
+FULL_CLONE="${ARCHIVUM_FULL_CLONE:-1}"
 
 say() { printf '\033[36m%s\033[0m\n' "$*"; }
 warn() { printf '\033[33m%s\033[0m\n' "$*"; }
@@ -90,7 +90,7 @@ ensure_basics() {
       fi
       ;;
     *)
-      fail "Unsupported OS for bootstrap.sh. On Windows, use: irm https://raw.githubusercontent.com/pranavkannepalli/archivum/main/scripts/bootstrap.ps1 | iex"
+      fail "Unsupported OS for bootstrap.sh. On Windows, use: irm https://raw.githubusercontent.com/perceo-ai/archivum/main/scripts/bootstrap.ps1 | iex"
       ;;
   esac
 }
@@ -186,7 +186,7 @@ main() {
     if [[ "$FULL_CLONE" == "1" ]]; then
       node packages/archivum-cli/src/index.js install --images </dev/tty
     else
-      npx --yes archivum install --images </dev/tty
+      fail "ARCHIVUM_FULL_CLONE=0 is no longer supported: the unscoped 'archivum' package on npm is not ours. Re-run without it."
     fi
   else
     fail "No interactive terminal found. Download scripts/bootstrap.sh and run it from a terminal."

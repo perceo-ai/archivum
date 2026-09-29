@@ -36,5 +36,8 @@ if (-not $node) {
 if (Test-Path "packages/archivum-cli/src/index.js") {
   & node packages/archivum-cli/src/index.js install @InstallerArgs
 } else {
-  & npx --yes archivum install @InstallerArgs
+  Write-Host "The Archivum CLI was not found at packages/archivum-cli/src/index.js." -ForegroundColor Yellow
+  Write-Host "Run this from a full checkout: git clone https://github.com/perceo-ai/archivum.git"
+  Write-Host "(The unscoped 'archivum' package on npm is not ours, so there is no npx fallback.)"
+  exit 1
 }

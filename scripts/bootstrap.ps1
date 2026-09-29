@@ -1,10 +1,10 @@
 $ErrorActionPreference = "Stop"
 
-$RepoUrl = if ($env:ARCHIVUM_REPO_URL) { $env:ARCHIVUM_REPO_URL } else { "https://github.com/pranavkannepalli/archivum.git" }
+$RepoUrl = if ($env:ARCHIVUM_REPO_URL) { $env:ARCHIVUM_REPO_URL } else { "https://github.com/perceo-ai/archivum.git" }
 $InstallDir = if ($env:ARCHIVUM_INSTALL_DIR) { $env:ARCHIVUM_INSTALL_DIR } else { Join-Path $HOME "archivum" }
 $Branch = if ($env:ARCHIVUM_BRANCH) { $env:ARCHIVUM_BRANCH } else { "main" }
-$RawBase = if ($env:ARCHIVUM_RAW_BASE) { $env:ARCHIVUM_RAW_BASE } else { "https://raw.githubusercontent.com/pranavkannepalli/archivum/$Branch" }
-$FullClone = if ($env:ARCHIVUM_FULL_CLONE) { $env:ARCHIVUM_FULL_CLONE } else { "0" }
+$RawBase = if ($env:ARCHIVUM_RAW_BASE) { $env:ARCHIVUM_RAW_BASE } else { "https://raw.githubusercontent.com/perceo-ai/archivum/$Branch" }
+$FullClone = if ($env:ARCHIVUM_FULL_CLONE) { $env:ARCHIVUM_FULL_CLONE } else { "1" }
 
 function Say($Message) {
   Write-Host $Message -ForegroundColor Cyan
@@ -55,7 +55,7 @@ if (-not $dockerReady) {
     winget install --id Docker.DockerDesktop -e --source winget
   }
   Warn "Start Docker Desktop and finish any WSL 2/reboot prompts, then re-run this command:"
-  Warn '  irm https://raw.githubusercontent.com/pranavkannepalli/archivum/main/scripts/bootstrap.ps1 | iex'
+  Warn '  irm https://raw.githubusercontent.com/perceo-ai/archivum/main/scripts/bootstrap.ps1 | iex'
   Start-Process "https://docs.docker.com/desktop/setup/install/windows-install/"
   exit 1
 }
@@ -93,5 +93,6 @@ Set-Location $InstallDir
 if ($FullClone -eq "1") {
   & node packages/archivum-cli/src/index.js install --images
 } else {
-  & npx --yes archivum install --images
+  Write-Host "ARCHIVUM_FULL_CLONE=0 is no longer supported: the unscoped 'archivum' package on npm is not ours. Re-run without it." -ForegroundColor Red
+  exit 1
 }
