@@ -124,3 +124,14 @@ def test_the_tarball_carries_the_commands_the_stack_needs(install_client):
     # The transcript watcher was removed: transcript storage is outside the
     # product definition, so shipping it would put it back on every machine.
     assert "src/watch.js" not in names
+
+def test_a_rerun_on_a_linked_machine_reports_the_link_and_refreshes_habits(install_client):
+    """The installer used to say "not linked" to a machine holding a working
+    device key, because it only ever checked the environment variable. A re-run
+    must report the actual link and refresh the habits layer, not scare the
+    user into re-linking (which would revoke the key running sessions hold)."""
+    for route in ("/install", "/install.ps1"):
+        body = install_client.get(route).text
+        assert "connection.json" in body
+        assert "already linked" in body
+        assert "habits" in body
