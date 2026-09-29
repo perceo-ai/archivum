@@ -86,15 +86,14 @@ def _clients() -> list[dict[str, Any]]:
             "label": "OpenClaw",
             "detect": [".openclaw"],
             "method": "json",
-            # Sources disagree: ~/.openclaw/openclaw.json with a top-level
-            # `mcpServers` key, versus .openclaw/config.json with nested
-            # `mcp.servers`. Confirm against an install before trusting this;
-            # being a served entry is what makes correcting it a data change
-            # rather than a release.
+            # Verified against openclaw@2026.4.24 on a live install
+            # (2026-09-28): the file is ~/.openclaw/openclaw.json and the
+            # servers live under nested `mcp.servers`. A top-level
+            # `mcpServers` key is not merely ignored — OpenClaw rejects the
+            # whole config with `Unrecognized key: "mcpServers"`.
             "path": "~/.openclaw/openclaw.json",
-            "key_path": ["mcpServers", "archivum"],
+            "key_path": ["mcp", "servers", "archivum"],
             "transport": _STREAMABLE,
-            "unverified": True,
         },
     ]
 
