@@ -21,6 +21,7 @@ from pathlib import Path
 from archivum.capture.classify import classify_session, touched_paths
 from archivum.capture.schema import Conversation
 from archivum.code_repos import list_repos
+from archivum.db import qdrant_client as qdrant
 from archivum.fixes import extract_fix, fix_id_for, fix_to_object
 from archivum.knowledge.models import Citation, KnowledgeObject, KnowledgeRelationship
 from archivum.knowledge.personal_root import ensure_personal_root, link_to_self
@@ -139,6 +140,21 @@ async def record_session_work(
         await repo.upsert_object(
             fix_to_object(fix, source_id=source_id, wiki_id=wiki_id)
         )
+        # Best effort: the vector is what lets a paraphrase of this trouble
+        # find the fix later. Capture itself must never fail on it — a fix
+        # that is stored but unembedded still answers lexical recall, and
+        # `reindex_fixes` picks up anything missed here.
+        try:
+            await qdrant.upsert_fix(
+                fix_id_for(source_id), fix.symptom, fix.diagnosis, wiki_id=wiki_id
+            )
+        except Exception:
+            logger.warning(
+                "fix stored but not embedded; recall is lexical-only for it "
+                "until reindex_fixes runs",
+                extra={"fix_id": fix_id_for(source_id), "wiki_id": wiki_id},
+                exc_info=True,
+            )
         await link_to_self(repo, fix_id_for(source_id), "remembers", citation=citation)
         for symbol in touched:
             await repo.upsert_relationship(

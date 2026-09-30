@@ -20,7 +20,7 @@ from archivum.capture.schema import Conversation, ToolCall, Turn
 from archivum.code_repos import index_repo, list_repos, register_repo, scope_for
 from archivum.devices.provisioning import PROVISION_PREFIX
 from archivum.devices.repository import DeviceRepository
-from archivum.fixes import recall_fixes
+from archivum.fixes import recall_fixes, reindex_fixes
 from archivum.sessions import record_session_work
 from archivum.summaries import global_answer_context, summarise_communities
 from archivum.store.hashing import sha256_text
@@ -1044,6 +1044,7 @@ async def dispatch_command(command: str, wiki_id: str = "default") -> dict[str, 
       - JSON form: write {"title":"...","content":"...","slug":"optional","tags":[...optional]}
       - Pipe form: write <title> | <content>
     - lint
+    - reindex-fixes
     - graph <node_id>
     """
     _require_key()
@@ -1073,6 +1074,7 @@ async def dispatch_command(command: str, wiki_id: str = "default") -> dict[str, 
                     "open <slug>",
                     "write <json> OR write <title> | <content>",
                     "lint",
+                    "reindex-fixes",
                     "graph <node_id>",
                     "graph-export-demo [output_dir]",
                 ],
@@ -1148,6 +1150,20 @@ async def dispatch_command(command: str, wiki_id: str = "default") -> dict[str, 
         if cmd in {"lint", "lint_wiki"}:
             result = await lint_wiki(wiki_id=wiki_id)
             return {"ok": True, "command": raw, "tool": "lint_wiki", "result": result}
+
+        if cmd in {"reindex-fixes", "reindex_fixes"}:
+            # One-time backfill for stores that predate the fix vector
+            # channel; new fixes are embedded as they are recorded.
+            async with sqlite.get_db() as connection:
+                count = await reindex_fixes(
+                    KnowledgeRepository(connection), wiki_id=wiki_id
+                )
+            return {
+                "ok": True,
+                "command": raw,
+                "tool": "reindex_fixes",
+                "result": {"embedded": count},
+            }
 
         if cmd in {"graph-export-demo", "graph_export_demo", "export_graph_demo"}:
             result = await export_graph_demo(output_dir=rest or None)

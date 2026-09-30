@@ -287,3 +287,30 @@ async def test_an_unfamiliar_error_recalls_nothing(vault, tmp_path, mock_kuzu_co
         assert await recall_fixes(
             knowledge, symptom="ZeroDivisionError: division by zero", wiki_id="default"
         ) == []
+
+
+async def test_capture_survives_a_dead_vector_store(vault, tmp_path, mock_kuzu_conn):
+    """The embed is attempted with the fix's own words, and its failure costs
+    nothing: the record lands and lexical recall still answers. A memory that
+    can lose work because Qdrant restarted would not be trusted with work."""
+    from archivum.fixes import recall_fixes
+
+    repo = await _indexed_repo(vault, tmp_path)
+
+    embed = AsyncMock(side_effect=RuntimeError("connection refused"))
+    async with sqlite_mod.get_db() as conn:
+        knowledge = KnowledgeRepository(conn)
+        with patch("archivum.db.qdrant_client.upsert_fix", new=embed):
+            await record_session_work(
+                knowledge,
+                conversation=_bugfix_session(repo),
+                source_id="src-fix",
+                wiki_id="default",
+            )
+        assert embed.await_args.args[0] == "fix:src-fix"
+        assert "TypeError" in embed.await_args.args[1]
+
+        found = await recall_fixes(
+            knowledge, symptom="TypeError: bad operand", wiki_id="default"
+        )
+    assert [f.id for f in found] == ["fix:src-fix"]
