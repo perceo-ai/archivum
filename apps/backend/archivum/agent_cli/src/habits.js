@@ -37,6 +37,11 @@ If Archivum is unreachable, say so and carry on.
 export const STOP_HOOK_SCRIPT = `#!/usr/bin/env bash
 # Nudge the agent to record durable knowledge before a session ends.
 #
+# A record is one event. The project's vault page is the current truth, and
+# it drifts unless a fix that changes setup or behaviour is also written there.
+# So a session that recorded is asked one more question: is any statement on
+# the project page now wrong?
+#
 # Measured on 2026-09-17: four subagents did real work in this repository with
 # the tools and the skill both available, and none of them wrote anything to
 # the vault. Guidance in files is necessary and not sufficient. A hook fires
@@ -46,13 +51,15 @@ export const STOP_HOOK_SCRIPT = `#!/usr/bin/env bash
 #
 #   1. Nudge at most once per session. A Stop hook that blocks every time
 #      loops forever, because the turn it forces ends in another Stop.
-#   2. Never nudge when the agent already recorded. Checked by looking for a
-#      record_work call in the session's own transcript.
+#   2. Never ask for what the agent already did. A session that called
+#      record_work is not asked to record, and one that also called write_page
+#      is not asked about the page. Both checked in the session's own
+#      transcript.
 #   3. Never break a session. Any unexpected condition exits 0 and stays quiet.
 #      A memory tool that stops someone working would be uninstalled by lunch.
 #
-# The transcript is read locally, only to answer "was record_work called". It
-# is never uploaded, and nothing here sends it anywhere.
+# The transcript is read locally, only to answer "was record_work or
+# write_page called". It is never uploaded, and nothing here sends it anywhere.
 
 set -uo pipefail
 
@@ -89,6 +96,26 @@ marker="$marker_dir/$session_id"
 # sessions that had just recorded twice.
 if grep -qE '"name":"(mcp__[A-Za-z0-9_]+__)?record_work"' "$transcript" 2>/dev/null; then
   : > "$marker" 2>/dev/null
+  # Already edited a page this session: the loop is closed, say nothing.
+  if grep -qE '"name":"(mcp__[A-Za-z0-9_]+__)?write_page"' "$transcript" 2>/dev/null; then
+    exit 0
+  fi
+  jq -n '{
+    decision: "block",
+    reason: (
+      "Before finishing: you recorded this work to Archivum. The record keeps the story; "
+      + "the project page keeps the current truth.\\n\\n"
+      + "Is any statement on the project page now wrong — how it is set up, how it is "
+      + "operated, a known issue that is now fixed? If so:\\n\\n"
+      + "  1. get_page(slug=...) for the project page.\\n"
+      + "  2. Change only the section that is wrong (Setup, Operations, Known issues, Decisions). "
+      + "Leave every other section exactly as it was; other agents write to the same page.\\n"
+      + "  3. write_page(...) with the whole page, citing the record in the edited section.\\n\\n"
+      + "State the current truth only; the history stays in the record.\\n\\n"
+      + "If the fix changes nothing a page says — a bug in code that behaves as documented — "
+      + "say so in one line and stop. You will not be asked again this session."
+    )
+  }' 2>/dev/null || exit 0
   exit 0
 fi
 
@@ -110,6 +137,8 @@ jq -n '{
     + "its reason, a gotcha that would cost the next person an hour — call record_work now:\\n\\n"
     + "  record_work(request=..., outcome=..., changed_paths=[...], verified_by=...)\\n\\n"
     + "Say what the *cause* was, not just the symptom. \\"Fixed the test\\" is worth nothing later.\\n\\n"
+    + "If the finding changes how the project is set up or operated, also get_page the project "
+    + "page, change only the section that is now wrong, and write_page it back citing the record.\\n\\n"
     + "If nothing here is worth keeping — a rename, a typo, a formatting pass — say so in one "
     + "line and stop. Not every session produces knowledge, and recording noise is worse than "
     + "recording nothing. You will not be asked again this session."
