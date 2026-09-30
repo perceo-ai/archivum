@@ -10,11 +10,18 @@ import { parseOptions } from "./util.js";
 // and refreshes the habits. This command only saves remembering the URL.
 export function resolveInstallUrl(args, { home = os.homedir(), env = process.env } = {}) {
   const { values } = parseOptions(args);
-  const statePath = path.join(home, ".archivum", "connection.json");
-  const state = fs.existsSync(statePath)
-    ? JSON.parse(fs.readFileSync(statePath, "utf8"))
-    : null;
-  const base = values.get("base") ?? env.ARCHIVUM_URL ?? state?.base_url ?? null;
+  // Overrides first, and only then the saved connection: --base and
+  // ARCHIVUM_URL are what someone reaches for when the saved state is the
+  // problem, so a corrupt connection.json must not block them.
+  let base = values.get("base") ?? env.ARCHIVUM_URL ?? null;
+  if (!base) {
+    const statePath = path.join(home, ".archivum", "connection.json");
+    try {
+      base = JSON.parse(fs.readFileSync(statePath, "utf8"))?.base_url ?? null;
+    } catch {
+      base = null;
+    }
+  }
   return base ? `${base.replace(/\/+$/, "")}/install` : null;
 }
 
@@ -33,6 +40,11 @@ export function selfUpdateCommand(
     return;
   }
   log(`archivum: updating from ${url}`);
-  const result = run("sh", ["-c", 'curl -fsSL "$1" | sh', "sh", url], { stdio: "inherit", env });
+  // Download, then run: `curl | sh` reports sh's exit status, and sh exits 0
+  // on the empty input a failed download leaves, so a dead server looked like
+  // a finished update.
+  const script =
+    't=$(mktemp) && curl -fsSL "$1" -o "$t" && sh "$t"; s=$?; rm -f "$t"; exit $s';
+  const result = run("sh", ["-c", script, "sh", url], { stdio: "inherit", env });
   if (result.status !== 0) throw new Error(`Update from ${url} failed.`);
 }
