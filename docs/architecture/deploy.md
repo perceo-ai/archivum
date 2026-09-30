@@ -1,19 +1,31 @@
 # Deploying to perceo-control
 
 Archivum runs on **perceo-control, VM 104 on jigserver**, reached through the
-Proxmox guest agent.
+Proxmox guest agent — or, when you are already on perceo-control, in place via
+`sudo` (the stack's `.env` is root-only, and jigserver does not resolve from
+inside the VM).
+
+Merge to `main`, then from any checkout:
 
 ```bash
-scripts/deploy-perceo-control.sh --check   # report state, change nothing
-scripts/deploy-perceo-control.sh           # pull, rebuild, restart, verify
+make ship-check   # report state, change nothing
+make ship         # pull main, rebuild, restart, verify, refresh `archivum` here
 ```
+
+`make ship` wraps `scripts/deploy-perceo-control.sh` and then re-runs the
+served installer, so this machine's CLI matches the server that was just
+deployed. Every other machine picks it up with `archivum self-update`. If you
+changed `packages/archivum-cli`, run `make vendor-cli` before merging, or
+`/install` keeps serving the old CLI.
 
 The script is read-only until its final step, refuses to run if the working tree
 on the VM has uncommitted changes, and verifies health from **inside** the VM
 rather than through the tunnel — scripted requests through Cloudflare trip the
 shared login rate limiter.
 
-Overrides: `PVE_HOST`, `ARCHIVUM_VMID`, `ARCHIVUM_APP_DIR`, `ARCHIVUM_BRANCH`.
+Overrides: `PVE_HOST`, `ARCHIVUM_VMID`, `ARCHIVUM_APP_DIR`, `ARCHIVUM_BRANCH`,
+`ARCHIVUM_DEPLOY_LOCAL` (`1`/`0` to force in-place or remote), `ARCHIVUM_URL`
+(server the CLI is refreshed from).
 
 ## After the first deploy of this change
 

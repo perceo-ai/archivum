@@ -12,6 +12,7 @@ import { wikiCommand } from "./api.js";
 import { configCommand } from "./config.js";
 import { recoveryCommand } from "./recovery.js";
 import { habitsCommand } from "./habits.js";
+import { selfUpdateCommand } from "./self-update.js";
 
 async function main(argv) {
   const [command, ...args] = argv;
@@ -32,6 +33,7 @@ async function main(argv) {
   if (command === "config") return configCommand(args);
   if (command === "recovery") return recoveryCommand(args);
   if (command === "habits") return habitsCommand(args);
+  if (command === "self-update") return selfUpdateCommand(args);
 
   throw new Error(`Unknown command: ${command}`);
 }
