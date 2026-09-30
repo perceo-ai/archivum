@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
 import { habitsCommand, HABITS_BLOCK, STOP_HOOK_SCRIPT } from "../src/habits.js";
@@ -146,4 +147,57 @@ test("--base wins over the stored connection", async () => {
     log: () => {},
   });
   assert.equal(asked, "https://other.example/api/mcp/skill");
+});
+
+// The hook's behaviour, not just its bytes: run the shipped script against a
+// fake transcript the way Claude Code would, and read back what it decided.
+// Skipped where jq is missing, because the script deliberately does nothing
+// there (rule 3) and there would be nothing to observe.
+const hasJq = spawnSync("sh", ["-c", "command -v jq"]).status === 0;
+
+function runHook(toolNames) {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "archivum-hook-"));
+  const script = path.join(dir, "hook.sh");
+  fs.writeFileSync(script, STOP_HOOK_SCRIPT, { mode: 0o755 });
+  const transcript = path.join(dir, "transcript.jsonl");
+  fs.writeFileSync(
+    transcript,
+    toolNames.map((name) => JSON.stringify({ type: "tool_use", name })).join("\n") + "\n",
+  );
+  const payload = JSON.stringify({ session_id: "s1", transcript_path: transcript });
+  const env = { ...process.env, TMPDIR: dir };
+  const once = () => spawnSync("bash", [script], { input: payload, env, encoding: "utf8" });
+  const first = once();
+  const second = once();
+  return {
+    first: first.stdout ? JSON.parse(first.stdout) : null,
+    second: second.stdout ? JSON.parse(second.stdout) : null,
+  };
+}
+
+test("stop hook: edits without a record are asked to record, once", { skip: !hasJq }, () => {
+  const { first, second } = runHook(["Read", "Edit"]);
+  assert.equal(first.decision, "block");
+  assert.match(first.reason, /call record_work now/);
+  assert.match(first.reason, /write_page/);
+  assert.equal(second, null);
+});
+
+test("stop hook: a record without a page edit asks about the page, once", { skip: !hasJq }, () => {
+  const { first, second } = runHook(["Edit", "mcp__archivum__record_work"]);
+  assert.equal(first.decision, "block");
+  assert.match(first.reason, /project page now wrong/);
+  assert.match(first.reason, /get_page/);
+  assert.doesNotMatch(first.reason, /call record_work now/);
+  assert.equal(second, null);
+});
+
+test("stop hook: a record and a page edit close the loop silently", { skip: !hasJq }, () => {
+  const { first } = runHook(["Edit", "mcp__archivum__record_work", "mcp__archivum__write_page"]);
+  assert.equal(first, null);
+});
+
+test("stop hook: a read-only session is never asked", { skip: !hasJq }, () => {
+  const { first } = runHook(["Read", "Grep"]);
+  assert.equal(first, null);
 });
