@@ -8,6 +8,11 @@
 #   scripts/deploy-perceo-control.sh --check   # report state, change nothing
 #   scripts/deploy-perceo-control.sh           # pull, rebuild, restart, verify
 #
+# Run on perceo-control itself and it deploys in place: commands go through
+# sudo instead of ssh + `qm guest exec`, because jigserver does not resolve
+# from inside the VM and the stack's .env is root-only. Force either mode with
+# ARCHIVUM_DEPLOY_LOCAL=1 or =0.
+#
 # Deliberately not run automatically: this restarts the stack that holds your
 # vault, and a deploy you did not watch is a deploy you cannot roll back from
 # quickly.
@@ -21,16 +26,28 @@ BRANCH="${ARCHIVUM_BRANCH:-main}"
 CHECK_ONLY=0
 [ "${1:-}" = "--check" ] && CHECK_ONLY=1
 
-# `qm guest exec` returns JSON with the command's output nested inside it.
-guest() {
-  ssh "$PVE_HOST" "qm guest exec $VMID -- bash -lc $(printf '%q' "$1")" \
-    | python3 -c 'import json,sys; d=json.load(sys.stdin); sys.stdout.write(d.get("out-data","")); sys.stderr.write(d.get("err-data","")); sys.exit(d.get("exitcode",0))'
-}
+LOCAL="${ARCHIVUM_DEPLOY_LOCAL:-}"
+if [ -z "$LOCAL" ]; then
+  if [ "$(hostname)" = "perceo-control" ] && [ -d "$APP_DIR" ]; then LOCAL=1; else LOCAL=0; fi
+fi
 
-echo "→ Proxmox host: $PVE_HOST, VM $VMID, app dir $APP_DIR, branch $BRANCH"
-
-echo "→ Guest agent"
-ssh "$PVE_HOST" "qm agent $VMID ping" >/dev/null && echo "  agent responding"
+if [ "$LOCAL" = "1" ]; then
+  # Root, like `qm guest exec`, so every command below behaves the same in
+  # both modes. `sudo -v` asks for the password once, up front, rather than
+  # halfway through a build.
+  sudo -v
+  guest() { sudo bash -lc "$1"; }
+  echo "→ Deploying in place on $(hostname), app dir $APP_DIR, branch $BRANCH"
+else
+  # `qm guest exec` returns JSON with the command's output nested inside it.
+  guest() {
+    ssh "$PVE_HOST" "qm guest exec $VMID -- bash -lc $(printf '%q' "$1")" \
+      | python3 -c 'import json,sys; d=json.load(sys.stdin); sys.stdout.write(d.get("out-data","")); sys.stderr.write(d.get("err-data","")); sys.exit(d.get("exitcode",0))'
+  }
+  echo "→ Proxmox host: $PVE_HOST, VM $VMID, app dir $APP_DIR, branch $BRANCH"
+  echo "→ Guest agent"
+  ssh "$PVE_HOST" "qm agent $VMID ping" >/dev/null && echo "  agent responding"
+fi
 
 echo "→ Current state"
 guest "cd $APP_DIR && git rev-parse --short HEAD && git status --porcelain | head"
@@ -120,6 +137,10 @@ echo "  /api/skills answers $deployed (401 = present and requiring a device key)
 
 guest "cd $APP_DIR && docker compose logs --tail 10 backend | tail -10"
 
+if [ "$LOCAL" = "1" ]; then
+  echo "✓ Deployed."
+  exit 0
+fi
 echo "✓ Deployed. Sign the CLIs in if you have not yet:"
 echo "    ssh $PVE_HOST \"qm guest exec $VMID -- docker exec -it archivum-backend claude login\""
 echo "    ssh $PVE_HOST \"qm guest exec $VMID -- docker exec -it archivum-codex codex login\""

@@ -101,8 +101,13 @@ rm -rf "$CLI"
 mkdir -p "$CLI"
 tar -xzf "$TMP/cli.tar.gz" -C "$CLI"
 
+# The node found now, pinned. nvm and friends only put node on PATH in
+# interactive shells, so agents, hooks, and cron would otherwise get
+# "node: not found". Falls back to PATH if that node is later removed.
+NODE_BIN=$(command -v node)
 cat > "$BIN/archivum" <<LAUNCHER
 #!/bin/sh
+if [ -x "$NODE_BIN" ]; then exec "$NODE_BIN" "$CLI/src/index.js" "\\$@"; fi
 exec node "$CLI/src/index.js" "\\$@"
 LAUNCHER
 chmod +x "$BIN/archivum"

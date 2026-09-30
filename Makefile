@@ -1,4 +1,4 @@
-.PHONY: up down build logs shell-backend shell-frontend setup uninstall rebuild-indexes lint-wiki dev graph-export-demo mcp-demo mcp-smoke
+.PHONY: up down build logs shell-backend shell-frontend setup uninstall rebuild-indexes lint-wiki dev graph-export-demo mcp-demo mcp-smoke ship ship-check vendor-cli
 
 # ─── Docker ───────────────────────────────────────────────────────────────────
 
@@ -24,6 +24,21 @@ logs:
 
 logs-backend:
 	node packages/archivum-cli/src/index.js stack logs backend
+
+# ─── Release ──────────────────────────────────────────────────────────────────
+
+# Deploy origin/main to perceo-control (in place when run there) and refresh
+# this machine's `archivum` from it. Other machines: `archivum self-update`.
+ship:
+	scripts/ship.sh
+
+ship-check:
+	scripts/ship.sh --check
+
+# Copy the CLI into the backend so /install serves it. Run after editing
+# packages/archivum-cli; tests/test_vendored_cli.py fails until you do.
+vendor-cli:
+	scripts/sync-vendored-cli.sh
 
 # ─── Dev shortcuts ────────────────────────────────────────────────────────────
 

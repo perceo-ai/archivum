@@ -16,6 +16,7 @@ Commands:
   mcp config [--client claude|cursor|sse]
   connect <pairing-token> [--name NAME] [--client claude|cursor|codex]
   habits [--base URL]        install the memory skill, instructions, and Stop hook
+  self-update [--base URL]   fetch the latest CLI from the linked server
   wiki <ingest|search|query|pages|open|write|lint|graph|rebuild-indexes>
 
 Run from an Archivum install directory or repository root.`);

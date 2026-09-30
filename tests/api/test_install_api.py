@@ -4,8 +4,12 @@ from __future__ import annotations
 
 import gzip
 import io
+import shutil
+import subprocess
 import tarfile
 from unittest.mock import AsyncMock, patch
+
+from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
@@ -135,3 +139,34 @@ def test_a_rerun_on_a_linked_machine_reports_the_link_and_refreshes_habits(insta
         assert "connection.json" in body
         assert "already linked" in body
         assert "habits" in body
+
+
+@pytest.mark.skipif(shutil.which("node") is None, reason="needs node to install against")
+def test_the_launcher_runs_where_node_is_not_on_path(install_client, tmp_path):
+    """nvm only puts node on PATH in interactive shells, so on a machine set up
+    that way every agent, hook, and cron job got "node: not found" from the
+    launcher. The launcher pins the node the installer found."""
+    tarball = tmp_path / "cli.tar.gz"
+    tarball.write_bytes(install_client.get("/install/cli.tar.gz").content)
+    fakebin = tmp_path / "fakebin"
+    fakebin.mkdir()
+    # Stands in for the network: `curl ... -o FILE` copies the tarball.
+    (fakebin / "curl").write_text(f'#!/bin/sh\nwhile [ "$1" != "-o" ]; do shift; done\ncp {tarball} "$2"\n')
+    (fakebin / "curl").chmod(0o755)
+    home = tmp_path / "home"
+    home.mkdir()
+    node_dir = Path(shutil.which("node")).resolve().parent
+    env = {"HOME": str(home), "PATH": f"{fakebin}:{node_dir}:/usr/bin:/bin"}
+
+    script = install_client.get("/install").text
+    subprocess.run(["sh", "-c", script], env=env, check=True, capture_output=True)
+
+    launcher = home / ".local" / "bin" / "archivum"
+    result = subprocess.run(
+        [str(launcher), "--help"],
+        env={"HOME": str(home), "PATH": "/usr/bin:/bin"},
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 0, result.stderr
+    assert "Usage: archivum" in result.stdout
