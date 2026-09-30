@@ -77,6 +77,27 @@ def mock_qdrant_client():
         yield mock_instance
 
 
+# ── Fix vector channel ────────────────────────────────────────────────────────
+
+
+@pytest.fixture(autouse=True)
+def _fix_vectors_offline():
+    """Keep the fix vector channel away from live services, in every test.
+
+    The first run of this channel proved why: a developer machine with Qdrant
+    and the embedding model running had test fixes embedded into its real
+    collection, and an unrelated-error test then failed because the live model
+    genuinely scored the query above the floor. Tests that want the channel
+    patch these targets themselves; everything else gets silence, which is
+    also what a machine without Qdrant gets.
+    """
+    with (
+        patch("archivum.db.qdrant_client.upsert_fix", new=AsyncMock()),
+        patch("archivum.db.qdrant_client.search_fixes", new=AsyncMock(return_value=[])),
+    ):
+        yield
+
+
 # ── SQLite fixture ────────────────────────────────────────────────────────────
 
 

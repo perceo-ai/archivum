@@ -434,6 +434,94 @@ async def upsert_page(
     return len(points)
 
 
+# Fix records share the page collection rather than getting their own,
+# because one collection means one embedding model and one init path. The
+# payload `kind` keeps the two populations apart at query time.
+FIX_KIND = "fix"
+
+
+def embeddable_fix_text(symptom: str, diagnosis: str) -> str:
+    """What should be embedded for a remembered repair.
+
+    The symptom alone is how the fix was first phrased, and phrasing is
+    exactly what lexical recall already covers. The diagnosis is where the
+    other names for the same trouble live — "install.sh exits 0" appears in
+    the diagnosis of a fix whose symptom says "silent installer failure" —
+    so both go into the vector.
+    """
+    return f"{symptom}\n\n{diagnosis}".strip()
+
+
+async def upsert_fix(
+    fix_id: str,
+    symptom: str,
+    diagnosis: str,
+    wiki_id: str = "default",
+    settings: Settings | None = None,
+) -> None:
+    """Embed one fix record. One point per fix: fixes are short, so no chunking.
+
+    The point id is derived from the fix id, so re-recording the same session
+    overwrites rather than accumulates.
+    """
+    s = settings or get_settings()
+    client = await get_client(s)
+    await resolve_embed_dim(s)
+
+    text = embeddable_fix_text(symptom, diagnosis)
+    if not text:
+        return
+    vectors = await embed_texts([text], s)
+    await client.upsert(
+        collection_name=s.qdrant_collection,
+        points=[
+            PointStruct(
+                id=str(uuid.uuid5(uuid.NAMESPACE_URL, f"{wiki_id}/{fix_id}")),
+                vector=vectors[0],
+                payload={
+                    "kind": FIX_KIND,
+                    "fix_id": fix_id,
+                    "wiki_id": wiki_id,
+                    "text": text,
+                },
+            )
+        ],
+    )
+    logger.debug("Qdrant upsert_fix done", extra={"fix_id": fix_id, "wiki_id": wiki_id})
+
+
+async def search_fixes(
+    query: str,
+    wiki_id: str = "default",
+    limit: int = 5,
+    settings: Settings | None = None,
+) -> list[dict[str, Any]]:
+    """Semantic search over fix records. Returns list of {fix_id, score}."""
+    s = settings or get_settings()
+    client = await get_client(s)
+    await resolve_embed_dim(s)
+
+    vectors = await embed_texts([query], s)
+    results = await _semantic_query_points(
+        client,
+        collection_name=s.qdrant_collection,
+        query_vector=vectors[0],
+        query_filter=Filter(
+            must=[
+                FieldCondition(key="wiki_id", match=MatchValue(value=wiki_id)),
+                FieldCondition(key="kind", match=MatchValue(value=FIX_KIND)),
+            ]
+        ),
+        limit=limit,
+        with_payload=True,
+    )
+    return [
+        {"fix_id": (r.payload or {}).get("fix_id", ""), "score": r.score}
+        for r in results
+        if (r.payload or {}).get("fix_id")
+    ]
+
+
 async def index_page(
     slug: str,
     title: str,
@@ -466,6 +554,20 @@ async def clear_projection_index(
     logger.debug("Deleted canonical projection vectors", extra={"wiki_id": wiki_id})
 
 
+def _page_filter(wiki_id: str) -> Filter:
+    """Page vectors for one wiki, and nothing that merely shares the collection.
+
+    Fix vectors live in the same collection with `kind: "fix"` in their
+    payload. Page points predate that key and have no `kind` at all, which is
+    why this excludes fixes rather than requiring pages — `must_not` matches
+    points where the key is absent, so old pages stay findable unreindexed.
+    """
+    return Filter(
+        must=[FieldCondition(key="wiki_id", match=MatchValue(value=wiki_id))],
+        must_not=[FieldCondition(key="kind", match=MatchValue(value=FIX_KIND))],
+    )
+
+
 async def search(
     query: str,
     wiki_id: str = "default",
@@ -484,9 +586,7 @@ async def search(
         client,
         collection_name=s.qdrant_collection,
         query_vector=query_vec,
-        query_filter=Filter(
-            must=[FieldCondition(key="wiki_id", match=MatchValue(value=wiki_id))]
-        ),
+        query_filter=_page_filter(wiki_id),
         limit=limit,
         with_payload=True,
     )
@@ -523,9 +623,7 @@ async def search_raw(
         client,
         collection_name=s.qdrant_collection,
         query_vector=vectors[0],
-        query_filter=Filter(
-            must=[FieldCondition(key="wiki_id", match=MatchValue(value=wiki_id))]
-        ),
+        query_filter=_page_filter(wiki_id),
         limit=limit * 3,  # fetch more to allow deduplication upstream
         with_payload=True,
     )

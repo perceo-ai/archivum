@@ -205,6 +205,13 @@ class Settings(BaseSettings):
     # results. Tuned against the default local bge-small model, where genuine
     # matches score ~0.6-0.8 and noise sits at ~0.50.
     search_min_similarity: float = 0.58
+    # Fix recall runs the same dense search but needs a stricter floor: fix
+    # texts are short and error-shaped, so unrelated errors score higher
+    # against each other than unrelated pages do. Measured 2026-09-30 with
+    # bge-small: paraphrases of the same trouble scored 0.73-0.84, different
+    # errors 0.59-0.70. The lexical channel covers same-error pastes, so the
+    # vector channel can afford precision over recall here.
+    fix_min_similarity: float = 0.72
     mcp_public_url: str = ""
     # The ASGI scope's scheme reflects the connection uvicorn itself sees,
     # not what a client used to reach a proxy in front of it. The Dockerfile

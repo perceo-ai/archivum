@@ -25,8 +25,11 @@ from dataclasses import dataclass, field
 
 from archivum.capture.classify import classify_session, touched_paths
 from archivum.capture.schema import Conversation, ToolCall
+from archivum.config import get_settings
+from archivum.db import qdrant_client as qdrant
 from archivum.knowledge.models import Citation, KnowledgeObject
 from archivum.knowledge.repository import KnowledgeRepository
+from archivum.retrieval.hybrid import fuse_ranked_hits
 
 # Commands whose success or failure says something about whether the code works.
 _CHECK_HINTS = re.compile(
@@ -259,6 +262,27 @@ def fix_to_object(fix: Fix, *, source_id: str, wiki_id: str) -> KnowledgeObject:
     )
 
 
+async def _semantic_fix_ranking(symptom: str, wiki_id: str, limit: int) -> list[tuple[str, float]]:
+    """Fix ids that mean this trouble, whatever words it arrived in.
+
+    Lexical overlap only recognises a failure phrased the way it was phrased
+    the first time: "address already in use" scores 0.33 against "endpoint
+    already has a live listener" and is dropped. The vector channel is what
+    makes a paraphrase land. Failure here is silence, not an error — recall
+    must keep working on a machine where Qdrant is down.
+    """
+    try:
+        hits = await qdrant.search_fixes(symptom, wiki_id=wiki_id, limit=limit)
+    except Exception:
+        return []
+    floor = get_settings().fix_min_similarity
+    return [
+        (str(hit["fix_id"]), float(hit["score"]))
+        for hit in hits
+        if float(hit.get("score", 0.0)) >= floor
+    ]
+
+
 async def recall_fixes(
     repo: KnowledgeRepository,
     *,
@@ -266,18 +290,59 @@ async def recall_fixes(
     wiki_id: str,
     limit: int = _MAX_RECALLED,
 ) -> list[KnowledgeObject]:
-    """Fixes for trouble that looks like this one, best match first."""
+    """Fixes for trouble that looks like this one, best match first.
+
+    Two channels, fused: lexical overlap on the symptom's shape, which is
+    precise when the same error is pasted twice, and vector similarity over
+    symptom plus diagnosis, which is what recognises the same trouble told in
+    different words. Either alone answers "have I hit this before?" with no
+    more memory than a grep.
+    """
     if not symptom.strip():
         return []
     candidates = await repo.list_objects(scope=f"wiki:{wiki_id}", limit=10_000)
-    scored = [
-        (match_score(symptom, str(obj.properties.get("symptom", ""))), obj)
-        for obj in candidates
-        if obj.kind == "fix"
-    ]
-    matches = [
-        (score, obj) for score, obj in scored if score >= _MATCH_THRESHOLD
+    fixes_by_id = {obj.id: obj for obj in candidates if obj.kind == "fix"}
+
+    lexical = [
+        (score, obj)
+        for obj in fixes_by_id.values()
+        if (score := match_score(symptom, str(obj.properties.get("symptom", "")))) >= _MATCH_THRESHOLD
     ]
     # Best match first; ties broken on id so the same store answers the same way.
-    matches.sort(key=lambda pair: (-pair[0], pair[1].id))
-    return [obj for _, obj in matches[:limit]]
+    lexical.sort(key=lambda pair: (-pair[0], pair[1].id))
+
+    semantic = await _semantic_fix_ranking(symptom, wiki_id, limit)
+
+    # Fused wider than asked, because a vector can outlive its record — the
+    # point survives a deleted object. Cutting to `limit` before dropping
+    # those ghosts would let a ghost displace a valid fix; so: fuse wide,
+    # drop what the repository no longer holds, then cut.
+    fused = fuse_ranked_hits(
+        keyword=[(obj.id, score) for score, obj in lexical],
+        vector=semantic,
+        graph=[],
+        limit=limit + len(semantic),
+    )
+    alive = [fixes_by_id[hit.id] for hit in fused if hit.id in fixes_by_id]
+    return alive[:limit]
+
+
+async def reindex_fixes(repo: KnowledgeRepository, *, wiki_id: str) -> int:
+    """Embed every stored fix, for stores that predate the vector channel.
+
+    Idempotent: each fix maps to one deterministic point, so running this
+    twice leaves the collection as it was.
+    """
+    candidates = await repo.list_objects(scope=f"wiki:{wiki_id}", limit=10_000)
+    count = 0
+    for obj in candidates:
+        if obj.kind != "fix":
+            continue
+        await qdrant.upsert_fix(
+            obj.id,
+            str(obj.properties.get("symptom", "")),
+            str(obj.properties.get("diagnosis", "")),
+            wiki_id=wiki_id,
+        )
+        count += 1
+    return count
