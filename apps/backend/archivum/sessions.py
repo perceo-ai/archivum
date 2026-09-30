@@ -15,6 +15,7 @@ of it, so the same transcript always produces the same record.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from pathlib import Path
 
@@ -145,8 +146,15 @@ async def record_session_work(
         # that is stored but unembedded still answers lexical recall, and
         # `reindex_fixes` picks up anything missed here.
         try:
-            await qdrant.upsert_fix(
-                fix_id_for(source_id), fix.symptom, fix.diagnosis, wiki_id=wiki_id
+            # Ten seconds is generous for one short text when the provider is
+            # healthy; when it is not, the recording call must not inherit the
+            # embed client's 120s patience. Timeout lands in the same place
+            # as any other failure: logged, lexical-only, backfillable.
+            await asyncio.wait_for(
+                qdrant.upsert_fix(
+                    fix_id_for(source_id), fix.symptom, fix.diagnosis, wiki_id=wiki_id
+                ),
+                timeout=10,
             )
         except Exception:
             logger.warning(

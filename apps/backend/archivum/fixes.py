@@ -313,15 +313,18 @@ async def recall_fixes(
 
     semantic = await _semantic_fix_ranking(symptom, wiki_id, limit)
 
+    # Fused wider than asked, because a vector can outlive its record — the
+    # point survives a deleted object. Cutting to `limit` before dropping
+    # those ghosts would let a ghost displace a valid fix; so: fuse wide,
+    # drop what the repository no longer holds, then cut.
     fused = fuse_ranked_hits(
         keyword=[(obj.id, score) for score, obj in lexical],
         vector=semantic,
         graph=[],
-        limit=limit,
+        limit=limit + len(semantic),
     )
-    # A vector can outlive its record — the point survives a deleted object —
-    # so only ids the repository still holds are returned.
-    return [fixes_by_id[hit.id] for hit in fused if hit.id in fixes_by_id]
+    alive = [fixes_by_id[hit.id] for hit in fused if hit.id in fixes_by_id]
+    return alive[:limit]
 
 
 async def reindex_fixes(repo: KnowledgeRepository, *, wiki_id: str) -> int:

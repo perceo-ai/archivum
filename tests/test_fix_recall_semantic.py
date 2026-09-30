@@ -87,6 +87,26 @@ async def test_a_vector_for_a_deleted_record_is_not_resurrected():
         await conn.close()
 
 
+async def test_a_ghost_vector_does_not_displace_a_valid_fix():
+    """Review finding: the cut to `limit` used to happen before dropping ids
+    the repository no longer holds, so a ghost could push a real fix out."""
+    conn, repo = await _store(("src-1", _LISTENER))
+    try:
+        with patch(
+            "archivum.db.qdrant_client.search_fixes",
+            new=_dense(("fix:gone", 0.95), ("fix:src-1", 0.80)),
+        ):
+            found = await recall_fixes(
+                repo,
+                symptom="address already in use when starting archcar",
+                wiki_id="default",
+                limit=1,
+            )
+        assert [f.id for f in found] == ["fix:src-1"]
+    finally:
+        await conn.close()
+
+
 async def test_dense_scores_below_the_fix_floor_are_noise():
     """Different errors score ~0.6-0.7 against each other; that must not recall."""
     conn, repo = await _store(("src-1", _LISTENER))
