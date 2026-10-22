@@ -37,6 +37,13 @@ class Settings(BaseSettings):
     blob_dir: Path = Path("/data/blobs")
     db_path: Path = Path("/data/archivum.db")
     kuzu_path: Path = Path("/data/kuzu")
+    # Kuzu is single-process: only one process may hold the database file.
+    # "owner" opens it; "client" never does and sends every graph call to the
+    # owner's internal endpoint at `graph_rpc_url` instead.
+    kuzu_role: str = "owner"
+    graph_rpc_url: str = ""
+    # Shared secret for /internal/graph; empty disables the check.
+    internal_graph_token: str = ""
     # Parsed-AST cache for indexed repositories. Kept beside the other data
     # rather than inside each repository, so indexing never writes into a
     # working tree you are trying to keep clean.
