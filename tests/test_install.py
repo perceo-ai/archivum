@@ -21,6 +21,7 @@ def complete_env_values() -> dict[str, str]:
             "JWT_SECRET": "jwt-secret-existing",
             "OWNER_PASSWORD": "owner-password-existing",
             "MCP_API_KEY": "mcp-key-existing",
+            "INTERNAL_GRAPH_TOKEN": "internal-graph-token-existing",
             "LLM_EXTRACTION_PROVIDER": "anthropic",
             "LLM_SYNTHESIS_PROVIDER": "anthropic",
             "LLM_MODEL": "claude-haiku-4-5-20251001",
@@ -43,6 +44,13 @@ class InstallerEnvTests(unittest.TestCase):
 
         self.assertTrue(install.env_needs_configuration(values))
 
+    def test_missing_internal_graph_token_needs_configuration(self) -> None:
+        # compose refuses to start without it, so an env lacking it is not complete.
+        values = complete_env_values()
+        values["INTERNAL_GRAPH_TOKEN"] = ""
+
+        self.assertTrue(install.env_needs_configuration(values))
+
     def test_openrouter_env_with_shell_spacing_does_not_need_configuration(self) -> None:
         parsed = install.parse_env(
             """
@@ -51,6 +59,7 @@ class InstallerEnvTests(unittest.TestCase):
             JWT_SECRET = jwt-secret-existing
             OWNER_PASSWORD = owner-password-existing
             MCP_API_KEY = mcp-key-existing
+            INTERNAL_GRAPH_TOKEN = internal-graph-token-existing
             LLM_EXTRACTION_PROVIDER = openrouter
             LLM_SYNTHESIS_PROVIDER = openrouter
             LLM_MODEL = openrouter/auto

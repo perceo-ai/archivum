@@ -46,6 +46,7 @@ DEFAULTS = {
     "OWNER_PASSWORD": "",
     "OWNER_USERNAME": "admin",
     "MCP_API_KEY": "",
+    "INTERNAL_GRAPH_TOKEN": "",
     "ARCHIVUM_HOST": "",
     "ARCHIVUM_FRONTEND_PORT": "8473",
     "PUBLIC_WIKI_ENABLED": "false",
@@ -246,7 +247,7 @@ def has_secret(values: dict[str, str], key: str) -> bool:
 
 
 def env_needs_configuration(values: dict[str, str]) -> bool:
-    for key in ("OWNER_PASSWORD", "JWT_SECRET", "MCP_API_KEY"):
+    for key in ("OWNER_PASSWORD", "JWT_SECRET", "MCP_API_KEY", "INTERNAL_GRAPH_TOKEN"):
         if not has_secret(values, key):
             return True
 
@@ -457,6 +458,9 @@ def configure_access(values: dict[str, str]) -> None:
     if not secret_default(values.get("MCP_API_KEY", "")):
         values["MCP_API_KEY"] = generate_secret(32)
         ok("Generated MCP_API_KEY.")
+    if not secret_default(values.get("INTERNAL_GRAPH_TOKEN", "")):
+        values["INTERNAL_GRAPH_TOKEN"] = generate_secret(32)
+        ok("Generated INTERNAL_GRAPH_TOKEN.")
 
     values["PUBLIC_WIKI_ENABLED"] = "true" if ask_bool(
         "Expose the entire wiki publicly as read-only at /public?",

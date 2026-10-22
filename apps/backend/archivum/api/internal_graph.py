@@ -5,9 +5,11 @@ server runs with ``kuzu_role="client"`` and sends each graph call here
 instead of opening the file. Only the API mounts this router; the MCP server
 calls it and never serves it.
 
-It is reachable only on the compose network (the API publishes no host
-port). It runs only the named graph operations below, never an arbitrary
-attribute of the graph module, and checks a shared token when one is set.
+Most of these operations write or delete graph state, and the API's port may
+be published beyond the compose network, so every call must carry the shared
+token. With no token configured the router refuses everything rather than
+trusting the network. It runs only the named graph operations below, never an
+arbitrary attribute of the graph module.
 """
 
 from __future__ import annotations
@@ -57,7 +59,9 @@ async def call_graph_op(
         raise HTTPException(status_code=404, detail=f"Unknown graph operation: {op}")
 
     expected = get_settings().internal_graph_token
-    if expected and not secrets.compare_digest(x_internal_token or "", expected):
+    if not expected:
+        raise HTTPException(status_code=403, detail="Internal graph token is not configured")
+    if not secrets.compare_digest(x_internal_token or "", expected):
         raise HTTPException(status_code=403, detail="Invalid internal token")
 
     try:
