@@ -974,6 +974,62 @@ def test_a_quoted_address_is_not_read_as_a_source_citation(address):
     assert not narrative_is_substantive(invented, known_locations=allowed)
 
 
+# Every address form QA measured on 0be012b, as the model might write it.
+HOST_ADDRESSES = [
+    "`127.0.0.1:8000`",
+    "127.0.0.1:8000",
+    "`db.example.com:5432`",
+    "redis.internal:6379",
+    "`postgres.svc.cluster.local:5432`",
+    "0.0.0.0:8000",
+]
+
+
+@pytest.mark.parametrize("address", HOST_ADDRESSES)
+def test_a_host_and_port_is_not_read_as_a_source_citation(address):
+    """A port is indistinguishable from a line; the suffix is what names a file.
+
+    Only paths ending in a suffix the indexer reads can be in the allowed set,
+    so only those are citations. `.1`, `.com` and `.internal` are not.
+    """
+    allowed = {ROUTE_ANCHOR}
+    narrative = (
+        _route_narrative(ROUTE_ANCHOR)
+        + f" The page reads its data from {address} when it renders."
+    )
+    assert narrative_is_substantive(narrative, known_locations=allowed)
+
+
+def test_a_cluster_whose_narrative_names_its_services_keeps_its_page():
+    community, members = _route_cluster()
+    narrative = (
+        _route_narrative(ROUTE_ANCHOR)
+        + " It queries `db.example.com:5432` and caches in redis.internal:6379."
+    )
+    page = render_community_page(
+        community,
+        repo_name="atlas",
+        objects_by_id=members,
+        edges=[],
+        repo_root="/r",
+        narrative=narrative,
+    )
+    assert page is not None and "`db.example.com:5432`" in page
+
+
+@pytest.mark.parametrize(
+    "invented",
+    ["`app/[slug]/Missing Page.tsx:10-20`", "cache.py:40-80", "`lib/db.ts:5`"],
+)
+def test_an_invented_source_citation_beside_an_address_is_still_rejected(invented):
+    """Addresses are skipped; a code path nobody offered is still a claim."""
+    narrative = (
+        _route_narrative(ROUTE_ANCHOR)
+        + f" It reads `db.example.com:5432` and 127.0.0.1:8000, see {invented}."
+    )
+    assert not narrative_is_substantive(narrative, known_locations={ROUTE_ANCHOR})
+
+
 @pytest.mark.parametrize(
     "cited",
     [

@@ -38,6 +38,7 @@ from dataclasses import dataclass
 from pathlib import PurePosixPath
 from typing import TYPE_CHECKING
 
+from archivum.archgraph.registry import CODE_SUFFIXES
 from archivum.config import Settings
 from archivum.db import sqlite
 from archivum.indexing import ensure_frontmatter, forget_page, reindex_page
@@ -107,6 +108,18 @@ _BARE_ANCHOR_RE = re.compile(r"(?<![\w/.-])([\w./-]+\.[A-Za-z0-9]+):(\d+)(?:-(\d
 # otherwise read as the file `//api.example.com`, line 8080. Never past a
 # backtick, so it cannot unpair the backticks around a real citation.
 _URL_RE = re.compile(r"[A-Za-z][A-Za-z0-9+.-]*://[^\s`]+")
+
+
+def _names_source_file(path: str) -> bool:
+    """Whether `path` could be a file the indexer read, judged by its suffix.
+
+    A port reads exactly like a line number, so `db.example.com:5432` and
+    `127.0.0.1:8000` cannot be told from citations by their shape. Every path
+    the model is offered passed the indexer's own `CODE_SUFFIXES` filter, so
+    anything ending otherwise — `.com`, `.internal`, `.1` — is not a source
+    citation, offered or invented, and is read as prose.
+    """
+    return PurePosixPath(path).suffix in CODE_SUFFIXES
 _NARRATIVE_BLOCK_RE = re.compile(
     r"<!-- archivum:narrative ([0-9a-f]+) -->\n(.*?)\n<!-- /archivum:narrative -->",
     re.DOTALL,
@@ -339,7 +352,11 @@ def narrative_is_substantive(text: str, *, known_locations: set[str]) -> bool:
     # Bare citations are looked for only outside the backticked ones, so a
     # path with a space in it is not read a second time as a shorter path.
     outside = _CITED_RE.sub(" ", addressed)
-    anchors = cited + list(_BARE_ANCHOR_RE.finditer(outside))
+    anchors = [
+        anchor
+        for anchor in cited + list(_BARE_ANCHOR_RE.finditer(outside))
+        if _names_source_file(anchor.group(1))
+    ]
     if not anchors:
         return False
     spans = _spans(known_locations)
