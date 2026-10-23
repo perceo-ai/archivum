@@ -88,8 +88,19 @@ NARRATIVE_TIMEOUT_SECONDS = 180
 
 _SLUG_RE = re.compile(r"[^a-z0-9]+")
 
-# `path/to/file.ext:12` or `path/to/file.ext:12-18`, anywhere in prose.
-_ANCHOR_RE = re.compile(r"(?<![\w/.-])([\w./-]+\.[A-Za-z0-9]+):(\d+)(?:-(\d+))?\b")
+# Three parsers, because a location is read in three different settings. Each
+# captures (path, start, end) in that order.
+#
+# A location the indexer produced is exactly `path:12` or `path:12-18` and
+# nothing else, so the path is everything before the last `:lines` suffix —
+# whatever characters it holds. `app/[slug]/My Page.tsx` is a real path.
+_LOCATION_RE = re.compile(r"(.+):(\d+)(?:-(\d+))?")
+# In prose there is no fixed end, so a citation is delimited by the backticks
+# the prompt asks for, never by a guess at which characters a path may use.
+_CITED_RE = re.compile(r"`([^`\n]+):(\d+)(?:-(\d+))?`")
+# A citation written without backticks is still a claim about the code. These
+# only use ordinary path characters, and are checked like any other.
+_BARE_ANCHOR_RE = re.compile(r"(?<![\w/.-])([\w./-]+\.[A-Za-z0-9]+):(\d+)(?:-(\d+))?\b")
 _NARRATIVE_BLOCK_RE = re.compile(
     r"<!-- archivum:narrative ([0-9a-f]+) -->\n(.*?)\n<!-- /archivum:narrative -->",
     re.DOTALL,
@@ -296,7 +307,7 @@ def community_tags(
 def _spans(known_locations: set[str]) -> dict[str, list[tuple[int, int]]]:
     spans: dict[str, list[tuple[int, int]]] = {}
     for location in known_locations:
-        match = _ANCHOR_RE.fullmatch(location)
+        match = _LOCATION_RE.fullmatch(location)
         if not match:
             continue
         start = int(match.group(2))
@@ -317,7 +328,11 @@ def narrative_is_substantive(text: str, *, known_locations: set[str]) -> bool:
     text = (text or "").strip()
     if not text:
         return False
-    anchors = list(_ANCHOR_RE.finditer(text))
+    cited = list(_CITED_RE.finditer(text))
+    # Bare citations are looked for only outside the backticked ones, so a
+    # path with a space in it is not read a second time as a shorter path.
+    outside = _CITED_RE.sub(" ", text)
+    anchors = cited + list(_BARE_ANCHOR_RE.finditer(outside))
     if not anchors:
         return False
     spans = _spans(known_locations)
@@ -330,7 +345,7 @@ def narrative_is_substantive(text: str, *, known_locations: set[str]) -> bool:
             return False
         if not any(lo <= start and end <= hi for lo, hi in spans.get(anchor.group(1), [])):
             return False
-    prose = _ANCHOR_RE.sub(" ", text)
+    prose = _BARE_ANCHOR_RE.sub(" ", outside)
     return len(re.findall(r"[A-Za-z][A-Za-z'-]*", prose)) >= MIN_NARRATIVE_WORDS
 
 
