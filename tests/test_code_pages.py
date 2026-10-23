@@ -883,6 +883,105 @@ async def test_narration_rejects_citations_to_members_the_prompt_never_showed(va
     assert f"`{INSIDE_WINDOW}`" in prompts[-1]
 
 
+# Two clusters joined by a real call and a real import: retry reaches into geo.
+LINKED_GEO = (
+    "def haversine(lat, lon):\n"
+    "    return normalise(lat) + bearing(lon)\n"
+    "\n\n"
+    "def bearing(value):\n"
+    "    return normalise(value) * 2\n"
+    "\n\n"
+    "def normalise(value):\n"
+    "    return value % 360\n"
+)
+LINKED_RETRY = (
+    "from geo import haversine\n"
+    "\n\n"
+    "def with_backoff(fn):\n"
+    "    haversine(1, 2)\n"
+    "    return schedule(fn) + jitter(fn)\n"
+    "\n\n"
+    "def schedule(fn):\n"
+    "    return jitter(fn)\n"
+    "\n\n"
+    "def jitter(fn):\n"
+    "    return fn\n"
+)
+LINKED = {"geo.py": LINKED_GEO, "retry.py": LINKED_RETRY}
+
+
+async def _lint(settings) -> dict:
+    from archivum.linting import analyze_wiki_pages
+
+    return analyze_wiki_pages(await sqlite_mod.list_page_contents("default"))
+
+
+async def test_sibling_clusters_link_to_the_pages_they_call(vault, tmp_path, mock_kuzu_conn):
+    """A call between two subsystems is a link between their two pages.
+
+    Each page only ever linked up to the index, so the pages a reader most
+    wants to move between — the caller's and the callee's — had no path
+    between them except back through the repository's front page.
+    """
+    await _index(vault, tmp_path, extra=LINKED)
+
+    folder = vault.wiki_dir / "code" / "atlas"
+    geo = (folder / "geo.md").read_text(encoding="utf-8")
+    retry = (folder / "retry.md").read_text(encoding="utf-8")
+
+    assert "with_backoff → *calls* → [[code/atlas/geo|haversine]]" in retry
+    assert "[[code/atlas/retry|with_backoff]] → *calls* → haversine" in geo
+    assert "[[code/atlas/geo" not in geo, "a page must not link to itself"
+
+    lint = await _lint(vault)
+    assert lint["broken_wikilinks"] == []
+    assert lint["orphan_pages"] == []
+
+
+async def test_an_edge_to_a_cluster_without_a_page_stays_prose(vault, tmp_path, mock_kuzu_conn):
+    """A link to a page that was never written is a broken link, not an edge."""
+
+    async def no_page_for_retry(*, prompt: str, **kwargs):
+        if _ANCHOR.findall(prompt)[0].startswith("retry.py"):
+            return "retry"
+        return await fake_narrator(prompt=prompt, **kwargs)
+
+    await _index(vault, tmp_path, extra=LINKED, narrator=no_page_for_retry)
+
+    folder = vault.wiki_dir / "code" / "atlas"
+    assert not (folder / "retry.md").exists()
+    geo = (folder / "geo.md").read_text(encoding="utf-8")
+    assert "with_backoff → *calls* → haversine" in geo
+    assert "[[code/atlas/retry" not in geo
+    assert (await _lint(vault))["broken_wikilinks"] == []
+
+
+async def test_linked_clusters_are_connected_in_the_canonical_graph(vault, tmp_path, mock_kuzu_conn):
+    """The same link has to reach the graph `graph_shortest_path` reads.
+
+    Every page also hangs off the owner root, and the path search is
+    undirected, so the root is left out: a path through it says only that
+    both pages have an owner.
+    """
+    from archivum.knowledge.graph_audit import load_graph, shortest_path
+    from archivum.knowledge.personal_root import SELF_ID
+    from archivum.knowledge.repository import KnowledgeRepository
+
+    await _index(vault, tmp_path, extra=LINKED)
+
+    async with sqlite_mod.get_db() as conn:
+        nodes, edges = await load_graph(KnowledgeRepository(conn), scope="wiki:default")
+    nodes = [node for node in nodes if node.id != SELF_ID]
+    edges = [edge for edge in edges if SELF_ID not in (edge.src_id, edge.dst_id)]
+
+    path = shortest_path(
+        nodes, edges, source="page:default:code/atlas/retry", target="page:default:code/atlas/geo"
+    )
+    assert path.found, path.reason
+    assert [step.relation for step in path.steps] == ["references"]
+    assert (await _lint(vault))["orphan_pages"] == []
+
+
 # ── Paths with brackets, spaces, parentheses and plus signs ──────────────────
 
 ROUTE_PATH = "app/[slug]/My Page.tsx"

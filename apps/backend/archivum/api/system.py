@@ -483,7 +483,10 @@ async def rebuild_indexes(
     current_user: CurrentUser = Depends(require_owner),
     settings: Settings = Depends(get_settings),
 ) -> dict[str, Any]:
-    pages = await sqlite.list_pages(current_user.wiki_id)
+    # Bodies included: the listing alone has none, and rebuilding from it
+    # embedded empty pages and synced every page as if it linked to nothing,
+    # deleting each page's references and mentions.
+    pages = await sqlite.list_page_contents(current_user.wiki_id)
 
     # Re-init derived stores
     await qdrant.init_collection(settings)
@@ -523,14 +526,18 @@ async def rebuild_indexes(
         for page_id in canonical_page_ids:
             if page_id not in current_page_ids:
                 await repo.delete_object(page_id)
-        for p in pages:
-            await sync_page_to_knowledge(
-                repo,
-                slug=p["slug"],
-                title=p["title"],
-                markdown=p.get("content", "") or "",
-                wiki_id=current_user.wiki_id,
-            )
+        # Twice: a page references the titles it names only once those pages
+        # are known, so the first pass registers every title and the second
+        # reads each page against all of them.
+        for _ in range(2):
+            for p in pages:
+                await sync_page_to_knowledge(
+                    repo,
+                    slug=p["slug"],
+                    title=p["title"],
+                    markdown=p.get("content", "") or "",
+                    wiki_id=current_user.wiki_id,
+                )
         projection = await rebuild_knowledge_projections(repo, current_user.wiki_id)
 
     return {
@@ -587,7 +594,7 @@ async def reindex_vault(
 async def lint_wiki(
     current_user: CurrentUser = Depends(require_owner),
 ) -> dict[str, Any]:
-    pages = await sqlite.list_pages(current_user.wiki_id)
+    pages = await sqlite.list_page_contents(current_user.wiki_id)
     issues = analyze_wiki_pages(pages)["issues"]
     return {"issues": issues, "counts": {"issues": len(issues)}}
 

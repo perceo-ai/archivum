@@ -587,12 +587,18 @@ def render_community_page(
     narrative: str,
     fingerprint: str = "",
     repo_root: str = "",
+    sibling_pages: dict[str, str] | None = None,
 ) -> str | None:
     """The page for one cluster, or None when there is nothing worth writing.
 
     The guard lives here rather than in the caller so that no path can render
     a cluster page around a stub: without a substantive narrative there is no
     page at all.
+
+    `sibling_pages` maps a symbol id to the slug of the cluster page that owns
+    it. An edge leaving this cluster links to that page, so sibling subsystems
+    are connected by the calls between them; a symbol with no page stays prose,
+    because a link to a page that does not exist is a lint finding, not an edge.
     """
     members = _members(community, objects_by_id)
     if not narrative_is_substantive(
@@ -649,12 +655,20 @@ def render_community_page(
         if (edge.src_id in member_ids) != (edge.dst_id in member_ids)
     ]
     if outward:
+        own_slug = f"{repo_folder(repo_name)}/{slugify(community.label)}"
         lines += ["", "## What it reaches", ""]
         for edge in sorted(outward, key=lambda e: (e.rel_type, e.src_id, e.dst_id))[:MAX_SURPRISING]:
             src = objects_by_id.get(edge.src_id)
             dst = objects_by_id.get(edge.dst_id)
             src_label = src.label if src else edge.src_id
             dst_label = dst.label if dst else edge.dst_id
+            outside = edge.dst_id if edge.src_id in member_ids else edge.src_id
+            sibling = (sibling_pages or {}).get(outside)
+            if sibling and sibling != own_slug:
+                if outside == edge.dst_id:
+                    dst_label = f"[[{sibling}|{dst_label}]]"
+                else:
+                    src_label = f"[[{sibling}|{src_label}]]"
             lines.append(f"- {src_label} → *{edge.rel_type}* → {dst_label}")
 
     lines += [
@@ -907,12 +921,10 @@ async def write_repo_pages(repo: "CodeRepo", *, settings: Settings) -> int:
     )
 
     folder = repo_folder(repo.name)
-    cluster_pages: list[tuple[str, str, str, list[str]]] = []
-    written_up: list[Community] = []
-    not_written: list[tuple[Community, str]] = []
-    for community in communities:
+
+    def render(community: Community, sibling_pages: dict[str, str] | None = None) -> str | None:
         narration = narrations[community.id]
-        markdown = render_community_page(
+        return render_community_page(
             community,
             repo_name=repo.name,
             objects_by_id=objects_by_id,
@@ -920,11 +932,29 @@ async def write_repo_pages(repo: "CodeRepo", *, settings: Settings) -> int:
             narrative=narration.text,
             fingerprint=narration.fingerprint,
             repo_root=repo.path,
+            sibling_pages=sibling_pages,
         )
-        if markdown is None:
-            not_written.append((community, narration.reason or "no substantive narrative"))
-            continue
-        written_up.append(community)
+
+    # Which clusters get a page is only known once each has been rendered, and
+    # a cluster may only link to a sibling that got one. So decide first, then
+    # render the pages that will land with their sibling links in place.
+    written_up: list[Community] = []
+    not_written: list[tuple[Community, str]] = []
+    for community in communities:
+        if render(community) is None:
+            reason = narrations[community.id].reason or "no substantive narrative"
+            not_written.append((community, reason))
+        else:
+            written_up.append(community)
+    sibling_pages = {
+        member: f"{folder}/{slugify(community.label)}"
+        for community in written_up
+        for member in community.member_ids
+    }
+    cluster_pages: list[tuple[str, str, str, list[str]]] = []
+    for community in written_up:
+        markdown = render(community, sibling_pages)
+        assert markdown is not None  # links never change whether a page is written
         cluster_pages.append(
             (
                 f"{folder}/{slugify(community.label)}",
