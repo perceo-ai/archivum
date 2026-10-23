@@ -15,6 +15,7 @@ export async function updateCommand(args) {
   const root = ensureRoot();
   const useImages = !flags.has("build");
   const compose = ensureDockerReady();
+  if (ensureInternalGraphToken(root)) console.log("Generated INTERNAL_GRAPH_TOKEN (new in this release).");
   const backupDir = flags.has("no-backup")
     ? null
     : createBackup({ root, compose, prefix: "pre-update" });
@@ -29,8 +30,6 @@ export async function updateCommand(args) {
   if (!fs.existsSync(`${root}/.env`) && fs.existsSync(`${root}/.env.example`)) {
     fs.copyFileSync(`${root}/.env.example`, `${root}/.env`);
   }
-
-  if (ensureInternalGraphToken(root)) console.log("Generated INTERNAL_GRAPH_TOKEN (new in this release).");
 
   const base = composeCommand(compose, { useImages });
   if (useImages) {
