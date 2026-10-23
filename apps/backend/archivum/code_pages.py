@@ -40,7 +40,7 @@ from typing import TYPE_CHECKING
 
 from archivum.config import Settings
 from archivum.db import sqlite
-from archivum.indexing import ensure_frontmatter, reindex_page
+from archivum.indexing import ensure_frontmatter, forget_page, reindex_page
 from archivum.knowledge.graph_audit import (
     Community,
     GraphReport,
@@ -324,6 +324,10 @@ def narrative_is_substantive(text: str, *, known_locations: set[str]) -> bool:
     for anchor in anchors:
         start = int(anchor.group(2))
         end = int(anchor.group(3) or start)
+        # `geo.py:999-1` is not a range at all. Checked first, because each
+        # bound on its own can still land inside a real span.
+        if start < 1 or start > end:
+            return False
         if not any(lo <= start and end <= hi for lo, hi in spans.get(anchor.group(1), [])):
             return False
     prose = _ANCHOR_RE.sub(" ", text)
@@ -345,10 +349,25 @@ def _members(community: Community, objects_by_id: dict[str, KnowledgeObject]) ->
     return members
 
 
-def _known_locations(members: list[KnowledgeObject], *, repo_root: str) -> set[str]:
+def _shown_in_prompt(members: list[KnowledgeObject]) -> list[KnowledgeObject]:
+    """The members the model is actually shown, in the order it sees them.
+
+    Symbols and types first: they carry the signatures and docstrings, and are
+    what a reader looks for. The prompt and the guard both read this one list,
+    so a citation to a member the model never saw cannot pass as a real one.
+    """
+    return sorted(
+        members, key=lambda m: (m.kind not in {"type", "symbol"}, m.kind, m.label)
+    )[:MAX_MEMBERS_IN_PROMPT]
+
+
+def _allowed_locations(members: list[KnowledgeObject], *, repo_root: str) -> set[str]:
+    """The `path:lines` a narrative may cite: those of the members it was shown."""
     return {
         location
-        for location in (_location(member, repo_root=repo_root) for member in members)
+        for location in (
+            _location(member, repo_root=repo_root) for member in _shown_in_prompt(members)
+        )
         if ":" in location
     }
 
@@ -394,11 +413,7 @@ def _instruction(
     neighbours: list[str],
     repo_root: str,
 ) -> str:
-    # Symbols and types first: they carry the signatures and docstrings, and
-    # are what a reader looks for.
-    ranked = sorted(
-        members, key=lambda m: (m.kind not in {"type", "symbol"}, m.kind, m.label)
-    )[:MAX_MEMBERS_IN_PROMPT]
+    ranked = _shown_in_prompt(members)
     rows = []
     for member in ranked:
         where = _location(member, repo_root=repo_root)
@@ -483,7 +498,7 @@ async def narrate_communities(
         fingerprint = hashlib.sha256(
             f"{provider}\n{model}\n{instruction}".encode()
         ).hexdigest()[:16]
-        known = _known_locations(members, repo_root=repo_root)
+        known = _allowed_locations(members, repo_root=repo_root)
 
         cached_fingerprint, cached = _existing_narrative(
             settings.wiki_dir / f"{folder}/{slugify(community.label)}.md"
@@ -542,7 +557,7 @@ def render_community_page(
     """
     members = _members(community, objects_by_id)
     if not narrative_is_substantive(
-        narrative, known_locations=_known_locations(members, repo_root=repo_root)
+        narrative, known_locations=_allowed_locations(members, repo_root=repo_root)
     ):
         return None
     shown = members[:MAX_MEMBERS_PER_PAGE]
@@ -735,6 +750,41 @@ def _is_bookkeeping(
     return bool(kinds) and kinds <= _BOOKKEEPING_KINDS
 
 
+# What marks a page as this indexer's own. The narrative block is written by
+# this version; the footer by the version that wrote metadata-only pages. A page
+# carrying neither was written by someone else and is never removed here.
+_OWNED_MARKERS = (
+    "<!-- archivum:narrative ",
+    "Generated from the code graph. Edit freely",
+)
+
+
+def _written_by_this_indexer(text: str) -> bool:
+    return any(marker in text for marker in _OWNED_MARKERS)
+
+
+async def _retire_stale_page(slug: str, *, wiki_id: str, settings: Settings) -> bool:
+    """Remove a cluster page this indexer wrote earlier and can no longer stand by.
+
+    Skipping a rejected or test-only cluster is not enough on its own: the page
+    from the previous run would stay on disk and in search, describing code that
+    may no longer exist, while the index says it was not written up. It goes
+    through `forget_page` — the same path a deleted file takes — so the row,
+    vectors and graph node leave together.
+    """
+    path = settings.wiki_dir / f"{slug}.md"
+    if path.exists():
+        text = path.read_text(encoding="utf-8", errors="replace")
+    else:
+        row = await sqlite.get_page(slug, wiki_id)
+        text = str(row.get("content") or "") if row else ""
+    if not text or not _written_by_this_indexer(text):
+        return False
+    path.unlink(missing_ok=True)
+    await forget_page(slug, wiki_id=wiki_id, settings=settings)
+    return True
+
+
 async def _fixes_for(repo: "CodeRepo") -> list[KnowledgeObject]:
     """Remembered repairs that reached this repository's code.
 
@@ -885,5 +935,18 @@ async def write_repo_pages(repo: "CodeRepo", *, settings: Settings) -> int:
             written += 1
         except Exception as exc:  # noqa: BLE001 - the canonical graph is already saved
             logger.warning("Could not write code page %s: %s", slug, exc)
+
+    # A cluster that has no page this run must not keep the one it had. Never a
+    # slug written above: two clusters can share a label, and the index is not
+    # a cluster page at all.
+    written_slugs = {slug for slug, _, _, _ in pages}
+    stale = {f"{folder}/{slugify(community.label)}" for community, _ in not_written}
+    stale |= {f"{folder}/{slugify(community.label)}" for community in test_only}
+    for slug in sorted(stale - written_slugs):
+        try:
+            if await _retire_stale_page(slug, wiki_id=repo.wiki_id, settings=settings):
+                logger.info("Removed stale code page %s", slug)
+        except Exception as exc:  # noqa: BLE001 - same contract as writing
+            logger.warning("Could not remove stale code page %s: %s", slug, exc)
 
     return written

@@ -523,3 +523,244 @@ async def test_a_cluster_made_only_of_tests_gets_no_page(vault, tmp_path, mock_k
     index = (vault.wiki_dir / "code" / "atlas" / "index.md").read_text(encoding="utf-8")
     assert "test_clock" in index, "the index still accounts for the test cluster"
     assert "[[code/atlas/test-clock" not in index
+
+
+# ── QA round 1: stale pages, reversed ranges, the prompt window ──────────────
+
+# What `main` used to write for a cluster: no narrative, the old footer.
+LEGACY_PAGE = (
+    "# test_clock\n\n"
+    + OLD_STUB
+    + "\n\n## What is in here\n\n- **tick** (symbol) — `test_clock.py:5-6`\n\n---\n\n"
+    "Generated from the code graph. Edit freely — your words are kept, and "
+    "reindexing will not overwrite a page you have taken over.\n"
+)
+HAND_WRITTEN = "# Notes\n\nMy own notes about atlas. Nothing generated here.\n"
+
+
+async def _write_page(settings, slug: str, body: str) -> None:
+    """A page on disk and in the page table, the way any vault write lands."""
+    from archivum.indexing import reindex_page
+
+    path = settings.wiki_dir / f"{slug}.md"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(body, encoding="utf-8")
+    with (
+        patch("archivum.indexing.qdrant.upsert_page", new=AsyncMock()),
+        patch("archivum.indexing.graph.upsert_page", new=AsyncMock()),
+        patch("archivum.indexing.graph.clear_references_from_page", new=AsyncMock()),
+        patch("archivum.indexing.graph.add_reference", new=AsyncMock()),
+    ):
+        await reindex_page(slug, wiki_id="default", settings=settings, force=True, distill=False)
+
+
+async def _reindex_watching_deletes(settings, *, narrator=fake_narrator):
+    """Reindex, recording what was removed from the vector and graph stores."""
+    qdrant_delete = AsyncMock()
+    graph_delete = AsyncMock()
+    with (
+        patch("archivum.indexing.qdrant.upsert_page", new=AsyncMock()),
+        patch("archivum.indexing.graph.upsert_page", new=AsyncMock()),
+        patch("archivum.indexing.graph.clear_references_from_page", new=AsyncMock()),
+        patch("archivum.indexing.graph.add_reference", new=AsyncMock()),
+        patch("archivum.indexing.qdrant.delete_page", new=qdrant_delete),
+        patch("archivum.indexing.graph.delete_page_node", new=graph_delete),
+        patch("archivum.code_pages.cli_chat_completion", new=narrator),
+    ):
+        await run_pending_repo_indexing(settings=settings)
+    return (
+        {call.args[0] for call in qdrant_delete.await_args_list},
+        {call.args[0] for call in graph_delete.await_args_list},
+    )
+
+
+def _commit_all(repo: Path, message: str) -> None:
+    subprocess.run(["git", "-C", str(repo), "add", "-A"], check=True)
+    subprocess.run(
+        [
+            "git", "-C", str(repo),
+            "-c", "user.email=t@example.com", "-c", "user.name=Test",
+            "commit", "-q", "-m", message,
+        ],
+        check=True,
+    )
+
+
+async def test_a_rejected_narrative_removes_the_page_it_used_to_have(vault, tmp_path, mock_kuzu_conn):
+    """The index saying "not written up" while search serves the old body is a lie."""
+    await _index(vault, tmp_path)
+    folder = vault.wiki_dir / "code" / "atlas"
+    assert (folder / "geo.md").exists(), "precondition: geo had a page"
+    await _write_page(vault, "code/atlas/notes", HAND_WRITTEN)
+
+    # The code changes, so the stored narrative no longer matches, and the
+    # model's new account is a stub the guard rejects.
+    repo = tmp_path / "atlas"
+    (repo / "geo.py").write_text(GEO + "\n\ndef bearing(a, b):\n    return normalise(a - b)\n")
+    _commit_all(repo, "add bearing")
+
+    async def stubby(**_):
+        return OLD_STUB
+
+    await register_repo(path=repo, wiki_id="default")
+    qdrant_deleted, graph_deleted = await _reindex_watching_deletes(vault, narrator=stubby)
+
+    assert not (folder / "geo.md").exists(), "stale page must leave the disk"
+    assert await sqlite_mod.get_page("code/atlas/geo", "default") is None, "and the page table"
+    assert "code/atlas/geo" in qdrant_deleted, "and the vectors"
+    assert "code/atlas/geo" in graph_deleted, "and the graph"
+
+    index = (folder / "index.md").read_text(encoding="utf-8")
+    assert "not written up" in index.lower()
+
+    assert (folder / "notes.md").read_text(encoding="utf-8") == HAND_WRITTEN
+    assert await sqlite_mod.get_page("code/atlas/notes", "default") is not None
+    assert "code/atlas/notes" not in qdrant_deleted | graph_deleted
+
+
+async def test_a_cluster_reclassified_as_tests_loses_its_old_page(vault, tmp_path, mock_kuzu_conn):
+    """The production `icon.test` pages: written before tests were recognised."""
+    await sqlite_mod.init_db(vault)
+    await _write_page(vault, "code/atlas/test-clock", LEGACY_PAGE)
+    await _write_page(vault, "code/atlas/notes", HAND_WRITTEN)
+    assert await sqlite_mod.get_page("code/atlas/test-clock", "default") is not None
+
+    await register_repo(
+        path=make_repo(tmp_path, extra={"test_clock.py": CLOCK_TEST}), wiki_id="default"
+    )
+    qdrant_deleted, graph_deleted = await _reindex_watching_deletes(vault)
+
+    folder = vault.wiki_dir / "code" / "atlas"
+    assert not (folder / "test-clock.md").exists()
+    assert await sqlite_mod.get_page("code/atlas/test-clock", "default") is None
+    assert "code/atlas/test-clock" in qdrant_deleted
+    assert "code/atlas/test-clock" in graph_deleted
+    assert "test_clock" in (folder / "index.md").read_text(encoding="utf-8")
+
+    assert (folder / "notes.md").read_text(encoding="utf-8") == HAND_WRITTEN
+    assert await sqlite_mod.get_page("code/atlas/notes", "default") is not None
+    assert "code/atlas/notes" not in qdrant_deleted | graph_deleted
+    assert (folder / "geo.md").exists(), "real code keeps its page"
+
+
+async def test_a_page_someone_else_wrote_at_a_cluster_slug_is_left_alone(vault, tmp_path, mock_kuzu_conn):
+    """Only this indexer's own pages are ever removed."""
+    await sqlite_mod.init_db(vault)
+    mine = "# test_clock\n\nWhat I learned about the clock tests.\n"
+    await _write_page(vault, "code/atlas/test-clock", mine)
+
+    await register_repo(
+        path=make_repo(tmp_path, extra={"test_clock.py": CLOCK_TEST}), wiki_id="default"
+    )
+    qdrant_deleted, graph_deleted = await _reindex_watching_deletes(vault)
+
+    page = vault.wiki_dir / "code" / "atlas" / "test-clock.md"
+    assert page.read_text(encoding="utf-8") == mine
+    assert await sqlite_mod.get_page("code/atlas/test-clock", "default") is not None
+    assert "code/atlas/test-clock" not in qdrant_deleted | graph_deleted
+
+
+def test_a_reversed_line_range_is_not_a_citation():
+    """`geo.py:999-1` passed both bound checks independently."""
+    known = {"geo.py:1-2"}
+    prose = "This subsystem computes great-circle distances between points. " * 8
+    assert not narrative_is_substantive(prose + "See `geo.py:999-1`.", known_locations=known)
+    assert not narrative_is_substantive(prose + "See `geo.py:0-1`.", known_locations=known)
+    assert narrative_is_substantive(prose + "See `geo.py:1-2`.", known_locations=known)
+
+
+def _big_cluster(size: int = 45):
+    """A cluster larger than the prompt window: sym_00 … sym_44 in big.py."""
+    from archivum.knowledge.graph_audit import Community
+    from archivum.knowledge.models import Citation, KnowledgeObject
+
+    members = {}
+    for index in range(size):
+        start = index * 10 + 1
+        member = KnowledgeObject(
+            id=f"sym:big:sym_{index:02d}",
+            kind="symbol",
+            label=f"sym_{index:02d}",
+            scope="repo:default:atlas",
+            confidence=1.0,
+            extraction_method="EXTRACTED",
+            citations=[
+                Citation(
+                    source_id="/r/big.py",
+                    chunk_id="/r/big.py",
+                    span_start=None,
+                    span_end=None,
+                    quote=f"L{start}-L{start + 4}",
+                )
+            ],
+            properties={"signature": f"def sym_{index:02d}()", "summary": ""},
+        )
+        members[member.id] = member
+    community = Community(id="sym:big:sym_00", label="big", member_ids=tuple(sorted(members)))
+    return community, members
+
+
+def _narrative_citing(anchor: str) -> str:
+    return (
+        "This subsystem gathers the numbered helpers of the big module so they "
+        "share one home rather than scattering across the repository. A reader "
+        f"should start at `{anchor}`, which is the helper the rest lean on, and "
+        "then follow the calls outward; nothing outside this module is reached "
+        "from here, so it stands alone in the graph as far as it can tell."
+    )
+
+
+INSIDE_WINDOW = "big.py:51-55"  # sym_05, inside the 40 the model is shown
+OUTSIDE_WINDOW = "big.py:421-425"  # sym_42, a real member it is never shown
+
+
+def test_render_rejects_citations_to_members_the_prompt_never_showed():
+    import archivum.code_pages as code_pages
+
+    assert code_pages.MAX_MEMBERS_IN_PROMPT < 45 <= code_pages.MAX_MEMBERS_PER_PAGE
+    community, members = _big_cluster()
+
+    def render(narrative: str):
+        return render_community_page(
+            community,
+            repo_name="atlas",
+            objects_by_id=members,
+            edges=[],
+            repo_root="/r",
+            narrative=narrative,
+        )
+
+    assert render(_narrative_citing(OUTSIDE_WINDOW)) is None
+    assert render(_narrative_citing(INSIDE_WINDOW)) is not None
+
+
+async def test_narration_rejects_citations_to_members_the_prompt_never_showed(vault):
+    from archivum.code_pages import narrate_communities
+
+    community, members = _big_cluster()
+    prompts: list[str] = []
+
+    async def run(anchor: str):
+        async def narrator(*, provider, model, prompt, **_):
+            prompts.append(prompt)
+            return _narrative_citing(anchor)
+
+        with patch("archivum.code_pages.cli_chat_completion", new=narrator):
+            result = await narrate_communities(
+                [community],
+                repo_name="atlas",
+                objects_by_id=members,
+                edges=[],
+                community_of={},
+                repo_root="/r",
+                settings=vault,
+            )
+        return result[community.id]
+
+    outside = await run(OUTSIDE_WINDOW)
+    assert outside.text == "" and outside.reason
+    assert f"`{OUTSIDE_WINDOW}`" not in prompts[-1], "the member really was outside the window"
+
+    inside = await run(INSIDE_WINDOW)
+    assert inside.text and not inside.reason
+    assert f"`{INSIDE_WINDOW}`" in prompts[-1]
