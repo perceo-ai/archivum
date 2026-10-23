@@ -46,6 +46,81 @@ export function gitTrackedFiles(root, { spawnImpl = spawnSync } = {}) {
   return result.stdout.split("\n").filter(Boolean);
 }
 
+// ── What the upload is called ─────────────────────────────────────────────────
+//
+// The name sent is the namespace on the server, and the archive leaves `.git`
+// behind, so this is the only place on the upload path that can read the
+// remote. A checkout's directory says where it sits, not what it is: two repos
+// cloned into directories both called `work` (or one cloned into `nixos`)
+// would otherwise share a namespace and overwrite each other.
+//
+// Must slug exactly as apps/backend/archivum/code_repos.py
+// `_identity_from_remote_url` does, so the same repo uploaded from here and
+// registered by path on the server lands in one namespace.
+
+const UNSAFE_NAME_CHARS = /[^A-Za-z0-9._-]+/g;
+const SAFE_REPO_NAME = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
+const MAX_REPO_NAME_LENGTH = 100;
+
+function nameSegment(value) {
+  return value.replace(UNSAFE_NAME_CHARS, "-").replace(/^[-._]+|[-._]+$/g, "");
+}
+
+/** `owner-repo` from a remote URL in https, ssh or scp form, else null.
+ *
+ * Any host: the last two path segments are the owner and the repository.
+ */
+export function identityFromRemoteUrl(url) {
+  const trimmed = url.trim();
+  let remotePath;
+  if (trimmed.includes("://")) {
+    // Python's urlsplit: the path runs from the first `/` after the host to
+    // any query or fragment, and is not percent-decoded.
+    const rest = trimmed.slice(trimmed.indexOf("://") + 3).split("#")[0].split("?")[0];
+    const slash = rest.indexOf("/");
+    remotePath = slash === -1 ? "" : rest.slice(slash);
+  } else if (trimmed.split("/")[0].includes(":")) {
+    remotePath = trimmed.slice(trimmed.indexOf(":") + 1); // git@host:owner/repo.git
+  } else {
+    remotePath = trimmed;
+  }
+  const segments = remotePath.split(/[/\\]/).filter(Boolean);
+  if (segments.length < 2) return null;
+  const last = segments[segments.length - 1];
+  const owner = nameSegment(segments[segments.length - 2].toLowerCase());
+  const repo = nameSegment((last.endsWith(".git") ? last.slice(0, -4) : last).toLowerCase());
+  if (!owner || !repo) return null;
+  const name = `${owner}-${repo}`.slice(0, MAX_REPO_NAME_LENGTH);
+  return SAFE_REPO_NAME.test(name) && name !== "." && name !== ".." ? name : null;
+}
+
+function git(root, args, spawnImpl) {
+  const result = spawnImpl("git", ["-C", root, ...args], { encoding: "utf8", timeout: 5000 });
+  if (result?.error || result?.status !== 0) return null;
+  return String(result.stdout ?? "").trim() || null;
+}
+
+function samePath(a, b) {
+  try {
+    return fs.realpathSync(a) === fs.realpathSync(b);
+  } catch {
+    return false;
+  }
+}
+
+/** The name `root`'s origin remote gives it, or null.
+ *
+ * Only for the top of a working tree, as on the server: git answers from
+ * inside a subdirectory too, and two subdirectories of one monorepo uploaded
+ * on their own would otherwise both take the monorepo's name.
+ */
+export function gitRemoteIdentity(root, { spawnImpl = spawnSync } = {}) {
+  const toplevel = git(root, ["rev-parse", "--show-toplevel"], spawnImpl);
+  if (toplevel === null || !samePath(toplevel, root)) return null;
+  const url = git(root, ["remote", "get-url", "origin"], spawnImpl);
+  return url === null ? null : identityFromRemoteUrl(url);
+}
+
 /** A directory walk for repositories that are not git checkouts. */
 export function walkFiles(root, relative = "") {
   const found = [];
@@ -206,7 +281,7 @@ export async function indexCommand(
 
   const root = path.resolve(cwd, positionals[0] ?? ".");
   if (!fs.existsSync(root)) throw new Error(`No such directory: ${root}`);
-  const name = values.get("name") ?? path.basename(root);
+  const name = values.get("name") ?? gitRemoteIdentity(root, { spawnImpl }) ?? path.basename(root);
 
   const { selected, skipped } = selectFiles(root, { spawnImpl });
   if (selected.length === 0) {
