@@ -215,6 +215,27 @@ async def _title_references_to(slug: str) -> dict[str, str]:
     }
 
 
+async def _assert_notes_still_reach(slug: str) -> None:
+    """The check `graph_shortest_path` makes, without the owner root.
+
+    Every page hangs off `person:self` and the search is undirected, so a path
+    through the root says only that both pages have an owner.
+    """
+    from archivum.knowledge.graph_audit import load_graph, shortest_path
+    from archivum.knowledge.personal_root import SELF_ID
+    from archivum.linting import analyze_wiki_pages
+
+    async with sqlite_mod.get_db() as conn:
+        nodes, edges = await load_graph(KnowledgeRepository(conn), scope="wiki:default")
+    nodes = [node for node in nodes if node.id != SELF_ID]
+    edges = [edge for edge in edges if SELF_ID not in (edge.src_id, edge.dst_id)]
+    path = shortest_path(nodes, edges, source="page:default:notes", target=f"page:default:{slug}")
+    assert path.found, path.reason
+    assert [step.relation for step in path.steps] == ["references"]
+    lint = analyze_wiki_pages(await sqlite_mod.list_page_contents("default"))
+    assert lint["broken_wikilinks"] == []
+
+
 async def _notes_naming_archfleet(settings) -> None:
     path = settings.wiki_dir / "notes.md"
     path.write_text("# Notes\n\nArchfleet runs the VMs.\n", encoding="utf-8")
@@ -238,6 +259,7 @@ async def test_moving_a_page_keeps_the_pages_that_name_it_linked(vault, mock_kuz
         await move_page_to_slug("projects/archfleet", "archive/archfleet", "default", vault)
 
     assert await _title_references_to("archive/archfleet") == {"page:default:notes": "INFERRED"}
+    await _assert_notes_still_reach("archive/archfleet")
 
 
 async def test_moving_a_folder_keeps_the_pages_that_name_its_pages_linked(vault, mock_kuzu_conn):
@@ -253,3 +275,4 @@ async def test_moving_a_folder_keeps_the_pages_that_name_its_pages_linked(vault,
     async with sqlite_mod.get_db() as conn:
         assert await KnowledgeRepository(conn).get_object("page:default:projects/archfleet") is None
     assert await _title_references_to("archive/archfleet") == {"page:default:notes": "INFERRED"}
+    await _assert_notes_still_reach("archive/archfleet")

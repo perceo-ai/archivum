@@ -18,7 +18,6 @@ from archivum.indexing import (
     ensure_frontmatter,
     forget_page,
     reindex_page,
-    relink_pages_naming,
     repoint_page,
 )
 from archivum.pages_to_knowledge import rename_page_in_knowledge
@@ -266,12 +265,6 @@ async def move_page_to_slug(
         force=True,
         reason="rename",
         distill=False,
-    )
-    moved = await sqlite.get_page(new_slug, wiki_id)
-    await relink_pages_naming(
-        new_slug,
-        titles={existing["title"], (moved or {}).get("title") or ""},
-        wiki_id=wiki_id,
     )
     await _rewrite_wikilinks({old_slug: new_slug}, wiki_id, settings)
 

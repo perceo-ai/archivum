@@ -17,6 +17,25 @@ _PROJECT_FRONTMATTER_RE = re.compile(
 )
 
 
+NAMERS_READ = "namers_read"
+
+
+async def namers_unread(repo: KnowledgeRepository, *, slug: str, wiki_id: str) -> str | None:
+    """The page's title, if the pages that name it still need re-reading."""
+    page = await repo.get_object(_page_id(wiki_id, slug))
+    if page is None or page.properties.get(NAMERS_READ):
+        return None
+    return page.label
+
+
+async def mark_namers_read(repo: KnowledgeRepository, *, slug: str, wiki_id: str) -> None:
+    page = await repo.get_object(_page_id(wiki_id, slug))
+    if page is not None and not page.properties.get(NAMERS_READ):
+        await repo.upsert_object(
+            page.model_copy(update={"properties": {**page.properties, NAMERS_READ: True}})
+        )
+
+
 def _page_id(wiki_id: str, slug: str) -> str:
     return f"page:{wiki_id}:{slug}"
 
@@ -37,6 +56,15 @@ async def sync_page_to_knowledge(
     """Upsert a user-authored page and its Markdown links into canonical knowledge."""
     page_id = _page_id(wiki_id, slug)
     scope = f"wiki:{wiki_id}"
+    before = await repo.get_object(page_id)
+    # Whether the pages naming this title have been re-read since it arrived.
+    # A new record — a first index, or one a move recreated, which drops every
+    # edge into it — or a new title starts unread; see `mark_namers_read`.
+    namers_read = bool(
+        before is not None
+        and before.label == title
+        and before.properties.get(NAMERS_READ)
+    )
     await repo.upsert_object(
         KnowledgeObject(
             id=page_id,
@@ -46,7 +74,7 @@ async def sync_page_to_knowledge(
             confidence=1.0,
             extraction_method="USER_AUTHORED",
             citations=[_citation(page_id, title)],
-            properties={"slug": slug, "wiki_id": wiki_id},
+            properties={"slug": slug, "wiki_id": wiki_id, NAMERS_READ: namers_read},
         )
     )
 

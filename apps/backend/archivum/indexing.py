@@ -40,6 +40,8 @@ from archivum.memory.catalog import register_page_asset
 from archivum.memory.registry import MemoryAssetRegistry
 from archivum.pages_to_knowledge import (
     is_nameable_title,
+    mark_namers_read,
+    namers_unread,
     remove_page_from_knowledge,
     sync_page_to_knowledge,
 )
@@ -218,25 +220,6 @@ async def _relink_pages_naming(
                 result.degraded.append("graph.knowledge")
 
 
-async def relink_pages_naming(slug: str, *, titles: set[str], wiki_id: str) -> None:
-    """Re-read the pages naming `titles`, for a caller that replaced a page's
-    record itself.
-
-    A move swaps the page's canonical record before reindexing it, deleting
-    every edge into it, and the title it arrives with is unchanged — so
-    `reindex_page` has no reason of its own to look for the pages that name it.
-    """
-    async with sqlite.get_db() as conn:
-        await init_suggestion_schema(conn)
-        await _relink_pages_naming(
-            KnowledgeRepository(conn),
-            slug=slug,
-            titles=titles,
-            wiki_id=wiki_id,
-            result=ReindexResult(slug=slug, reason="relink"),
-        )
-
-
 async def reindex_page(
     slug: str,
     *,
@@ -294,7 +277,10 @@ async def reindex_page(
             markdown=markdown,
             wiki_id=wiki_id,
         )
-        if known is None or known.label != title:
+        # Asked of the record rather than worked out here: a move recreates
+        # the record, with every edge into it gone, before calling this with
+        # the title unchanged.
+        if await namers_unread(repo, slug=slug, wiki_id=wiki_id) is not None:
             await _relink_pages_naming(
                 repo,
                 slug=slug,
@@ -302,6 +288,7 @@ async def reindex_page(
                 wiki_id=wiki_id,
                 result=result,
             )
+            await mark_namers_read(repo, slug=slug, wiki_id=wiki_id)
         # Project the canonical record straight away. The graph is a derived
         # view, and one that only converges on a manual rebuild is not a view
         # anyone can trust.
@@ -353,6 +340,12 @@ async def repoint_page(
     """
     async with sqlite.get_db() as conn:
         await init_suggestion_schema(conn)
+        # The record at the old slug must not outlive the move: it still
+        # carries the title, for anything that names the page to land on.
+        # The new slug's record is written when it is indexed.
+        await remove_page_from_knowledge(
+            KnowledgeRepository(conn), slug=old_slug, wiki_id=wiki_id
+        )
         moved_assets = await MemoryAssetRegistry(conn).repoint_page(
             wiki_id=wiki_id, old_slug=old_slug, new_slug=new_slug
         )
