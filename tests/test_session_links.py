@@ -18,6 +18,7 @@ import archivum.db.sqlite as sqlite_mod
 from archivum.capture.schema import Conversation, ToolCall, Turn
 from archivum.code_repos import register_repo, run_pending_repo_indexing
 from archivum.config import Settings
+from archivum.fixes import fix_id_for, symptom_key
 from archivum.knowledge.repository import KnowledgeRepository
 from archivum.sessions import record_session_work
 
@@ -179,6 +180,10 @@ async def test_recording_the_same_session_twice_does_not_duplicate_it(vault, tmp
 # ── Fix memory, stored and recalled ───────────────────────────────────────
 
 
+# A fix is keyed by the shape of its trouble, not by the session that saw it.
+_FIX_ID = fix_id_for("default", symptom_key("TypeError: bad operand on save"))
+
+
 def _bugfix_session(repo: Path) -> Conversation:
     return Conversation(
         session_id="s-fix",
@@ -210,7 +215,7 @@ async def test_a_bug_fix_session_leaves_a_fix_record(vault, tmp_path, mock_kuzu_
             source_id="src-fix",
             wiki_id="default",
         )
-        fix = await knowledge.get_object("fix:src-fix")
+        fix = await knowledge.get_object(_FIX_ID)
 
     assert fix is not None
     assert "TypeError" in fix.properties["symptom"]
@@ -247,7 +252,7 @@ async def test_an_ordinary_session_leaves_no_fix_record(vault, tmp_path, mock_ku
             source_id="src-feat",
             wiki_id="default",
         )
-        assert await knowledge.get_object("fix:src-feat") is None
+        assert await knowledge.list_objects(kind="fix", scope="wiki:default") == []
 
 
 async def test_the_same_error_recalls_the_earlier_fix(vault, tmp_path, mock_kuzu_conn):
@@ -268,7 +273,7 @@ async def test_the_same_error_recalls_the_earlier_fix(vault, tmp_path, mock_kuzu
             knowledge, symptom="TypeError: bad operand", wiki_id="default"
         )
 
-    assert [f.id for f in found] == ["fix:src-fix"]
+    assert [f.id for f in found] == [_FIX_ID]
 
 
 async def test_an_unfamiliar_error_recalls_nothing(vault, tmp_path, mock_kuzu_conn):
@@ -307,10 +312,10 @@ async def test_capture_survives_a_dead_vector_store(vault, tmp_path, mock_kuzu_c
                 source_id="src-fix",
                 wiki_id="default",
             )
-        assert embed.await_args.args[0] == "fix:src-fix"
+        assert embed.await_args.args[0] == _FIX_ID
         assert "TypeError" in embed.await_args.args[1]
 
         found = await recall_fixes(
             knowledge, symptom="TypeError: bad operand", wiki_id="default"
         )
-    assert [f.id for f in found] == ["fix:src-fix"]
+    assert [f.id for f in found] == [_FIX_ID]

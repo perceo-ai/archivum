@@ -20,6 +20,7 @@ they are simply marked unverified rather than dropped or overclaimed.
 
 from __future__ import annotations
 
+import hashlib
 import re
 from dataclasses import dataclass, field
 
@@ -29,6 +30,7 @@ from archivum.config import get_settings
 from archivum.db import qdrant_client as qdrant
 from archivum.knowledge.models import Citation, KnowledgeObject
 from archivum.knowledge.repository import KnowledgeRepository
+from archivum.memory.distill import _merged_citations, _recurrence_confidence
 from archivum.retrieval.hybrid import fuse_ranked_hits
 
 # Commands whose success or failure says something about whether the code works.
@@ -211,9 +213,21 @@ def extract_fix(conversation: Conversation, *, stated: bool = False) -> Fix | No
 _MATCH_THRESHOLD = 0.5
 _MAX_RECALLED = 5
 
+# Recurrence is stricter than recall. A loose recall match costs one extra
+# suggestion; a loose merge folds two different bugs into one record and
+# corrupts both, so a new fix joins an old one only when nearly every word of
+# the shorter symptom is shared.
+_RECURRENCE_THRESHOLD = 0.8
 
-def fix_id_for(source_id: str) -> str:
-    return f"fix:{source_id}"
+
+def fix_id_for(wiki_id: str, key: str) -> str:
+    """One id per shape of trouble, so a recurrence lands on the same row.
+
+    Keyed by the session, every recurrence of the same error wrote a fresh
+    page beside the last one, and none of them knew it had happened before.
+    """
+    digest = hashlib.sha1(f"{wiki_id}\x00{key}".encode()).hexdigest()[:16]
+    return f"fix:{wiki_id}:{digest}"
 
 
 def _tokens(text: str) -> set[str]:
@@ -243,7 +257,7 @@ def fix_to_object(fix: Fix, *, source_id: str, wiki_id: str) -> KnowledgeObject:
         quote=fix.symptom,
     )
     return KnowledgeObject(
-        id=fix_id_for(source_id),
+        id=fix_id_for(wiki_id, fix.key),
         kind="fix",
         label=fix.symptom,
         scope=f"wiki:{wiki_id}",
@@ -258,8 +272,81 @@ def fix_to_object(fix: Fix, *, source_id: str, wiki_id: str) -> KnowledgeObject:
             "diagnosis": fix.diagnosis,
             "changed_paths": fix.changed_paths,
             "verified_by": fix.verified_by,
+            "occurrences": 1,
         },
     )
+
+
+async def _recurrence_of(
+    repo: KnowledgeRepository, fix: Fix, *, wiki_id: str
+) -> KnowledgeObject | None:
+    """The stored fix this one is a recurrence of, if any.
+
+    The exact key is checked first: a symptom with no distinctive words scores
+    0.0 against everything, and would otherwise be overwritten rather than
+    merged. Then the best lexical match over stored symptoms, which is also
+    what finds fixes stored under the older per-session ids.
+    """
+    exact = await repo.get_object(fix_id_for(wiki_id, fix.key))
+    if exact is not None:
+        return exact
+    candidates = await repo.list_objects(kind="fix", scope=f"wiki:{wiki_id}", limit=10_000)
+    scored = [
+        (score, obj)
+        for obj in candidates
+        if (score := match_score(fix.symptom, str(obj.properties.get("symptom", ""))))
+        >= _RECURRENCE_THRESHOLD
+    ]
+    if not scored:
+        return None
+    scored.sort(key=lambda pair: (-pair[0], pair[1].id))
+    return scored[0][1]
+
+
+def _reinforced(existing: KnowledgeObject, fresh: KnowledgeObject) -> KnowledgeObject:
+    """`existing`, strengthened by one more sighting of the same trouble.
+
+    The id, label and first-seen symptom stay put: the page people may already
+    link to is the page that grows. A recapture of a session already cited is
+    not a recurrence and changes nothing about the count.
+    """
+    citations = _merged_citations(existing, fresh.citations[0])
+    occurrences = len({citation.source_id for citation in citations})
+
+    old, new = existing.properties, fresh.properties
+    paths = list(old.get("changed_paths") or [])
+    paths += [path for path in new.get("changed_paths") or [] if path not in paths]
+    # Never downgrade: one verified sighting is enough to call the fix verified.
+    verified_by = str(old.get("verified_by") or "") or str(new.get("verified_by") or "")
+    # Each session's stated cause is quoted, not summarised; keep the fuller one.
+    diagnoses = [str(old.get("diagnosis") or ""), str(new.get("diagnosis") or "")]
+    diagnosis = max(diagnoses, key=len)
+
+    return existing.model_copy(
+        update={
+            "citations": citations,
+            "confidence": _recurrence_confidence(0.9 if verified_by else 0.6, occurrences),
+            "properties": {
+                **old,
+                "symptom_key": old.get("symptom_key") or new.get("symptom_key", ""),
+                "diagnosis": diagnosis,
+                "changed_paths": paths,
+                "verified_by": verified_by,
+                "occurrences": occurrences,
+            },
+        }
+    )
+
+
+async def remember_fix(
+    repo: KnowledgeRepository, fix: Fix, *, source_id: str, wiki_id: str
+) -> KnowledgeObject:
+    """Store a fix, reinforcing the earlier record of the same trouble if any."""
+    fresh = fix_to_object(fix, source_id=source_id, wiki_id=wiki_id)
+    existing = await _recurrence_of(repo, fix, wiki_id=wiki_id)
+    stored = fresh if existing is None else _reinforced(existing, fresh)
+    await repo.upsert_object(stored)
+    return stored
 
 
 async def _semantic_fix_ranking(symptom: str, wiki_id: str, limit: int) -> list[tuple[str, float]]:
