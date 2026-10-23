@@ -62,7 +62,10 @@ def legacy_index_body(repo_name: str = "nixos") -> str:
         f"- {CLUSTER_COUNT} clusters\n"
         "- 212 extracted\n\n"
         "## Clusters\n\n"
-        "- [[code/nixos/cluster-0|cluster 0]] — 3 records\n"
+        "- [[code/nixos/cluster-0|cluster 0]] — 3 records\n\n"
+        "---\n\n"
+        "Generated from the code graph, deterministically — no model was asked. "
+        "Every record above is backed by a citation into a file and a line.\n"
     )
 
 
@@ -147,6 +150,27 @@ async def test_a_stub_body_with_other_tags_is_skipped_not_matched(settings):
     reasons = {entry["slug"]: entry["reason"] for entry in candidates.skipped}
     assert set(reasons) == {f"{PREFIX}/retagged", f"{PREFIX}/index"}
     assert all("tags" in reason for reason in reasons.values())
+
+
+async def test_a_stub_with_notes_added_after_its_footer_is_skipped(settings):
+    """The cluster footer invited edits; text after it is a person's, not the template's."""
+    await sqlite_mod.init_db(settings)
+    await sqlite_mod.upsert_page(
+        f"{PREFIX}/annotated",
+        "annotated",
+        legacy_cluster_body("annotated", 2) + "\nMy note: the flake pins home-manager here.\n",
+        ["code", "cluster"],
+    )
+    await sqlite_mod.upsert_page(
+        f"{PREFIX}/index", "nixos", legacy_index_body() + "\nAlso see the deploy runbook.\n", ["code", "repo"]
+    )
+
+    candidates = await sqlite_mod.find_stub_pages_under(PREFIX)
+
+    assert candidates.matched == []
+    reasons = {entry["slug"]: entry["reason"] for entry in candidates.skipped}
+    assert set(reasons) == {f"{PREFIX}/annotated", f"{PREFIX}/index"}
+    assert all("added" in reason for reason in reasons.values())
 
 
 async def test_a_stub_a_person_has_taken_over_is_skipped(settings):
@@ -237,6 +261,43 @@ async def test_a_stub_edited_between_find_and_delete_survives(seeded):
     assert len(report["deleted"]) == 34
     assert await sqlite_mod.get_page(f"{PREFIX}/cluster-0") is not None
     assert any(entry["slug"] == f"{PREFIX}/cluster-0" for entry in report["skipped"])
+
+
+async def test_hooks_only_run_for_rows_the_pinned_delete_removed(seeded):
+    """`forget` reaches the file and indexes, so it must never follow a lost race."""
+    real_find = sqlite_mod.find_stub_pages_under
+    prechecked: list[str] = []
+    forgotten: list[str] = []
+
+    async def find_then_someone_saves(prefix, wiki_id="default"):
+        candidates = await real_find(prefix, wiki_id)
+        await sqlite_mod.upsert_page(
+            f"{PREFIX}/cluster-1", "cluster 1", "# cluster 1\n\nSaved just now.\n", ["code", "cluster"]
+        )
+        return candidates
+
+    async def precheck(slug, checked):
+        prechecked.append(slug)
+        return "file was edited" if slug == f"{PREFIX}/cluster-2" else None
+
+    async def forget(slug, checked):
+        assert await sqlite_mod.get_page(slug) is None, "forget must only follow a removed row"
+        forgotten.append(slug)
+
+    with patch.object(sqlite_mod, "find_stub_pages_under", new=find_then_someone_saves):
+        report = await sqlite_mod.purge_stub_pages_under(
+            PREFIX, dry_run=False, precheck=precheck, forget=forget
+        )
+
+    assert len(prechecked) == 35
+    assert sorted(forgotten) == sorted(report["deleted"])
+    assert len(report["deleted"]) == 33
+    for survivor in (f"{PREFIX}/cluster-1", f"{PREFIX}/cluster-2"):
+        assert survivor not in forgotten
+        assert await sqlite_mod.get_page(survivor) is not None
+    reasons = {entry["slug"]: entry["reason"] for entry in report["skipped"]}
+    assert reasons[f"{PREFIX}/cluster-2"] == "file was edited"
+    assert "changed" in reasons[f"{PREFIX}/cluster-1"]
 
 
 async def test_the_stub_patterns_do_not_match_what_the_indexer_writes_now():
@@ -345,6 +406,35 @@ def test_executing_with_nothing_to_purge_is_not_reported_as_success(settings, ca
     assert code != 0
     assert report["outcome"] == "nothing-to-purge"
     assert report["deleted"] == []
+
+
+def test_the_script_refuses_a_vault_directory_that_belongs_to_another_wiki(settings, capsys):
+    """Page paths carry no wiki id; another wiki's files must not go under this one's slugs."""
+    from archivum.scripts import purge_stub_pages
+    from archivum.vault_scaffold import VAULT_MARKER
+
+    _seed_sync(settings)
+    (settings.wiki_dir / VAULT_MARKER).write_text("someone-else\n", encoding="utf-8")
+
+    with pytest.raises(SystemExit):
+        purge_stub_pages.main(
+            ["--db-path", str(settings.db_path), "--wiki-dir", str(settings.wiki_dir), "--execute"]
+        )
+    assert _count_under(settings, PREFIX) == 36
+    assert len(list((settings.wiki_dir / PREFIX).glob("*.md"))) == 36
+
+
+def test_the_script_will_not_execute_without_the_vault_directory(settings, tmp_path):
+    """Rows deleted with the files left behind would be read straight back in by reconcile."""
+    from archivum.scripts import purge_stub_pages
+
+    _seed_sync(settings)
+
+    with pytest.raises(SystemExit):
+        purge_stub_pages.main(
+            ["--db-path", str(settings.db_path), "--wiki-dir", str(tmp_path / "nope"), "--execute"]
+        )
+    assert _count_under(settings, PREFIX) == 36
 
 
 def test_the_script_refuses_a_database_that_does_not_exist(tmp_path, capsys):

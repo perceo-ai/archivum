@@ -24,6 +24,7 @@ from typing import Any
 
 from archivum.config import Settings, get_settings
 from archivum.db import sqlite
+from archivum.vault_scaffold import VAULT_MARKER
 
 DEFAULT_PREFIX = "code/nixos"
 
@@ -67,10 +68,6 @@ class PurgeReport:
         }
 
 
-def _is_stub(text: str) -> bool:
-    return bool(sqlite.CLUSTER_STUB_RE.search(text) or sqlite.INDEX_STUB_RE.search(text))
-
-
 async def _purge(args: argparse.Namespace, settings: Settings) -> PurgeReport:
     # Imported here: indexing pulls in the search and graph clients, which a
     # dry run has no reason to load.
@@ -78,22 +75,36 @@ async def _purge(args: argparse.Namespace, settings: Settings) -> PurgeReport:
 
     degraded: dict[str, list[str]] = {}
 
-    async def forget(slug: str) -> bool:
-        # The vault file is what a reconcile reads back, so it is the copy that
-        # decides. A stub row whose file someone has since rewritten is their
-        # page now; leave both alone.
+    def file_text(slug: str) -> str | None:
         path = settings.wiki_dir / f"{slug}.md"
-        if path.exists():
-            if not _is_stub(path.read_text(encoding="utf-8")):
-                return False
-            path.unlink()
+        return path.read_text(encoding="utf-8", errors="replace") if path.exists() else None
+
+    async def precheck(slug: str, checked: str) -> str | None:
+        # The vault file is what a reconcile reads back, so it has the last
+        # word. One that differs from the row is an edit the watcher has not
+        # swept yet — the same test code_pages applies before retiring a page.
+        text = file_text(slug)
+        if text is not None and text != checked:
+            return "vault file differs from the indexed row (an unswept edit); left in place"
+        return None
+
+    async def forget(slug: str, checked: str) -> None:
+        # The row is gone. Anything that changed in the moment since is a
+        # person's: leave it for reconcile to read back rather than remove it.
+        text = file_text(slug)
+        if text is not None and text != checked:
+            degraded[slug] = ["vault file edited during the purge; kept for reconcile"]
+            return
+        if await sqlite.get_page(slug, args.wiki_id) is not None:
+            degraded[slug] = ["page saved again during the purge; kept"]
+            return
+        (settings.wiki_dir / f"{slug}.md").unlink(missing_ok=True)
         result = await forget_page(slug, wiki_id=args.wiki_id, settings=settings)
         if result.degraded:
             degraded[slug] = list(result.degraded)
-        return True
 
     report = await sqlite.purge_stub_pages_under(
-        args.prefix, args.wiki_id, dry_run=not args.execute, forget=forget
+        args.prefix, args.wiki_id, dry_run=not args.execute, precheck=precheck, forget=forget
     )
 
     if not args.execute:
@@ -143,6 +154,16 @@ def main(argv: list[str] | None = None) -> int:
     # report, truthfully but uselessly, that it found nothing to purge.
     if not settings.db_path.is_file():
         raise SystemExit(f"No database at {settings.db_path}; pass --db-path to the live vault's file.")
+    # Page paths carry no wiki id, so a directory belonging to another wiki
+    # would have that wiki's files unlinked under this one's slugs.
+    marker = settings.wiki_dir / VAULT_MARKER
+    owner = marker.read_text(encoding="utf-8").strip() if marker.is_file() else ""
+    if owner and owner != args.wiki_id:
+        raise SystemExit(f"{settings.wiki_dir} is the vault for wiki {owner!r}, not {args.wiki_id!r}.")
+    # Without the vault directory the files stay, and reconcile reads every
+    # purged stub straight back in.
+    if args.execute and not settings.wiki_dir.is_dir():
+        raise SystemExit(f"No vault directory at {settings.wiki_dir}; pass --wiki-dir to the live vault.")
 
     sqlite.configure(settings)
     try:

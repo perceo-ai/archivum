@@ -101,6 +101,36 @@ async def test_two_repos_in_same_named_directories_get_two_namespaces(vault, tmp
     assert first.scope != second.scope
 
 
+async def test_remotes_whose_names_join_the_same_way_stay_apart(vault, tmp_path):
+    """`acme-tools/widget` and `acme/tools-widget` both read `acme-tools-widget`."""
+    await sqlite_mod.init_db(vault)
+    first_path = add_origin(make_repo(tmp_path / "a", name="widget"), "https://github.com/acme-tools/widget.git")
+    second_path = add_origin(make_repo(tmp_path / "b", name="tools-widget"), "https://github.com/acme/tools-widget.git")
+
+    first = await register_repo(path=first_path, wiki_id="default")
+    second = await register_repo(path=second_path, wiki_id="default")
+
+    assert first.name == "acme-tools-widget"
+    assert second.name != first.name
+    assert repo_folder(second.name) != repo_folder(first.name)
+    assert second.name.startswith("acme-tools-widget-")
+
+    # Stable: registering either again keeps the namespace its pages are in.
+    assert (await register_repo(path=second_path, wiki_id="default")).name == second.name
+    assert (await register_repo(path=first_path, wiki_id="default")).name == first.name
+
+
+async def test_a_second_clone_of_the_same_repository_shares_its_namespace(vault, tmp_path):
+    await sqlite_mod.init_db(vault)
+    one = add_origin(make_repo(tmp_path / "a", name="nixos"), CONDUCTOR_REMOTE)
+    two = add_origin(make_repo(tmp_path / "b", name="conductor"), "git@github.com:perceo-ai/conductor-arch.git")
+
+    first = await register_repo(path=one, wiki_id="default")
+    second = await register_repo(path=two, wiki_id="default")
+
+    assert first.name == second.name == "perceo-ai-conductor-arch"
+
+
 async def test_a_repo_without_an_origin_falls_back_to_its_directory_name(vault, tmp_path):
     await sqlite_mod.init_db(vault)
     checkout = make_repo(tmp_path, name="atlas")  # a git repo, but no origin
