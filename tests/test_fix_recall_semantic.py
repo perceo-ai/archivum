@@ -18,7 +18,7 @@ from unittest.mock import AsyncMock, patch
 
 import aiosqlite
 
-from archivum.fixes import Fix, fix_to_object, recall_fixes, reindex_fixes
+from archivum.fixes import Fix, fix_id_for, fix_to_object, recall_fixes, reindex_fixes
 from archivum.knowledge.repository import KnowledgeRepository, init_knowledge_schema
 
 _LISTENER = Fix(
@@ -32,6 +32,9 @@ _INSTALLER = Fix(
     diagnosis="install.sh exited 0 when curl was missing, so nothing was installed",
     changed_paths=["install.sh"],
 )
+
+_LISTENER_ID = fix_id_for("default", _LISTENER.key)
+_INSTALLER_ID = fix_id_for("default", _INSTALLER.key)
 
 
 async def _store(*fixes_with_ids: tuple[str, Fix]) -> tuple[aiosqlite.Connection, KnowledgeRepository]:
@@ -51,11 +54,11 @@ async def test_a_paraphrase_of_the_trouble_finds_the_fix():
     """The words never seen before still land, because the meaning was stored."""
     conn, repo = await _store(("src-1", _LISTENER))
     try:
-        with patch("archivum.db.qdrant_client.search_fixes", new=_dense(("fix:src-1", 0.83))):
+        with patch("archivum.db.qdrant_client.search_fixes", new=_dense((_LISTENER_ID, 0.83))):
             found = await recall_fixes(
                 repo, symptom="address already in use when starting archcar", wiki_id="default"
             )
-        assert [f.id for f in found] == ["fix:src-1"]
+        assert [f.id for f in found] == [_LISTENER_ID]
     finally:
         await conn.close()
 
@@ -71,7 +74,7 @@ async def test_recall_still_answers_when_qdrant_is_down():
             found = await recall_fixes(
                 repo, symptom="archcar endpoint already has a live listener", wiki_id="default"
             )
-        assert [f.id for f in found] == ["fix:src-1"]
+        assert [f.id for f in found] == [_LISTENER_ID]
     finally:
         await conn.close()
 
@@ -94,7 +97,7 @@ async def test_a_ghost_vector_does_not_displace_a_valid_fix():
     try:
         with patch(
             "archivum.db.qdrant_client.search_fixes",
-            new=_dense(("fix:gone", 0.95), ("fix:src-1", 0.80)),
+            new=_dense(("fix:gone", 0.95), (_LISTENER_ID, 0.80)),
         ):
             found = await recall_fixes(
                 repo,
@@ -102,7 +105,7 @@ async def test_a_ghost_vector_does_not_displace_a_valid_fix():
                 wiki_id="default",
                 limit=1,
             )
-        assert [f.id for f in found] == ["fix:src-1"]
+        assert [f.id for f in found] == [_LISTENER_ID]
     finally:
         await conn.close()
 
@@ -111,7 +114,7 @@ async def test_dense_scores_below_the_fix_floor_are_noise():
     """Different errors score ~0.6-0.7 against each other; that must not recall."""
     conn, repo = await _store(("src-1", _LISTENER))
     try:
-        with patch("archivum.db.qdrant_client.search_fixes", new=_dense(("fix:src-1", 0.65))):
+        with patch("archivum.db.qdrant_client.search_fixes", new=_dense((_LISTENER_ID, 0.65))):
             found = await recall_fixes(
                 repo, symptom="ZeroDivisionError: division by zero", wiki_id="default"
             )
@@ -123,7 +126,7 @@ async def test_dense_scores_below_the_fix_floor_are_noise():
 async def test_agreement_between_channels_outranks_either_alone():
     conn, repo = await _store(("src-1", _LISTENER), ("src-2", _INSTALLER))
     try:
-        with patch("archivum.db.qdrant_client.search_fixes", new=_dense(("fix:src-2", 0.80))):
+        with patch("archivum.db.qdrant_client.search_fixes", new=_dense((_INSTALLER_ID, 0.80))):
             found = await recall_fixes(
                 # Lexically this touches both fixes ("silent...failure" vs the
                 # stored symptoms); the vector channel agreeing on src-2 must
@@ -132,7 +135,7 @@ async def test_agreement_between_channels_outranks_either_alone():
                 symptom="silent installer failure",
                 wiki_id="default",
             )
-        assert found and found[0].id == "fix:src-2"
+        assert found and found[0].id == _INSTALLER_ID
     finally:
         await conn.close()
 
@@ -146,7 +149,7 @@ async def test_reindex_embeds_every_stored_fix_and_nothing_else():
             count = await reindex_fixes(repo, wiki_id="default")
         assert count == 2
         embedded = {call.args[0] for call in upserted.await_args_list}
-        assert embedded == {"fix:src-1", "fix:src-2"}
+        assert embedded == {_LISTENER_ID, _INSTALLER_ID}
         # The diagnosis travels with the symptom: it is where the other names
         # for the same trouble live.
         texts = {call.args[1:3] for call in upserted.await_args_list}

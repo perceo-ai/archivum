@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from archivum.capture.schema import Conversation
-from archivum.knowledge.models import Citation, KnowledgeObject
+from archivum.knowledge.models import Citation, KnowledgeObject, KnowledgeRelationship
 from archivum.memory.atoms import Atom, atom_id, normalize_atom_text
 
 PERSONA_ID = "memory:persona:self"
@@ -176,7 +176,7 @@ def _merged_sessions(existing: KnowledgeObject | None, session_id: str) -> list[
 
 
 def _merged_citations(
-    existing: KnowledgeObject | None, citation: Citation
+    existing: KnowledgeObject | KnowledgeRelationship | None, citation: Citation
 ) -> list[Citation]:
     citations = list(existing.citations) if existing is not None else []
     key = (citation.source_id, citation.chunk_id, citation.span_start)

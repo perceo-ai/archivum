@@ -23,7 +23,7 @@ from archivum.capture.classify import classify_session, touched_paths
 from archivum.capture.schema import Conversation
 from archivum.code_repos import list_repos
 from archivum.db import qdrant_client as qdrant
-from archivum.fixes import extract_fix, fix_id_for, fix_to_object
+from archivum.fixes import extract_fix, remember_fix
 from archivum.knowledge.models import Citation, KnowledgeObject, KnowledgeRelationship
 from archivum.knowledge.personal_root import ensure_personal_root, link_to_self
 from archivum.knowledge.repository import KnowledgeRepository
@@ -138,8 +138,15 @@ async def record_session_work(
     # it. This is the one people actually come back for.
     fix = extract_fix(conversation, stated=stated)
     if fix is not None:
-        await repo.upsert_object(
-            fix_to_object(fix, source_id=source_id, wiki_id=wiki_id)
+        # A recurrence of trouble already remembered strengthens that record
+        # rather than writing a near-duplicate beside it.
+        stored = await remember_fix(
+            repo,
+            fix,
+            source_id=source_id,
+            wiki_id=wiki_id,
+            edge_citation=citation,
+            repaired=touched,
         )
         # Best effort: the vector is what lets a paraphrase of this trouble
         # find the fix later. Capture itself must never fail on it — a fix
@@ -152,7 +159,10 @@ async def record_session_work(
             # as any other failure: logged, lexical-only, backfillable.
             await asyncio.wait_for(
                 qdrant.upsert_fix(
-                    fix_id_for(source_id), fix.symptom, fix.diagnosis, wiki_id=wiki_id
+                    stored.id,
+                    str(stored.properties.get("symptom", "")),
+                    str(stored.properties.get("diagnosis", "")),
+                    wiki_id=wiki_id,
                 ),
                 timeout=10,
             )
@@ -160,23 +170,8 @@ async def record_session_work(
             logger.warning(
                 "fix stored but not embedded; recall is lexical-only for it "
                 "until reindex_fixes runs",
-                extra={"fix_id": fix_id_for(source_id), "wiki_id": wiki_id},
+                extra={"fix_id": stored.id, "wiki_id": wiki_id},
                 exc_info=True,
-            )
-        await link_to_self(repo, fix_id_for(source_id), "remembers", citation=citation)
-        for symbol in touched:
-            await repo.upsert_relationship(
-                KnowledgeRelationship(
-                    id=f"{fix_id_for(source_id)}__fixes__{symbol.id}",
-                    src_id=fix_id_for(source_id),
-                    dst_id=symbol.id,
-                    rel_type="fixes",
-                    scope="bridge",
-                    confidence=0.9 if fix.verified_by else 0.6,
-                    extraction_method="EXTRACTED",
-                    citations=[citation],
-                    properties={"verified_by": fix.verified_by},
-                )
             )
 
     for symbol in touched:

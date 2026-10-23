@@ -28,15 +28,21 @@ class KnowledgeRepository:
         self._conn = conn
 
     @asynccontextmanager
-    async def transaction(self) -> AsyncIterator[None]:
+    async def transaction(self, *, immediate: bool = False) -> AsyncIterator[None]:
         """Group writes into one commit.
 
         Both `upsert_object` and `upsert_relationship` commit per call by
         default, which is right for a single write and wrong for a batch: a page
         with a hundred mentions became a hundred transactions, each taking the
         one write lock while background workers waited for it.
+
+        `immediate` is for read-modify-write. A deferred BEGIN lets two
+        connections read the same row and then collide on the write, which
+        SQLite reports as "database is locked" rather than waiting; BEGIN
+        IMMEDIATE takes the write lock up front, so the second caller waits
+        out the busy timeout and then reads what the first one wrote.
         """
-        await self._conn.execute("BEGIN")
+        await self._conn.execute("BEGIN IMMEDIATE" if immediate else "BEGIN")
         try:
             yield
         except Exception:
@@ -163,6 +169,13 @@ class KnowledgeRepository:
         ) as cursor:
             rows = await cursor.fetchall()
         return [await self._row_to_object(row) for row in rows]
+
+    async def get_relationship(self, relationship_id: str) -> KnowledgeRelationship | None:
+        async with self._conn.execute(
+            "SELECT * FROM knowledge_relationships WHERE id=?", (relationship_id,)
+        ) as cursor:
+            row = await cursor.fetchone()
+        return await self._row_to_relationship(row) if row else None
 
     async def list_relationships(
         self, node_id: str | None = None, scope: str | None = None

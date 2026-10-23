@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from archivum.knowledge.models import Citation, KnowledgeObject, KnowledgeRelationship
 from archivum.knowledge.repository import KnowledgeRepository
+from archivum.memory.distill import _merged_citations
 
 
 SELF_ID = "person:self"
@@ -64,8 +65,15 @@ async def link_to_self(
     *,
     citation: Citation,
     confidence: float = 1.0,
+    accumulate: bool = False,
+    commit: bool = True,
 ) -> KnowledgeRelationship:
-    """Create or update a typed, cited relationship from the owner to an object."""
+    """Create or update a typed, cited relationship from the owner to an object.
+
+    `accumulate` keeps the citations already on the edge and adds this one,
+    for an object that more than one source vouches for. Without it the edge
+    is rewritten with only the latest citation.
+    """
     if rel_type not in PERSONAL_RELATIONSHIP_TYPES:
         raise ValueError(f"Unsupported personal relationship type: {rel_type}")
 
@@ -74,16 +82,20 @@ async def link_to_self(
         raise ValueError("Personal root must exist before creating relationships")
     target = await repo.get_object(object_id)
 
+    relationship_id = f"rel:{SELF_ID}:{rel_type}:{object_id}"
+    citations = [citation]
+    if accumulate:
+        citations = _merged_citations(await repo.get_relationship(relationship_id), citation)
     relationship = KnowledgeRelationship(
-        id=f"rel:{SELF_ID}:{rel_type}:{object_id}",
+        id=relationship_id,
         src_id=SELF_ID,
         dst_id=object_id,
         rel_type=rel_type,
         scope=target.scope if target is not None else root.scope,
         confidence=confidence,
         extraction_method="USER_AUTHORED",
-        citations=[citation],
+        citations=citations,
         properties={},
     )
-    await repo.upsert_relationship(relationship)
+    await repo.upsert_relationship(relationship, commit=commit)
     return relationship
