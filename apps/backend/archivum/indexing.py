@@ -212,9 +212,16 @@ async def reindex_page(
     tags = _tags_from(markdown)
 
     existing = await sqlite.get_page(slug, wiki_id)
-    if existing and not force and existing.get("content") == markdown:
+    unchanged = bool(existing) and existing.get("content") == markdown
+    if unchanged and not force:
         result.action = "unchanged"
         return result
+    # A forced pass over content that is already indexed repairs projections;
+    # nobody wrote anything, so it must not reassign who did. Otherwise every
+    # vault rebuild would mark generated pages as hand-edited, and code pages
+    # that only retire their own stale pages could never retire one again.
+    if unchanged and existing.get("authored_by"):
+        authored_by = str(existing["authored_by"])
 
     # Canonical first: if this fails the caller should hear about it.
     await sqlite.upsert_page(slug, title, markdown, tags, authored_by, wiki_id)
