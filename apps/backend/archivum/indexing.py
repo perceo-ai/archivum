@@ -38,7 +38,11 @@ from archivum.knowledge.suggestions import SuggestionRepository, init_suggestion
 from archivum.linting import WIKILINK_RE, normalize_wikilink_target
 from archivum.memory.catalog import register_page_asset
 from archivum.memory.registry import MemoryAssetRegistry
-from archivum.pages_to_knowledge import remove_page_from_knowledge, sync_page_to_knowledge
+from archivum.pages_to_knowledge import (
+    is_nameable_title,
+    remove_page_from_knowledge,
+    sync_page_to_knowledge,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -180,6 +184,40 @@ async def project_page_graph(
             )
 
 
+async def _relink_pages_naming(
+    repo: KnowledgeRepository,
+    *,
+    slug: str,
+    titles: set[str],
+    wiki_id: str,
+    result: ReindexResult,
+) -> None:
+    """Re-read the pages that name a title which just appeared or changed.
+
+    A page only references the titles that exist when it is read, so without
+    this a page written before the one it names stayed unlinked until it was
+    next edited — and could link the shorter title nested inside the longer
+    one ("Ledger" inside "Ledger Design") in the meantime.
+    """
+    needles = sorted(t for t in titles if t and is_nameable_title(t))
+    for row in await sqlite.list_pages_containing(needles, wiki_id):
+        if row["slug"] == slug:
+            continue
+        await sync_page_to_knowledge(
+            repo,
+            slug=row["slug"],
+            title=row["title"],
+            markdown=row["content"] or "",
+            wiki_id=wiki_id,
+        )
+        try:
+            await project_page(repo, page_id=f"page:{wiki_id}:{row['slug']}", wiki_id=wiki_id)
+        except Exception as exc:  # noqa: BLE001 - the graph is rebuildable
+            logger.warning("knowledge projection for %s failed: %s", row["slug"], exc)
+            if "graph.knowledge" not in result.degraded:
+                result.degraded.append("graph.knowledge")
+
+
 async def reindex_page(
     slug: str,
     *,
@@ -229,6 +267,7 @@ async def reindex_page(
     async with sqlite.get_db() as conn:
         await init_suggestion_schema(conn)
         repo = KnowledgeRepository(conn)
+        known = await repo.get_object(f"page:{wiki_id}:{slug}")
         await sync_page_to_knowledge(
             repo,
             slug=slug,
@@ -236,6 +275,14 @@ async def reindex_page(
             markdown=markdown,
             wiki_id=wiki_id,
         )
+        if known is None or known.label != title:
+            await _relink_pages_naming(
+                repo,
+                slug=slug,
+                titles={title, known.label if known else ""},
+                wiki_id=wiki_id,
+                result=result,
+            )
         # Project the canonical record straight away. The graph is a derived
         # view, and one that only converges on a manual rebuild is not a view
         # anyone can trust.

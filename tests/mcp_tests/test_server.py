@@ -56,7 +56,7 @@ async def test_mcp_life_os_tools(temp_settings, monkeypatch):
 async def test_lint_wiki_reports_broken_links_and_orphans(monkeypatch):
     monkeypatch.setattr(
         server.sqlite,
-        "list_pages",
+        "list_page_contents",
         AsyncMock(
             return_value=[
                 {"slug": "alpha", "content": "See [[beta]] and [[missing]]."},
@@ -75,10 +75,30 @@ async def test_lint_wiki_reports_broken_links_and_orphans(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_lint_wiki_reads_the_links_pages_really_contain(temp_settings):
+    """Against the real store, not a listing mocked to carry page bodies.
+
+    The listing lint used left the body out, so the linter saw no links on any
+    page: every page an orphan, no wikilink ever broken.
+    """
+    await sqlite.init_db(temp_settings)
+    await sqlite.upsert_page("alpha", "Alpha", "See [[beta]] and [[missing]].", [], "user", "default")
+    await sqlite.upsert_page("beta", "Beta", "Linked page.", [], "user", "default")
+    await sqlite.upsert_page("orphan", "Orphan", "No links here.", [], "user", "default")
+
+    result = await server.lint_wiki("default")
+
+    assert result["orphan_pages"] == ["orphan"]
+    assert result["broken_wikilinks"] == [
+        {"type": "broken_wikilink", "page": "alpha", "target": "missing"}
+    ]
+
+
+@pytest.mark.asyncio
 async def test_lint_wiki_reports_contradictions(monkeypatch):
     monkeypatch.setattr(
         server.sqlite,
-        "list_pages",
+        "list_page_contents",
         AsyncMock(
             return_value=[
                 {"slug": "ops-a", "content": "Public wiki is enabled."},

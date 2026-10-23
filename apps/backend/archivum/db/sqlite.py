@@ -319,6 +319,40 @@ async def list_pages(wiki_id: str = "default") -> list[dict[str, Any]]:
             return [dict(r) for r in rows]
 
 
+async def list_page_contents(wiki_id: str = "default") -> list[dict[str, Any]]:
+    """Every page's slug and body, for checks that read what pages say.
+
+    `list_pages` leaves the body out because most callers only need a listing.
+    The link linter read it anyway and so saw no links on any page: every page
+    an orphan, and no wikilink ever broken.
+    """
+    async with get_db() as db:
+        async with db.execute(
+            "SELECT slug, title, content FROM pages WHERE wiki_id=? ORDER BY slug ASC",
+            (wiki_id,),
+        ) as cur:
+            rows = await cur.fetchall()
+            return [dict(r) for r in rows]
+
+
+async def list_pages_containing(
+    needles: list[str], wiki_id: str = "default"
+) -> list[dict[str, Any]]:
+    """Pages whose body contains any of `needles`, exactly as written."""
+    if not needles:
+        return []
+    # instr, not LIKE: LIKE folds ASCII case and treats % and _ as wildcards.
+    clause = " OR ".join("instr(content, ?) > 0" for _ in needles)
+    async with get_db() as db:
+        async with db.execute(
+            f"SELECT slug, title, content FROM pages WHERE wiki_id=? AND ({clause}) "
+            "ORDER BY slug ASC",
+            (wiki_id, *needles),
+        ) as cur:
+            rows = await cur.fetchall()
+            return [dict(r) for r in rows]
+
+
 async def list_recent_pages(
     wiki_id: str = "default",
     limit: int = 50,

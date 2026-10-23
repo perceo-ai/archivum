@@ -67,7 +67,13 @@ async def sync_page_to_knowledge(
 
     await _link_named_entities(repo, page_id=page_id, markdown=markdown, scope=scope)
 
-    for target in sorted({target.strip() for target in WIKILINK_RE.findall(markdown) if target.strip()}):
+    wikilinks = sorted({target.strip() for target in WIKILINK_RE.findall(markdown) if target.strip()})
+    linked = {_page_id(wiki_id, normalize_wikilink_target(target)) for target in wikilinks}
+    await _link_named_pages(
+        repo, page_id=page_id, title=title, markdown=markdown, scope=scope, linked=linked
+    )
+
+    for target in wikilinks:
         target_slug = normalize_wikilink_target(target)
         if not target_slug or target_slug == slug:
             continue
@@ -128,6 +134,11 @@ def _is_acronym(label: str) -> bool:
     return len(label) >= _MIN_ACRONYM_LABEL and label.isupper() and label.isalnum()
 
 
+def _names(needle: str, haystack: str) -> bool:
+    # Whole words only: "Make" must not match "makeshift".
+    return re.search(rf"(?<!\w){re.escape(needle)}(?!\w)", haystack) is not None
+
+
 async def _link_named_entities(
     repo: KnowledgeRepository, *, page_id: str, markdown: str, scope: str
 ) -> None:
@@ -159,8 +170,7 @@ async def _link_named_entities(
         acronym = _is_acronym(label)
         haystack = markdown if acronym else lowered
         needle = label if acronym else label.lower()
-        # Whole words only: "Make" must not match "makeshift".
-        if re.search(rf"(?<!\w){re.escape(needle)}(?!\w)", haystack):
+        if _names(needle, haystack):
             named.append((entity, label))
     if not named:
         return
@@ -182,6 +192,85 @@ async def _link_named_entities(
                     extraction_method="INFERRED",
                     citations=[_citation(page_id, label)],
                     properties={"matched": label},
+                ),
+                commit=False,
+            )
+
+
+def is_nameable_title(title: str) -> bool:
+    """Whether a page title is distinctive enough to find in someone's prose.
+
+    Generated code pages are titled after identifiers — "client", "update",
+    "layout" — and a bare lowercase word like that is indistinguishable from
+    ordinary prose. A title with any capital, punctuation or a second word
+    ("Archductor", "workspaceBriefing", "Archivum MCP") is what a person
+    writes when they mean that page.
+    """
+    if _is_acronym(title):
+        return True
+    if len(title) < _MIN_ENTITY_LABEL:
+        return False
+    return not (title.isalpha() and title.islower())
+
+
+async def _link_named_pages(
+    repo: KnowledgeRepository,
+    *,
+    page_id: str,
+    title: str,
+    markdown: str,
+    scope: str,
+    linked: set[str],
+) -> None:
+    """Reference the other pages a page names by title, without brackets.
+
+    Hand-written pages talk about each other in prose — "the Archductor
+    Requirements cover this" — and without this they are islands in the graph
+    even though their text says exactly how they relate. The edge is recorded,
+    never written into the page: the author's file stays as they wrote it.
+
+    Titles match as written, case included. Unlike an entity label, a title is
+    the author's own spelling of the name, and it is what separates "Timeline"
+    the page from a timeline in a sentence. Pages already wikilinked keep their
+    explicit edge; an inferred one must not overwrite it.
+    """
+    own_title = title.strip()
+    candidates = []
+    for page in await repo.list_objects(kind="page", scope=scope, limit=_MAX_ENTITY_SCAN):
+        other = page.label.strip()
+        # Two pages can share a title; naming your own title is not a reference.
+        if page.id == page_id or page.id in linked or other == own_title:
+            continue
+        if is_nameable_title(other):
+            candidates.append((page, other))
+
+    # Longest title first, and a match uses up its text: "the Ledger Design"
+    # names the design page, not also the page titled "Ledger".
+    remaining = markdown
+    named = []
+    for page, other in sorted(candidates, key=lambda c: (-len(c[1]), c[0].id)):
+        pattern = rf"(?<!\w){re.escape(other)}(?!\w)"
+        if re.search(pattern, remaining):
+            named.append((page, other))
+            remaining = re.sub(pattern, lambda m: " " * len(m.group(0)), remaining)
+    if not named:
+        return
+
+    async with repo.transaction():
+        for page, other in named:
+            start = markdown.find(other)
+            await repo.upsert_relationship(
+                KnowledgeRelationship(
+                    id=f"rel:{page_id}:references:{page.id}",
+                    src_id=page_id,
+                    dst_id=page.id,
+                    rel_type="references",
+                    scope=scope,
+                    confidence=0.6,
+                    # Read off the page rather than stated by it.
+                    extraction_method="INFERRED",
+                    citations=[_citation(page_id, other, start if start >= 0 else None)],
+                    properties={"matched": other},
                 ),
                 commit=False,
             )

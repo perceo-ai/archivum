@@ -286,7 +286,7 @@ class TestRebuildIndexes(unittest.TestCase):
         """POST /api/rebuild-indexes completes without error."""
         fake_pages = self._fake_pages()
         with (
-            patch("archivum.api.system.sqlite.list_pages", new=AsyncMock(return_value=fake_pages)),
+            patch("archivum.api.system.sqlite.list_page_contents", new=AsyncMock(return_value=fake_pages)),
             patch("archivum.api.system.qdrant.init_collection", new=AsyncMock()),
             patch("archivum.api.system.graph.init_graph", new=AsyncMock()),
             patch("archivum.api.system.qdrant.upsert_page", new=AsyncMock()),
@@ -308,13 +308,16 @@ class TestRebuildIndexes(unittest.TestCase):
             response = self.client.post("/api/rebuild-indexes")
 
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(sync_page.await_count, 2)
+        # Each page twice: once to register every title, once to read mentions.
+        self.assertEqual(sync_page.await_count, 4)
+        markdown = {call.kwargs["markdown"] for call in sync_page.await_args_list}
+        self.assertIn("Hello [[page-two]]", markdown)
 
     def test_rebuild_returns_page_count(self):
         """POST /api/rebuild-indexes response includes page count."""
         fake_pages = self._fake_pages()
         with (
-            patch("archivum.api.system.sqlite.list_pages", new=AsyncMock(return_value=fake_pages)),
+            patch("archivum.api.system.sqlite.list_page_contents", new=AsyncMock(return_value=fake_pages)),
             patch("archivum.api.system.qdrant.init_collection", new=AsyncMock()),
             patch("archivum.api.system.graph.init_graph", new=AsyncMock()),
             patch("archivum.api.system.qdrant.upsert_page", new=AsyncMock()),
@@ -357,7 +360,7 @@ class TestRebuildIndexes(unittest.TestCase):
             return None
 
         with (
-            patch("archivum.api.system.sqlite.list_pages", new=AsyncMock(return_value=fake_pages)),
+            patch("archivum.api.system.sqlite.list_page_contents", new=AsyncMock(return_value=fake_pages)),
             patch("archivum.api.system.qdrant.init_collection", new=AsyncMock()),
             patch("archivum.api.system.graph.init_graph", new=AsyncMock()),
             patch("archivum.api.system.qdrant.upsert_page", new=AsyncMock()),
@@ -420,7 +423,7 @@ class TestRebuildIndexes(unittest.TestCase):
         FakeKnowledgeRepository.deleted = []
 
         with (
-            patch("archivum.api.system.sqlite.list_pages", new=AsyncMock(return_value=fake_pages)),
+            patch("archivum.api.system.sqlite.list_page_contents", new=AsyncMock(return_value=fake_pages)),
             patch("archivum.api.system.qdrant.init_collection", new=AsyncMock()),
             patch("archivum.api.system.graph.init_graph", new=AsyncMock()),
             patch("archivum.api.system.qdrant.upsert_page", new=AsyncMock()),
@@ -463,7 +466,7 @@ class TestLintWiki(unittest.TestCase):
             {"slug": "a", "content": "[[b]]"},
             {"slug": "b", "content": "[[a]]"},
         ]
-        with patch("archivum.api.system.sqlite.list_pages", new=AsyncMock(return_value=clean_pages)):
+        with patch("archivum.api.system.sqlite.list_page_contents", new=AsyncMock(return_value=clean_pages)):
             response = self.client.get("/api/lint")
 
         self.assertEqual(response.status_code, 200)
@@ -476,7 +479,7 @@ class TestLintWiki(unittest.TestCase):
         pages = [
             {"slug": "has-broken", "content": "See [[missing-page]] for details."},
         ]
-        with patch("archivum.api.system.sqlite.list_pages", new=AsyncMock(return_value=pages)):
+        with patch("archivum.api.system.sqlite.list_page_contents", new=AsyncMock(return_value=pages)):
             response = self.client.get("/api/lint")
 
         self.assertEqual(response.status_code, 200)
@@ -491,7 +494,7 @@ class TestLintWiki(unittest.TestCase):
         pages = [
             {"slug": "island", "content": "No links here."},
         ]
-        with patch("archivum.api.system.sqlite.list_pages", new=AsyncMock(return_value=pages)):
+        with patch("archivum.api.system.sqlite.list_page_contents", new=AsyncMock(return_value=pages)):
             response = self.client.get("/api/lint")
 
         self.assertEqual(response.status_code, 200)
@@ -506,7 +509,7 @@ class TestLintWiki(unittest.TestCase):
             {"slug": "ops-a", "content": "Public wiki is enabled."},
             {"slug": "ops-b", "content": "Public wiki is disabled."},
         ]
-        with patch("archivum.api.system.sqlite.list_pages", new=AsyncMock(return_value=pages)):
+        with patch("archivum.api.system.sqlite.list_page_contents", new=AsyncMock(return_value=pages)):
             response = self.client.get("/api/lint")
 
         self.assertEqual(response.status_code, 200)

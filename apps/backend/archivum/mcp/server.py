@@ -975,7 +975,7 @@ async def lint_wiki(wiki_id: str = "default") -> dict[str, Any]:
     """Health check: broken wikilinks, orphan pages, and contradictory claims."""
     _require_key()
     set_trace_id(new_trace_id("mcp-lint"))
-    pages = await sqlite.list_pages(wiki_id)
+    pages = await sqlite.list_page_contents(wiki_id)
     analysis = analyze_wiki_pages(pages)
     broken = [
         {"type": i["type"], "page": i["page"], "target": i["target"]}
