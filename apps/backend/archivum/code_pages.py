@@ -96,11 +96,17 @@ _SLUG_RE = re.compile(r"[^a-z0-9]+")
 # whatever characters it holds. `app/[slug]/My Page.tsx` is a real path.
 _LOCATION_RE = re.compile(r"(.+):(\d+)(?:-(\d+))?")
 # In prose there is no fixed end, so a citation is delimited by the backticks
-# the prompt asks for, never by a guess at which characters a path may use.
-_CITED_RE = re.compile(r"`([^`\n]+):(\d+)(?:-(\d+))?`")
+# the prompt asks for, never by a guess at which characters a path may use. It
+# must still name a file — end in `.ext` — so `localhost:8000` is an address,
+# not a citation.
+_CITED_RE = re.compile(r"`([^`\n]+\.[A-Za-z0-9]+):(\d+)(?:-(\d+))?`")
 # A citation written without backticks is still a claim about the code. These
 # only use ordinary path characters, and are checked like any other.
 _BARE_ANCHOR_RE = re.compile(r"(?<![\w/.-])([\w./-]+\.[A-Za-z0-9]+):(\d+)(?:-(\d+))?\b")
+# A URL is an address however it ends: `http://api.example.com:8080` would
+# otherwise read as the file `//api.example.com`, line 8080. Never past a
+# backtick, so it cannot unpair the backticks around a real citation.
+_URL_RE = re.compile(r"[A-Za-z][A-Za-z0-9+.-]*://[^\s`]+")
 _NARRATIVE_BLOCK_RE = re.compile(
     r"<!-- archivum:narrative ([0-9a-f]+) -->\n(.*?)\n<!-- /archivum:narrative -->",
     re.DOTALL,
@@ -328,10 +334,11 @@ def narrative_is_substantive(text: str, *, known_locations: set[str]) -> bool:
     text = (text or "").strip()
     if not text:
         return False
-    cited = list(_CITED_RE.finditer(text))
+    addressed = _URL_RE.sub(" ", text)
+    cited = list(_CITED_RE.finditer(addressed))
     # Bare citations are looked for only outside the backticked ones, so a
     # path with a space in it is not read a second time as a shorter path.
-    outside = _CITED_RE.sub(" ", text)
+    outside = _CITED_RE.sub(" ", addressed)
     anchors = cited + list(_BARE_ANCHOR_RE.finditer(outside))
     if not anchors:
         return False

@@ -1057,6 +1057,23 @@ def test_a_path_with_brackets_and_spaces_keeps_its_page():
 
 
 @pytest.mark.parametrize(
+    "address", ["localhost:8000", "http://localhost:8000", "http://api.example.com:8080/v1"]
+)
+def test_a_quoted_address_is_not_read_as_a_source_citation(address):
+    """Greptile: `localhost:8000` is a service address, not an invented anchor."""
+    allowed = {ROUTE_ANCHOR}
+    narrative = (
+        _route_narrative(ROUTE_ANCHOR)
+        + f" In development the page is served at `{address}` by the dev server."
+    )
+    assert narrative_is_substantive(narrative, known_locations=allowed)
+    # The address is skipped, not trusted: an invented source citation beside
+    # it is still rejected.
+    invented = narrative.replace(f"`{ROUTE_ANCHOR}`", "`app/[slug]/Missing Page.tsx:10-20`")
+    assert not narrative_is_substantive(invented, known_locations=allowed)
+
+
+@pytest.mark.parametrize(
     "cited",
     [
         "app/[other]/Other Page.tsx:10-20",  # a bracketed, spaced path never offered
