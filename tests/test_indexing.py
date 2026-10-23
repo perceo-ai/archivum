@@ -81,6 +81,42 @@ async def test_editing_the_file_outside_the_app_is_picked_up(env):
     assert "second" in row["content"]
 
 
+async def test_a_forced_rebuild_does_not_reassign_who_wrote_a_page(env, mock_kuzu_conn):
+    """A repair pass writes nothing, so a generated page stays the agent's.
+
+    Code pages only retire stale pages the indexer still owns; if every vault
+    rebuild relabelled them "user", no stale code page could be retired again.
+    """
+    write(env, "code/atlas/geo", "# geo\n\nGenerated.\n")
+    await reindex_page(
+        "code/atlas/geo", wiki_id="default", settings=env, force=True, authored_by="agent"
+    )
+
+    # Both repair paths: a direct forced reindex with the default author, and
+    # the wholesale forced reconcile the rebuild endpoints run.
+    forced = await reindex_page("code/atlas/geo", wiki_id="default", settings=env, force=True)
+    assert forced.action == "indexed"
+    assert (await sqlite_mod.get_page("code/atlas/geo", "default"))["authored_by"] == "agent"
+
+    await reconcile_vault(wiki_id="default", settings=env, force=True)
+    assert (await sqlite_mod.get_page("code/atlas/geo", "default"))["authored_by"] == "agent"
+
+
+async def test_a_forced_reindex_of_changed_content_records_the_new_author(env, mock_kuzu_conn):
+    """The negative control: ownership is not sticky when someone did write."""
+    write(env, "code/atlas/geo", "# geo\n\nGenerated.\n")
+    await reindex_page(
+        "code/atlas/geo", wiki_id="default", settings=env, force=True, authored_by="agent"
+    )
+
+    write(env, "code/atlas/geo", "# geo\n\nGenerated.\n\nMy own note.\n")
+    await reindex_page("code/atlas/geo", wiki_id="default", settings=env, force=True)
+
+    row = await sqlite_mod.get_page("code/atlas/geo", "default")
+    assert row["authored_by"] == "user"
+    assert "My own note." in row["content"]
+
+
 async def test_deleting_the_file_removes_the_page(env):
     write(env, "notes/a", "# A\n")
     await reindex_page("notes/a", wiki_id="default", settings=env)

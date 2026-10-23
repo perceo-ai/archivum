@@ -744,6 +744,39 @@ async def test_a_generated_page_someone_has_edited_is_never_retired(
     assert (folder / "notes.md").read_text(encoding="utf-8") == HAND_WRITTEN
 
 
+async def test_a_vault_rebuild_does_not_stop_stale_pages_being_retired(vault, tmp_path, mock_kuzu_conn):
+    """Rebuild, then reject: the untouched generated page is still retired."""
+    from archivum.indexing import reconcile_vault
+
+    await _index(vault, tmp_path)
+    folder = vault.wiki_dir / "code" / "atlas"
+    assert (folder / "geo.md").exists(), "precondition: geo had a page"
+
+    with (
+        patch("archivum.indexing.qdrant.upsert_page", new=AsyncMock()),
+        patch("archivum.indexing.graph.upsert_page", new=AsyncMock()),
+        patch("archivum.indexing.graph.clear_references_from_page", new=AsyncMock()),
+        patch("archivum.indexing.graph.add_reference", new=AsyncMock()),
+    ):
+        await reconcile_vault(wiki_id="default", settings=vault, force=True)
+    row = await sqlite_mod.get_page("code/atlas/geo", "default")
+    assert row is not None and row["authored_by"] == "agent"
+
+    repo = tmp_path / "atlas"
+    (repo / "geo.py").write_text(GEO + "\n\ndef bearing(a, b):\n    return normalise(a - b)\n")
+    _commit_all(repo, "add bearing")
+
+    async def stubby(**_):
+        return OLD_STUB
+
+    await register_repo(path=repo, wiki_id="default")
+    qdrant_deleted, graph_deleted = await _reindex_watching_deletes(vault, narrator=stubby)
+
+    assert not (folder / "geo.md").exists()
+    assert await sqlite_mod.get_page("code/atlas/geo", "default") is None
+    assert "code/atlas/geo" in qdrant_deleted and "code/atlas/geo" in graph_deleted
+
+
 def test_a_reversed_line_range_is_not_a_citation():
     """`geo.py:999-1` passed both bound checks independently."""
     known = {"geo.py:1-2"}
