@@ -881,3 +881,102 @@ async def test_narration_rejects_citations_to_members_the_prompt_never_showed(va
     inside = await run(INSIDE_WINDOW)
     assert inside.text and not inside.reason
     assert f"`{INSIDE_WINDOW}`" in prompts[-1]
+
+
+# ── Paths with brackets, spaces, parentheses and plus signs ──────────────────
+
+ROUTE_PATH = "app/[slug]/My Page.tsx"
+ROUTE_ANCHOR = f"{ROUTE_PATH}:10-20"
+
+
+def _route_cluster():
+    """One member in a Next.js-style route folder, cited the way the indexer cites it."""
+    from archivum.knowledge.graph_audit import Community
+    from archivum.knowledge.models import Citation, KnowledgeObject
+
+    member = KnowledgeObject(
+        id="sym:route:Page",
+        kind="symbol",
+        label="Page",
+        scope="repo:default:atlas",
+        confidence=1.0,
+        extraction_method="EXTRACTED",
+        citations=[
+            Citation(
+                source_id=f"/r/{ROUTE_PATH}",
+                chunk_id=f"/r/{ROUTE_PATH}",
+                span_start=None,
+                span_end=None,
+                quote="L10-L20",
+            )
+        ],
+        properties={"signature": "export default function Page({ params })", "summary": ""},
+    )
+    community = Community(id=member.id, label="page", member_ids=(member.id,))
+    return community, {member.id: member}
+
+
+def _route_narrative(anchor: str) -> str:
+    return (
+        "This subsystem renders one dynamic route of the web app, so a page "
+        "for each slug is produced by the same component instead of a file per "
+        f"page. The entry point is the Page component at `{anchor}`, which "
+        "receives the route parameters and renders the content for that slug. "
+        "It stands alone: the graph shows no edge from it to any other "
+        "subsystem in the repository."
+    )
+
+
+def test_a_path_with_brackets_and_spaces_keeps_its_page():
+    """Greptile: `app/[slug]/page.tsx` fell out of the allowed set entirely."""
+    import archivum.code_pages as code_pages
+
+    community, members = _route_cluster()
+    listed = list(members.values())
+
+    prompt = code_pages._instruction(
+        community, repo_name="atlas", members=listed, neighbours=[], repo_root="/r"
+    )
+    assert f"`{ROUTE_ANCHOR}`" in prompt, "the model is offered the location"
+
+    allowed = code_pages._allowed_locations(listed, repo_root="/r")
+    assert allowed == {ROUTE_ANCHOR}
+    assert code_pages._spans(allowed) == {ROUTE_PATH: [(10, 20)]}, "and the guard keeps it"
+
+    narrative = _route_narrative(ROUTE_ANCHOR)
+    assert narrative_is_substantive(narrative, known_locations=allowed)
+
+    page = render_community_page(
+        community,
+        repo_name="atlas",
+        objects_by_id=members,
+        edges=[],
+        repo_root="/r",
+        narrative=narrative,
+    )
+    assert page is not None and f"`{ROUTE_ANCHOR}`" in page
+
+
+@pytest.mark.parametrize(
+    "cited",
+    [
+        "app/[other]/Other Page.tsx:10-20",  # a bracketed, spaced path never offered
+        f"{ROUTE_PATH}:30-40",  # the offered path, lines it was not shown
+        "app/(group)/c++ notes.tsx:10-20",  # parentheses and plus, never offered
+    ],
+)
+def test_unusual_paths_still_need_provenance(cited):
+    """Accepting more characters must not mean accepting more claims."""
+    allowed = {ROUTE_ANCHOR}
+    assert not narrative_is_substantive(_route_narrative(cited), known_locations=allowed)
+
+
+def test_a_bare_invented_citation_beside_a_real_one_is_still_rejected():
+    """Citations are recognised outside backticks too, and checked the same."""
+    known = {"geo.py:1-2"}
+    prose = "This subsystem computes great-circle distances between points. " * 8
+    assert narrative_is_substantive(prose + "Start at `geo.py:1-2`.", known_locations=known)
+    assert not narrative_is_substantive(
+        prose + "Start at `geo.py:1-2`, then read cache.py:40-80 for the cache.",
+        known_locations=known,
+    )
