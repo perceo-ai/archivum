@@ -140,8 +140,14 @@ async def record_session_work(
     if fix is not None:
         # A recurrence of trouble already remembered strengthens that record
         # rather than writing a near-duplicate beside it.
-        stored = await remember_fix(repo, fix, source_id=source_id, wiki_id=wiki_id)
-        verified_by = str(stored.properties.get("verified_by", ""))
+        stored = await remember_fix(
+            repo,
+            fix,
+            source_id=source_id,
+            wiki_id=wiki_id,
+            edge_citation=citation,
+            repaired=touched,
+        )
         # Best effort: the vector is what lets a paraphrase of this trouble
         # find the fix later. Capture itself must never fail on it — a fix
         # that is stored but unembedded still answers lexical recall, and
@@ -166,21 +172,6 @@ async def record_session_work(
                 "until reindex_fixes runs",
                 extra={"fix_id": stored.id, "wiki_id": wiki_id},
                 exc_info=True,
-            )
-        await link_to_self(repo, stored.id, "remembers", citation=citation)
-        for symbol in touched:
-            await repo.upsert_relationship(
-                KnowledgeRelationship(
-                    id=f"{stored.id}__fixes__{symbol.id}",
-                    src_id=stored.id,
-                    dst_id=symbol.id,
-                    rel_type="fixes",
-                    scope="bridge",
-                    confidence=0.9 if verified_by else 0.6,
-                    extraction_method="EXTRACTED",
-                    citations=[citation],
-                    properties={"verified_by": verified_by},
-                )
             )
 
     for symbol in touched:

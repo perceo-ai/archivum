@@ -18,7 +18,8 @@ import aiosqlite
 import pytest
 
 from archivum.capture.schema import Conversation, ToolCall, Turn
-from archivum.fixes import recall_fixes
+from archivum.fixes import Fix, recall_fixes, remember_fix
+from archivum.knowledge.models import Citation, KnowledgeObject
 from archivum.knowledge.repository import KnowledgeRepository, init_knowledge_schema
 from archivum.sessions import record_session_work
 
@@ -197,14 +198,120 @@ async def test_a_verified_fix_is_never_downgraded_by_an_unverified_recurrence(re
 
 
 async def test_the_atom_is_real_text_with_real_edges(repo):
-    await _record(repo, FIRST_SESSION, "src-first")
-    await _record(repo, SECOND_SESSION, "src-second")
+    """The edges accumulate evidence the way the object does. Reusing one fix id
+    across sessions means reusing its edges too, and an edge that kept only
+    the latest citation forgot every earlier session that reached the code."""
+    symbol = KnowledgeObject(
+        id="symbol:app:export.write_results",
+        kind="symbol",
+        label="write_results",
+        scope="code:app",
+        confidence=1.0,
+        extraction_method="EXTRACTED",
+        citations=[Citation(source_id="code", chunk_id="/work/app/export.py", span_start=None, span_end=None, quote="def write_results")],
+        properties={},
+    )
+    await repo.upsert_object(symbol)
+    with patch("archivum.sessions._symbols_touched", new=AsyncMock(return_value=[symbol])):
+        await _record(repo, FIRST_SESSION, "src-first")
+        await _record(repo, SECOND_SESSION, "src-second")
     [fix] = await _fixes(repo)
 
     assert "FileNotFoundError" in fix.properties["symptom"]
     assert "run directory" in fix.properties["diagnosis"]
 
     edges = await repo.list_relationships(node_id=fix.id)
-    remembered = [rel for rel in edges if rel.rel_type in ("remembers", "fixes")]
-    assert remembered, edges
-    assert all(rel.citations and rel.citations[0].source_id for rel in remembered)
+    by_type = {rel.rel_type: rel for rel in edges}
+    assert {"remembers", "fixes"} <= set(by_type), edges
+    for rel_type in ("remembers", "fixes"):
+        sources = sorted(c.source_id for c in by_type[rel_type].citations)
+        assert sources == ["src-first", "src-second"], (rel_type, sources)
+    assert by_type["fixes"].dst_id == symbol.id
+
+
+async def test_opposite_errors_with_the_same_words_stay_two_atoms(repo):
+    """Same words, reversed meaning: which side never acknowledged whom is the
+    whole diagnosis. A word-set score calls these identical (1.0), and merging
+    them would answer either error with the other's cause at raised confidence."""
+    worker_side = _conversation(
+        "TimeoutError: the worker never acknowledged the scheduler heartbeat",
+        diagnosis="The worker's ack loop was blocked on a full queue.",
+        path="/work/app/worker.py",
+    )
+    scheduler_side = _conversation(
+        "TimeoutError: the scheduler never acknowledged the worker heartbeat",
+        diagnosis="The scheduler dropped heartbeats while rebalancing.",
+        path="/work/app/scheduler.py",
+    )
+    await _record(repo, worker_side, "src-worker")
+    await _record(repo, scheduler_side, "src-scheduler")
+
+    objects = await _fixes(repo)
+    assert len(objects) == 2, [obj.properties["symptom"] for obj in objects]
+    diagnoses = sorted(obj.properties["diagnosis"] for obj in objects)
+    assert diagnoses == [
+        "The scheduler dropped heartbeats while rebalancing.",
+        "The worker's ack loop was blocked on a full queue.",
+    ]
+    assert all(obj.properties["occurrences"] == 1 for obj in objects)
+    assert all(obj.confidence == 0.9 for obj in objects)
+
+
+async def test_concurrent_recurrences_lose_no_evidence(tmp_path):
+    """transcript_watch and the MCP server each open their own connection, so
+    two sessions reporting the same trouble can write at once. Each must see
+    the other's write, not the same prior record, and none may fail on the
+    lock: capture is a path that must not raise."""
+    import asyncio
+
+    import archivum.db.sqlite as sqlite_mod
+    import archivum.fixes as fixes_mod
+    from archivum.config import Settings
+
+    settings = Settings(
+        db_path=tmp_path / "archivum.db",
+        blob_dir=tmp_path / "blobs",
+        wiki_dir=tmp_path / "wiki",
+        code_cache_dir=tmp_path / "code-cache",
+    )
+    settings.wiki_dir.mkdir(parents=True, exist_ok=True)
+    await sqlite_mod.init_db(settings)
+
+    # Widen the read-to-write window so every caller reads before any writes,
+    # which is the interleaving that loses evidence when nothing serialises it.
+    real_lookup = fixes_mod._recurrence_of
+
+    async def slow_lookup(*args, **kwargs):
+        found = await real_lookup(*args, **kwargs)
+        await asyncio.sleep(0.2)
+        return found
+
+    fix = Fix(
+        symptom="FileNotFoundError: No such file or directory: '/tmp/run/out",
+        diagnosis="The run directory was never created.",
+        changed_paths=["/work/app/export.py"],
+        verified_by="pytest",
+    )
+    sources = ["src-a", "src-b", "src-c"]
+
+    async def one(source_id: str) -> None:
+        async with sqlite_mod.get_db() as conn:
+            fresh = Fix(
+                symptom=fix.symptom,
+                diagnosis=fix.diagnosis,
+                changed_paths=[f"/work/app/{source_id}.py"],
+                verified_by=fix.verified_by,
+            )
+            await remember_fix(KnowledgeRepository(conn), fresh, source_id=source_id, wiki_id=WIKI)
+
+    with patch.object(fixes_mod, "_recurrence_of", new=slow_lookup):
+        results = await asyncio.gather(*(one(s) for s in sources), return_exceptions=True)
+
+    assert [r for r in results if isinstance(r, BaseException)] == []
+    async with sqlite_mod.get_db() as conn:
+        stored = await KnowledgeRepository(conn).list_objects(kind="fix", scope=SCOPE, limit=100)
+    assert len(stored) == 1
+    [atom] = stored
+    assert atom.properties["occurrences"] == len(sources)
+    assert sorted(c.source_id for c in atom.citations) == sources
+    assert sorted(atom.properties["changed_paths"]) == sorted(f"/work/app/{s}.py" for s in sources)
