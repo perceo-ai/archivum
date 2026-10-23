@@ -19,18 +19,21 @@ same reason distillation runs on a queue.
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import logging
 import re
+import subprocess
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit
 
 import aiosqlite
 
 from archivum.archgraph.ingest import ingest_repo
 from archivum.archgraph.repo import snapshot_repo
-from archivum.code_pages import write_repo_pages
+from archivum.code_pages import repo_folder, write_repo_pages
 from archivum.config import Settings, get_settings
 from archivum.db import sqlite
 from archivum.knowledge.personal_root import ensure_personal_root
@@ -126,6 +129,121 @@ def validate_repo_name(name: str) -> str:
     return candidate
 
 
+_UNSAFE_NAME_CHARS = re.compile(r"[^A-Za-z0-9._-]+")
+
+
+def _name_segment(value: str) -> str:
+    return _UNSAFE_NAME_CHARS.sub("-", value).strip("-._")
+
+
+def _remote_parts(url: str) -> tuple[str, str, str] | None:
+    """(host, owner, repo) from a remote URL in https, ssh or scp form, else None.
+
+    Any host: the last two path segments are the owner and the repository.
+    """
+    url = url.strip()
+    if "://" in url:
+        parts = urlsplit(url)
+        host, path = parts.hostname or "", parts.path
+    elif ":" in url.split("/", 1)[0]:
+        authority, path = url.split(":", 1)  # git@host:owner/repo.git
+        host = authority.rsplit("@", 1)[-1]
+    else:
+        host, path = "", url
+    segments = [segment for segment in re.split(r"[/\\]", path) if segment]
+    if len(segments) < 2:
+        return None
+    return host.lower(), segments[-2].lower(), segments[-1].removesuffix(".git").lower()
+
+
+def _identity_from_parts(parts: tuple[str, str, str] | None) -> str | None:
+    if parts is None:
+        return None
+    owner, repo = _name_segment(parts[1]), _name_segment(parts[2])
+    if not owner or not repo:
+        return None
+    try:
+        return validate_repo_name(f"{owner}-{repo}"[:_MAX_REPO_NAME_LENGTH])
+    except RepoError:
+        return None
+
+
+def _identity_from_remote_url(url: str) -> str | None:
+    """`owner-repo` from a remote URL, lowercased and safe as a path segment."""
+    return _identity_from_parts(_remote_parts(url))
+
+
+def _git(path: Path, *args: str) -> str | None:
+    try:
+        result = subprocess.run(
+            ["git", "-C", str(path), *args],
+            capture_output=True,
+            text=True,
+            timeout=5,
+            check=False,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    return result.stdout.strip() if result.returncode == 0 else None
+
+
+def _git_remote_parts(path: Path) -> tuple[str, str, str] | None:
+    """Where `path`'s origin remote points, if `path` is the top of a working tree.
+
+    Only the top: `git -C` happily answers from inside a subdirectory, and two
+    subdirectories of one monorepo indexed on their own would otherwise both
+    take the monorepo's name and overwrite each other.
+    """
+    toplevel = _git(path, "rev-parse", "--show-toplevel")
+    if toplevel is None or Path(toplevel).resolve() != path:
+        return None
+    url = _git(path, "remote", "get-url", "origin")
+    return _remote_parts(url) if url else None
+
+
+def _git_remote_identity(path: Path) -> str | None:
+    """The repository's name as its origin remote has it, or None.
+
+    The checkout directory's name says where a clone sits, not what it is: a
+    repository cloned into `nixos` was remembered as `nixos`, and every repo
+    checked out under a same-named directory collided into one namespace.
+    """
+    return _identity_from_parts(_git_remote_parts(path))
+
+
+async def _name_from_remote(path: Path, *, wiki_id: str) -> str | None:
+    """The remote-derived name for `path`, kept apart from any other repository.
+
+    `owner-repo` is not unique: `acme-tools/widget` and `acme/tools-widget`
+    both read `acme-tools-widget`, and pages go to the slug of the name, which
+    folds more together still. When another registered checkout already holds
+    that folder and is a different repository — its remote differs, or it has
+    none — this one takes a short hash of its remote as a suffix. A checkout
+    already registered keeps the name it has, so its pages never move.
+    """
+    parts = _git_remote_parts(path)
+    name = _identity_from_parts(parts)
+    if parts is None or name is None:
+        return None
+    digest = hashlib.sha1("/".join(parts).encode("utf-8")).hexdigest()[:8]
+    suffixed = validate_repo_name(f"{name[: _MAX_REPO_NAME_LENGTH - 9]}-{digest}")
+
+    repos = await list_repos(wiki_id=wiki_id)
+    for repo in repos:
+        if Path(repo.path) == path and repo.name in {name, suffixed}:
+            return repo.name
+    folder = repo_folder(name)
+    for repo in repos:
+        other = Path(repo.path)
+        # A checkout that is gone cannot be compared; treat it as this one,
+        # moved, so re-cloning somewhere new keeps the same namespace.
+        if repo_folder(repo.name) != folder or other == path or not other.is_dir():
+            continue
+        if _git_remote_parts(other) != parts:
+            return suffixed
+    return name
+
+
 def scope_for(name: str, *, wiki_id: str) -> str:
     """The canonical scope for one vault's copy of a repository.
 
@@ -166,7 +284,9 @@ async def register_repo(*, path: Path, wiki_id: str, name: str | None = None) ->
             f"{path}` uploads the repository and indexes it here."
         )
 
-    repo_name = validate_repo_name(name or resolved.name)
+    repo_name = validate_repo_name(
+        name or await _name_from_remote(resolved, wiki_id=wiki_id) or resolved.name
+    )
 
     scope = scope_for(repo_name, wiki_id=wiki_id)
     now = _now()
