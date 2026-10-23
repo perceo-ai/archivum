@@ -23,11 +23,13 @@ export async function installCommand(args) {
     next.OWNER_PASSWORD = await askText("Owner password", secretDefault(next.OWNER_PASSWORD), { required: true, secret: true });
     if (!secretDefault(next.JWT_SECRET)) next.JWT_SECRET = generateSecret(48);
     if (!secretDefault(next.MCP_API_KEY)) next.MCP_API_KEY = generateSecret(32);
+    if (!secretDefault(next.INTERNAL_GRAPH_TOKEN)) next.INTERNAL_GRAPH_TOKEN = generateSecret(32);
     next.PUBLIC_WIKI_ENABLED = (await askBool("Expose the entire wiki publicly as read-only at /public?", next.PUBLIC_WIKI_ENABLED === "true")) ? "true" : "false";
     next.ANTHROPIC_API_KEY = await askText("Anthropic API key", secretDefault(next.ANTHROPIC_API_KEY), { required: next.LLM_EXTRACTION_PROVIDER === "anthropic" || next.LLM_SYNTHESIS_PROVIDER === "anthropic", secret: true });
   } else {
     if (!secretDefault(next.JWT_SECRET)) next.JWT_SECRET = generateSecret(48);
     if (!secretDefault(next.MCP_API_KEY)) next.MCP_API_KEY = generateSecret(32);
+    if (!secretDefault(next.INTERNAL_GRAPH_TOKEN)) next.INTERNAL_GRAPH_TOKEN = generateSecret(32);
   }
 
   saveEnv(env.envPath, next);

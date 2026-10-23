@@ -4,9 +4,9 @@ from __future__ import annotations
 
 from functools import lru_cache
 from pathlib import Path
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 
-from pydantic import field_validator
+from pydantic import field_validator, model_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 
@@ -37,6 +37,16 @@ class Settings(BaseSettings):
     blob_dir: Path = Path("/data/blobs")
     db_path: Path = Path("/data/archivum.db")
     kuzu_path: Path = Path("/data/kuzu")
+    # Kuzu is single-process: only one process may hold the database file.
+    # "owner" opens it; "client" never does and sends every graph call to the
+    # owner's internal endpoint at `graph_rpc_url` instead. Anything else is
+    # refused at startup: a typo that fell through to "owner" would open the
+    # file from a second process and bring back the lock error, silently.
+    kuzu_role: Literal["owner", "client"] = "owner"
+    graph_rpc_url: str = ""
+    # Shared secret for /internal/graph. Empty means the endpoint refuses
+    # every call, so a deployment that forgets to set it fails closed.
+    internal_graph_token: str = ""
     # Parsed-AST cache for indexed repositories. Kept beside the other data
     # rather than inside each repository, so indexing never writes into a
     # working tree you are trying to keep clean.
@@ -146,6 +156,12 @@ class Settings(BaseSettings):
             except ValueError:
                 pass
         return [part.strip() for part in text.split(",") if part.strip()]
+
+    @model_validator(mode="after")
+    def _client_needs_an_owner(self) -> "Settings":
+        if self.kuzu_role == "client" and not self.graph_rpc_url.strip():
+            raise ValueError("kuzu_role='client' requires graph_rpc_url (the owner's address)")
+        return self
     transcript_watch_enabled: bool = True
     transcript_watch_interval_seconds: int = 20
 

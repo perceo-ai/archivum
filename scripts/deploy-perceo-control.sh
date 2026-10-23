@@ -77,6 +77,24 @@ if [ -n "$untracked" ]; then
   echo "$untracked" | sed 's/^/    /'
 fi
 
+# Compose requires INTERNAL_GRAPH_TOKEN, and this host does not run update.sh
+# (no Node), so nothing else will write it. Done before the pull: once the tree
+# moves forward without it, every compose command here fails.
+ensure_graph_token=$(cat <<'SH'
+[ -f .env ] || { echo "✗ no .env in $PWD" >&2; exit 1; }
+if grep -qE '^INTERNAL_GRAPH_TOKEN=.+' .env && ! grep -qE '^INTERNAL_GRAPH_TOKEN=.*change-me' .env; then
+  echo "  INTERNAL_GRAPH_TOKEN already set"
+else
+  sed -i '/^INTERNAL_GRAPH_TOKEN=/d' .env
+  [ -z "$(tail -c1 .env)" ] || echo >> .env
+  printf 'INTERNAL_GRAPH_TOKEN=%s\n' "$(od -An -N32 -tx1 /dev/urandom | tr -d ' \n')" >> .env
+  echo "  generated INTERNAL_GRAPH_TOKEN"
+fi
+SH
+)
+echo "→ Internal graph token"
+guest "cd $APP_DIR && $ensure_graph_token"
+
 echo "→ Pulling $BRANCH"
 guest "cd $APP_DIR && git fetch --all --quiet && git checkout $BRANCH --quiet && git pull --ff-only"
 
