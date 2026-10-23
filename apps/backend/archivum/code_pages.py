@@ -771,14 +771,23 @@ async def _retire_stale_page(slug: str, *, wiki_id: str, settings: Settings) -> 
     may no longer exist, while the index says it was not written up. It goes
     through `forget_page` — the same path a deleted file takes — so the row,
     vectors and graph node leave together.
+
+    A marker only says the indexer once wrote the page, and the footer invites
+    people to edit it. So the page must also still be the indexer's: its row
+    last saved by the agent, and the file unchanged since. A page someone has
+    taken over is left stale rather than deleted — stale is wrong, deleted
+    notes are gone.
     """
+    row = await sqlite.get_page(slug, wiki_id)
+    if not row or row.get("authored_by") != "agent":
+        return False
+    indexed = str(row.get("content") or "")
     path = settings.wiki_dir / f"{slug}.md"
-    if path.exists():
-        text = path.read_text(encoding="utf-8", errors="replace")
-    else:
-        row = await sqlite.get_page(slug, wiki_id)
-        text = str(row.get("content") or "") if row else ""
-    if not text or not _written_by_this_indexer(text):
+    # An edit the vault watcher has not swept yet still reads as the agent's
+    # in the row; the file itself is the newer word.
+    if path.exists() and path.read_text(encoding="utf-8", errors="replace") != indexed:
+        return False
+    if not indexed or not _written_by_this_indexer(indexed):
         return False
     path.unlink(missing_ok=True)
     await forget_page(slug, wiki_id=wiki_id, settings=settings)

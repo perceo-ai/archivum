@@ -538,7 +538,7 @@ LEGACY_PAGE = (
 HAND_WRITTEN = "# Notes\n\nMy own notes about atlas. Nothing generated here.\n"
 
 
-async def _write_page(settings, slug: str, body: str) -> None:
+async def _write_page(settings, slug: str, body: str, *, authored_by: str = "user") -> None:
     """A page on disk and in the page table, the way any vault write lands."""
     from archivum.indexing import reindex_page
 
@@ -551,7 +551,14 @@ async def _write_page(settings, slug: str, body: str) -> None:
         patch("archivum.indexing.graph.clear_references_from_page", new=AsyncMock()),
         patch("archivum.indexing.graph.add_reference", new=AsyncMock()),
     ):
-        await reindex_page(slug, wiki_id="default", settings=settings, force=True, distill=False)
+        await reindex_page(
+            slug,
+            wiki_id="default",
+            settings=settings,
+            force=True,
+            authored_by=authored_by,
+            distill=False,
+        )
 
 
 async def _reindex_watching_deletes(settings, *, narrator=fake_narrator):
@@ -621,7 +628,7 @@ async def test_a_rejected_narrative_removes_the_page_it_used_to_have(vault, tmp_
 async def test_a_cluster_reclassified_as_tests_loses_its_old_page(vault, tmp_path, mock_kuzu_conn):
     """The production `icon.test` pages: written before tests were recognised."""
     await sqlite_mod.init_db(vault)
-    await _write_page(vault, "code/atlas/test-clock", LEGACY_PAGE)
+    await _write_page(vault, "code/atlas/test-clock", LEGACY_PAGE, authored_by="agent")
     await _write_page(vault, "code/atlas/notes", HAND_WRITTEN)
     assert await sqlite_mod.get_page("code/atlas/test-clock", "default") is not None
 
@@ -658,6 +665,83 @@ async def test_a_page_someone_else_wrote_at_a_cluster_slug_is_left_alone(vault, 
     assert page.read_text(encoding="utf-8") == mine
     assert await sqlite_mod.get_page("code/atlas/test-clock", "default") is not None
     assert "code/atlas/test-clock" not in qdrant_deleted | graph_deleted
+
+
+# A page the indexer generated, under each marker it has ever written.
+NARRATIVE_PAGE = (
+    "# test_clock\n\nPart of [[code/atlas/index|atlas]].\n\n"
+    "<!-- archivum:narrative 0123456789abcdef -->\n"
+    + "The clock helpers advance a counter one tick at a time; start at "
+    "`test_clock.py:5-6`."
+    + "\n<!-- /archivum:narrative -->\n\n---\n\n"
+    "The overview was written by a model from the records listed here and "
+    "cites only them; the lists come from the code graph directly.\n"
+)
+HUMAN_NOTES = "\n## My notes\n\nFLAKY ON CI: tick() races the scheduler — do not delete.\n"
+
+
+@pytest.mark.parametrize("edit", ["resaved", "unswept"])
+@pytest.mark.parametrize("path", ["rejected", "test-only"])
+@pytest.mark.parametrize("marker", ["legacy-footer", "narrative-block"])
+async def test_a_generated_page_someone_has_edited_is_never_retired(
+    vault, tmp_path, mock_kuzu_conn, marker, path, edit
+):
+    """The footer invites edits; retiring the page would delete them.
+
+    `resaved` is an edit the vault watcher has already indexed (the row says
+    `user`); `unswept` is one it has not reached yet (the row still says
+    `agent`, but the file is no longer what the indexer wrote).
+    """
+    folder = vault.wiki_dir / "code" / "atlas"
+    if path == "rejected":
+        slug = "code/atlas/geo"
+        await _index(vault, tmp_path)  # the indexer writes geo.md, as the agent
+        if marker == "legacy-footer":
+            body = LEGACY_PAGE.replace("# test_clock", "# geo")
+            await _write_page(vault, slug, body, authored_by="agent")
+    else:
+        slug = "code/atlas/test-clock"
+        await sqlite_mod.init_db(vault)
+        body = LEGACY_PAGE if marker == "legacy-footer" else NARRATIVE_PAGE
+        await _write_page(vault, slug, body, authored_by="agent")
+
+    page = vault.wiki_dir / f"{slug}.md"
+    edited = page.read_text(encoding="utf-8") + HUMAN_NOTES
+    if edit == "resaved":
+        await _write_page(vault, slug, edited)  # authored_by="user"
+        row = await sqlite_mod.get_page(slug, "default")
+        assert row is not None and row["authored_by"] == "user"
+    else:
+        page.write_text(edited, encoding="utf-8")
+        row = await sqlite_mod.get_page(slug, "default")
+        assert row is not None and row["authored_by"] == "agent"
+    await _write_page(vault, "code/atlas/notes", HAND_WRITTEN)
+
+    if path == "rejected":
+        repo = tmp_path / "atlas"
+        (repo / "geo.py").write_text(GEO + "\n\ndef bearing(a, b):\n    return normalise(a - b)\n")
+        _commit_all(repo, "add bearing")
+
+        async def stubby(**_):
+            return OLD_STUB
+
+        await register_repo(path=repo, wiki_id="default")
+        deleted = await _reindex_watching_deletes(vault, narrator=stubby)
+        index = (folder / "index.md").read_text(encoding="utf-8")
+        assert "geo — " in index and "not written up" in index.lower(), "precondition: rejected"
+    else:
+        await register_repo(
+            path=make_repo(tmp_path, extra={"test_clock.py": CLOCK_TEST}), wiki_id="default"
+        )
+        deleted = await _reindex_watching_deletes(vault)
+        assert "## Tests" in (folder / "index.md").read_text(encoding="utf-8"), "precondition: test-only"
+
+    qdrant_deleted, graph_deleted = deleted
+    assert page.exists(), "the edited page stays on disk"
+    assert "FLAKY ON CI" in page.read_text(encoding="utf-8"), "with the person's notes in it"
+    assert slug not in qdrant_deleted | graph_deleted, "and is not among what was deleted"
+    assert await sqlite_mod.get_page(slug, "default") is not None, "and keeps its page row"
+    assert (folder / "notes.md").read_text(encoding="utf-8") == HAND_WRITTEN
 
 
 def test_a_reversed_line_range_is_not_a_citation():
