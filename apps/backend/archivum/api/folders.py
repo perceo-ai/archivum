@@ -10,6 +10,8 @@ from pydantic import BaseModel
 from archivum.auth import CurrentUser, get_current_user, require_writer
 from archivum.config import Settings, get_settings
 from archivum.indexing import forget_page, reindex_page, repoint_page
+from archivum.knowledge.repository import KnowledgeRepository
+from archivum.pages_to_knowledge import remove_page_from_knowledge
 from archivum.db import graph, qdrant_client as qdrant, sqlite
 from archivum.security.markdown import sanitize_markdown
 
@@ -180,6 +182,12 @@ async def move_folder_tree(
         await qdrant.delete_page(old_slug, wiki_id, settings)
         await graph.rename_page_node(old_slug, new_slug, wiki_id)
         await repoint_page(old_slug=old_slug, new_slug=new_slug, wiki_id=wiki_id)
+        # The record at the old slug would otherwise outlive the move, still
+        # carrying the page's title for anything that names it to land on.
+        async with sqlite.get_db() as conn:
+            await remove_page_from_knowledge(
+                KnowledgeRepository(conn), slug=old_slug, wiki_id=wiki_id
+            )
         if page:
             await reindex_page(
                 new_slug,

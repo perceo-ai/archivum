@@ -218,6 +218,25 @@ async def _relink_pages_naming(
                 result.degraded.append("graph.knowledge")
 
 
+async def relink_pages_naming(slug: str, *, titles: set[str], wiki_id: str) -> None:
+    """Re-read the pages naming `titles`, for a caller that replaced a page's
+    record itself.
+
+    A move swaps the page's canonical record before reindexing it, deleting
+    every edge into it, and the title it arrives with is unchanged — so
+    `reindex_page` has no reason of its own to look for the pages that name it.
+    """
+    async with sqlite.get_db() as conn:
+        await init_suggestion_schema(conn)
+        await _relink_pages_naming(
+            KnowledgeRepository(conn),
+            slug=slug,
+            titles=titles,
+            wiki_id=wiki_id,
+            result=ReindexResult(slug=slug, reason="relink"),
+        )
+
+
 async def reindex_page(
     slug: str,
     *,

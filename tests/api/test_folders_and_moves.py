@@ -189,3 +189,67 @@ async def test_deleting_a_folder_retires_review_items_for_its_pages(vault, mock_
             status="pending", **wiki_scope("default")
         )
     assert pending == []
+
+
+# ── Moving a page keeps the references other pages make to it by title ──────
+
+
+@contextlib.contextmanager
+def _move_projections_offline():
+    with (
+        patch("archivum.indexing.qdrant.upsert_page", new=AsyncMock()),
+        patch("archivum.indexing.qdrant.delete_page", new=AsyncMock()),
+        patch("archivum.api.pages.qdrant.delete_page", new=AsyncMock()),
+        patch("archivum.api.folders.qdrant.delete_page", new=AsyncMock()),
+    ):
+        yield
+
+
+async def _title_references_to(slug: str) -> dict[str, str]:
+    async with sqlite_mod.get_db() as conn:
+        rels = await KnowledgeRepository(conn).list_relationships(scope="wiki:default")
+    return {
+        rel.src_id: rel.extraction_method
+        for rel in rels
+        if rel.rel_type == "references" and rel.dst_id == f"page:default:{slug}"
+    }
+
+
+async def _notes_naming_archfleet(settings) -> None:
+    path = settings.wiki_dir / "notes.md"
+    path.write_text("# Notes\n\nArchfleet runs the VMs.\n", encoding="utf-8")
+    with _move_projections_offline():
+        await reindex_page("notes", wiki_id="default", settings=settings, distill=False)
+
+
+async def test_moving_a_page_keeps_the_pages_that_name_it_linked(vault, mock_kuzu_conn):
+    """A move replaces the page's record, and with it every edge into it.
+
+    The title did not change, so nothing re-read the notes that name it; they
+    lost their path to the page until someone edited them.
+    """
+    from archivum.api.pages import move_page_to_slug
+
+    await _page_in_folder(vault, "projects", "projects/archfleet", "Archfleet")
+    await _notes_naming_archfleet(vault)
+    assert await _title_references_to("projects/archfleet") == {"page:default:notes": "INFERRED"}
+
+    with _move_projections_offline():
+        await move_page_to_slug("projects/archfleet", "archive/archfleet", "default", vault)
+
+    assert await _title_references_to("archive/archfleet") == {"page:default:notes": "INFERRED"}
+
+
+async def test_moving_a_folder_keeps_the_pages_that_name_its_pages_linked(vault, mock_kuzu_conn):
+    """And the record left at the old slug must go, or it keeps the title."""
+    from archivum.api.folders import move_folder_tree
+
+    await _page_in_folder(vault, "projects", "projects/archfleet", "Archfleet")
+    await _notes_naming_archfleet(vault)
+
+    with _move_projections_offline():
+        await move_folder_tree("projects", "archive", True, "default", vault)
+
+    async with sqlite_mod.get_db() as conn:
+        assert await KnowledgeRepository(conn).get_object("page:default:projects/archfleet") is None
+    assert await _title_references_to("archive/archfleet") == {"page:default:notes": "INFERRED"}
