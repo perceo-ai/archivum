@@ -88,20 +88,19 @@ async def _purge(args: argparse.Namespace, settings: Settings) -> PurgeReport:
             return "vault file differs from the indexed row (an unswept edit); left in place"
         return None
 
-    async def forget(slug: str, checked: str) -> None:
+    async def forget(slug: str, checked: str) -> str | None:
         # The row is gone. Anything that changed in the moment since is a
         # person's: leave it for reconcile to read back rather than remove it.
         text = file_text(slug)
         if text is not None and text != checked:
-            degraded[slug] = ["vault file edited during the purge; kept for reconcile"]
-            return
+            return "vault file edited during the purge; kept for reconcile to read back"
         if await sqlite.get_page(slug, args.wiki_id) is not None:
-            degraded[slug] = ["page saved again during the purge; kept"]
-            return
+            return "page saved again during the purge; kept"
         (settings.wiki_dir / f"{slug}.md").unlink(missing_ok=True)
         result = await forget_page(slug, wiki_id=args.wiki_id, settings=settings)
         if result.degraded:
             degraded[slug] = list(result.degraded)
+        return None
 
     report = await sqlite.purge_stub_pages_under(
         args.prefix, args.wiki_id, dry_run=not args.execute, precheck=precheck, forget=forget

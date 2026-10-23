@@ -408,6 +408,37 @@ def test_executing_with_nothing_to_purge_is_not_reported_as_success(settings, ca
     assert report["deleted"] == []
 
 
+def test_a_page_the_cleanup_kept_is_not_reported_as_deleted(settings, capsys, mock_kuzu_conn):
+    """A file edited after the row went is kept; the run must say it was partial."""
+    from archivum.scripts import purge_stub_pages
+
+    _seed_sync(settings)
+    edited = settings.wiki_dir / PREFIX / "cluster-5.md"
+    real_delete = sqlite_mod._delete_page_if_unchanged
+
+    async def delete_then_someone_edits(slug, content, wiki_id):
+        removed = await real_delete(slug, content, wiki_id)
+        if slug == f"{PREFIX}/cluster-5":
+            edited.write_text("# cluster 5\n\nWritten just now.\n", encoding="utf-8")
+        return removed
+
+    with (
+        patch.object(sqlite_mod, "_delete_page_if_unchanged", new=delete_then_someone_edits),
+        patch("archivum.indexing.qdrant.delete_page", new=AsyncMock()),
+    ):
+        code = purge_stub_pages.main(
+            ["--db-path", str(settings.db_path), "--wiki-dir", str(settings.wiki_dir), "--execute"]
+        )
+    report = json.loads(capsys.readouterr().out)
+
+    assert code == 1
+    assert report["outcome"] == "partial"
+    assert f"{PREFIX}/cluster-5" not in report["deleted"]
+    assert len(report["deleted"]) == 34
+    assert any(entry["slug"] == f"{PREFIX}/cluster-5" for entry in report["skipped"])
+    assert edited.read_text(encoding="utf-8") == "# cluster 5\n\nWritten just now.\n"
+
+
 def test_the_script_refuses_a_vault_directory_that_belongs_to_another_wiki(settings, capsys):
     """Page paths carry no wiki id; another wiki's files must not go under this one's slugs."""
     from archivum.scripts import purge_stub_pages

@@ -737,7 +737,7 @@ async def purge_stub_pages_under(
     *,
     dry_run: bool = True,
     precheck: Callable[[str, str], Awaitable[str | None]] | None = None,
-    forget: Callable[[str, str], Awaitable[None]] | None = None,
+    forget: Callable[[str, str], Awaitable[str | None]] | None = None,
 ) -> dict[str, Any]:
     """Delete the legacy stubs under `prefix`, one exact slug at a time.
 
@@ -746,7 +746,8 @@ async def purge_stub_pages_under(
     the vault file or the search and graph indexes without an import cycle, so
     callers that need those gone pass hooks, each given the slug and that body:
     `precheck` runs first and returns a reason to leave the page alone, and
-    `forget` runs only once the row is gone.
+    `forget` runs only once the row is gone. A reason from `forget` means it
+    kept what it found, so the page is reported as skipped, not deleted.
     """
     folder = _code_folder(prefix)
     candidates = await find_stub_pages_under(folder, wiki_id)
@@ -762,8 +763,10 @@ async def purge_stub_pages_under(
             if reason is not None:
                 skipped.append({"slug": slug, "reason": reason})
                 continue
-            if forget is not None:
-                await forget(slug, checked)
+            kept = await forget(slug, checked) if forget is not None else None
+            if kept is not None:
+                skipped.append({"slug": slug, "reason": kept})
+                continue
             deleted.append(slug)
 
     return {
