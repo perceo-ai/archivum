@@ -132,6 +132,19 @@ class KnowledgeRepository:
             row = await cursor.fetchone()
         return await self._row_to_object(row) if row else None
 
+    async def list_labels(self, *, kind: str, scope: str) -> list[tuple[str, str]]:
+        """Every (id, label) of one kind in one scope, uncapped.
+
+        For callers that only match on names. `list_objects` loads citations
+        row by row and stops at a limit, which is the wrong shape for "is this
+        name one of ours?" — a cutoff there silently drops whatever sorts last.
+        """
+        async with self._conn.execute(
+            "SELECT id, label FROM knowledge_objects WHERE kind=? AND scope=? ORDER BY id",
+            (kind, scope),
+        ) as cursor:
+            return [(row[0], row[1]) for row in await cursor.fetchall()]
+
     async def list_objects(
         self, kind: str | None = None, scope: str | None = None, limit: int = 100
     ) -> list[KnowledgeObject]:

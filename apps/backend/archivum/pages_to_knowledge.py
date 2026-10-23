@@ -235,41 +235,48 @@ async def _link_named_pages(
     explicit edge; an inferred one must not overwrite it.
     """
     own_title = title.strip()
-    candidates = []
-    for page in await repo.list_objects(kind="page", scope=scope, limit=_MAX_ENTITY_SCAN):
-        other = page.label.strip()
-        # Two pages can share a title; naming your own title is not a reference.
-        if page.id == page_id or page.id in linked or other == own_title:
+    # Every title takes part in claiming text, longest first, but only titles
+    # of other, unlinked pages become edges. A title that is excluded still
+    # uses up what it matches: in "[[design|Ledger Design]]" or a page's own
+    # "# Ledger Design" heading, "Ledger" was never named on its own.
+    titles: list[tuple[str, str, bool]] = [(page_id, own_title, False)] if own_title else []
+    for other_id, label in await repo.list_labels(kind="page", scope=scope):
+        other = (label or "").strip()
+        if not other:
             continue
-        if is_nameable_title(other):
-            candidates.append((page, other))
+        # Two pages can share a title; naming your own title is not a reference.
+        excluded = other_id == page_id or other_id in linked or other == own_title
+        if excluded or is_nameable_title(other):
+            titles.append((other_id, other, not excluded))
 
-    # Longest title first, and a match uses up its text: "the Ledger Design"
-    # names the design page, not also the page titled "Ledger".
-    remaining = markdown
-    named = []
-    for page, other in sorted(candidates, key=lambda c: (-len(c[1]), c[0].id)):
-        pattern = rf"(?<!\w){re.escape(other)}(?!\w)"
-        if re.search(pattern, remaining):
-            named.append((page, other))
-            remaining = re.sub(pattern, lambda m: " " * len(m.group(0)), remaining)
+    # A wikilink's text belongs to the link the author wrote; the explicit
+    # edge already says everything it names.
+    remaining = WIKILINK_RE.sub(lambda m: " " * len(m.group(0)), markdown)
+    named: list[tuple[str, str, int]] = []
+    for other_id, other, creates_edge in sorted(titles, key=lambda t: (-len(t[1]), t[0])):
+        pattern = re.compile(rf"(?<!\w){re.escape(other)}(?!\w)")
+        match = pattern.search(remaining)
+        if match is None:
+            continue
+        if creates_edge:
+            named.append((other_id, other, match.start()))
+        remaining = pattern.sub(lambda m: " " * len(m.group(0)), remaining)
     if not named:
         return
 
     async with repo.transaction():
-        for page, other in named:
-            start = markdown.find(other)
+        for other_id, other, start in named:
             await repo.upsert_relationship(
                 KnowledgeRelationship(
-                    id=f"rel:{page_id}:references:{page.id}",
+                    id=f"rel:{page_id}:references:{other_id}",
                     src_id=page_id,
-                    dst_id=page.id,
+                    dst_id=other_id,
                     rel_type="references",
                     scope=scope,
                     confidence=0.6,
                     # Read off the page rather than stated by it.
                     extraction_method="INFERRED",
-                    citations=[_citation(page_id, other, start if start >= 0 else None)],
+                    citations=[_citation(page_id, other, start)],
                     properties={"matched": other},
                 ),
                 commit=False,

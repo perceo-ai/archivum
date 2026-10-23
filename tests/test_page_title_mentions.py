@@ -65,6 +65,79 @@ async def test_a_title_inside_a_longer_title_is_not_a_second_reference(repo):
     assert await _references(repo) == {"page:default:projects/ledger-design": "INFERRED"}
 
 
+async def test_a_wikilinked_longer_title_does_not_also_name_the_shorter_one(repo):
+    """The link's own text says "Ledger Design"; nobody named "Ledger"."""
+    await _page(repo, "code/ledger/index", "Ledger")
+    await _page(repo, "projects/design", "Ledger Design")
+
+    await _page(repo, "notes", "Notes", "See [[projects/design|Ledger Design]].")
+
+    assert await _references(repo) == {"page:default:projects/design": "USER_AUTHORED"}
+
+
+async def test_a_linked_page_named_in_prose_still_uses_up_its_title(repo):
+    await _page(repo, "code/ledger/index", "Ledger")
+    await _page(repo, "projects/design", "Ledger Design")
+
+    await _page(
+        repo, "notes", "Notes",
+        "The Ledger Design is settled. Details: [[projects/design]].",
+    )
+
+    assert await _references(repo) == {"page:default:projects/design": "USER_AUTHORED"}
+
+
+async def test_a_pages_own_heading_does_not_name_a_shorter_title(repo):
+    """"# Ledger Design" on the design page is its name, not a mention of "Ledger"."""
+    await _page(repo, "code/ledger/index", "Ledger")
+
+    await _page(repo, "projects/design", "Ledger Design", "# Ledger Design\n\nDraft.\n")
+
+    assert await _references(repo, "projects/design") == {}
+
+
+async def test_titles_past_the_entity_scan_limit_are_still_read(repo):
+    """A wiki bigger than any fixed cutoff must not lose the pages that sort last.
+
+    Reading only the first 2,000 titles left later pages unlinked forever, and
+    let a shorter early title claim text a later, longer one should have.
+    """
+    from archivum.knowledge.models import Citation, KnowledgeObject
+    from archivum.pages_to_knowledge import _MAX_ENTITY_SCAN
+
+    async with repo.transaction():
+        for n in range(_MAX_ENTITY_SCAN + 100):
+            page_id = f"page:default:filler/{n:05d}"
+            await repo.upsert_object(
+                KnowledgeObject(
+                    id=page_id,
+                    kind="page",
+                    label=f"Filler Page {n:05d}",
+                    scope="wiki:default",
+                    confidence=1.0,
+                    extraction_method="USER_AUTHORED",
+                    citations=[
+                        Citation(
+                            source_id=page_id, chunk_id=page_id,
+                            span_start=None, span_end=None, quote="x",
+                        )
+                    ],
+                    properties={},
+                ),
+                commit=False,
+            )
+    await _page(repo, "a/ledger", "Ledger")
+    await _page(repo, "zz/late-ledger", "Late Ledger")
+    await _page(repo, "zz/zephyr", "Zephyr")
+
+    await _page(repo, "notes", "Notes", "The Late Ledger ships with Zephyr.")
+
+    assert await _references(repo) == {
+        "page:default:zz/late-ledger": "INFERRED",
+        "page:default:zz/zephyr": "INFERRED",
+    }
+
+
 async def test_a_title_inside_a_longer_word_is_not_a_reference(repo):
     await _page(repo, "projects/loop", "Loop")
 
