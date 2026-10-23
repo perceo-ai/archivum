@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 import json
+import re
+from collections.abc import Awaitable, Callable
 from contextlib import asynccontextmanager
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, AsyncGenerator
@@ -607,6 +610,150 @@ async def delete_pages_under(prefix: str, wiki_id: str = "default") -> list[dict
         )
         await db.commit()
     return pages
+
+
+# ── Legacy code-stub purge ────────────────────────────────────────────────────
+#
+# Before #71 the code indexer wrote cluster *metadata* as the whole of a page:
+# "N records that the graph found to be more connected…", and an index that said
+# only "Code memory for the `x` repository." These patterns match that template
+# and nothing else, so the purge can tell a known stub from a page with content.
+# `delete_pages_under` is no use here: it removes a whole folder unread.
+
+CLUSTER_STUB_RE = re.compile(
+    r"Part of \[\[code/[^\]|\n]+/index\|[^\]\n]+\]\]\. "
+    r"\d+ records? that the graph found to be more connected to each other "
+    r"than to the rest of the repository\."
+)
+INDEX_STUB_RE = re.compile(
+    r"^# (?P<name>[^\n]+)\n\nCode memory for the `(?P=name)` repository\.$",
+    re.MULTILINE,
+)
+
+# Each body shape is only a stub with the tags that template wrote alongside it.
+_LEGACY_STUB_TAGS: tuple[tuple[re.Pattern[str], list[str]], ...] = (
+    (CLUSTER_STUB_RE, ["code", "cluster"]),
+    (INDEX_STUB_RE, ["code", "repo"]),
+)
+
+
+@dataclass
+class PurgeCandidates:
+    """Pages under a prefix, split into known stubs and everything else."""
+
+    matched: list[str] = field(default_factory=list)
+    skipped: list[dict[str, str]] = field(default_factory=list)
+    # The body each match was judged on; the delete is pinned to it.
+    contents: dict[str, str] = field(default_factory=dict, repr=False)
+
+
+def _code_folder(prefix: str) -> str:
+    """`prefix` as a folder strictly inside `code/`, or ValueError.
+
+    The purge deletes, so it refuses anything that could reach a hand-authored
+    namespace: `projects/`, `daily/`, `code` itself, or a `..` that climbs out.
+    """
+    folder = prefix.strip().rstrip("/")
+    segments = folder.split("/")
+    if (
+        len(segments) < 2
+        or segments[0] != "code"
+        or any(segment in {"", ".", ".."} for segment in segments)
+    ):
+        raise ValueError(
+            f"Refusing to purge {prefix!r}: the stub purge only works on a folder under code/"
+        )
+    return folder
+
+
+def _stub_verdict(page: dict[str, Any]) -> str | None:
+    """None if `page` is a legacy stub, else the reason it is not."""
+    try:
+        tags = json.loads(page["tags"] or "[]")
+    except (TypeError, ValueError):
+        return f"tags {page['tags']!r} are not readable"
+    content = page["content"] or ""
+    shapes = [expected for pattern, expected in _LEGACY_STUB_TAGS if pattern.search(content)]
+    if not shapes:
+        return "body does not match the legacy stub template"
+    if tags not in shapes:
+        return f"body matches a legacy stub but tags {tags} are not {shapes[0]}"
+    if page["authored_by"] != "agent":
+        return f"last written by {page['authored_by']!r}, not the indexer"
+    return None
+
+
+async def find_stub_pages_under(prefix: str, wiki_id: str = "default") -> PurgeCandidates:
+    folder = _code_folder(prefix)
+    candidates = PurgeCandidates()
+    for page in await list_pages_under(folder, wiki_id):
+        # LIKE treats `_` and `%` as wildcards, so the listing can overreach
+        # into a sibling folder; the slug itself has to agree.
+        if not page["slug"].startswith(f"{folder}/"):
+            continue
+        reason = _stub_verdict(page)
+        if reason is None:
+            candidates.matched.append(page["slug"])
+            candidates.contents[page["slug"]] = page["content"]
+        else:
+            candidates.skipped.append({"slug": page["slug"], "reason": reason})
+    return candidates
+
+
+async def _delete_page_if_unchanged(slug: str, content: str, wiki_id: str) -> bool:
+    async with get_db() as db:
+        cur = await db.execute(
+            "DELETE FROM pages WHERE slug=? AND wiki_id=? AND content=?",
+            (slug, wiki_id, content),
+        )
+        await db.commit()
+        return cur.rowcount > 0
+
+
+async def purge_stub_pages_under(
+    prefix: str,
+    wiki_id: str = "default",
+    *,
+    dry_run: bool = True,
+    forget: Callable[[str], Awaitable[bool]] | None = None,
+) -> dict[str, Any]:
+    """Delete the legacy stubs under `prefix`, one exact slug at a time.
+
+    A dry run (the default) only reports. Without `forget` this removes the
+    page row alone; pass `forget` to also drop the vault file and the search
+    and graph entries, which this module cannot reach without an import cycle.
+    `forget` returns False to leave a page in place.
+    """
+    folder = _code_folder(prefix)
+    candidates = await find_stub_pages_under(folder, wiki_id)
+    skipped = list(candidates.skipped)
+    deleted: list[str] = []
+
+    if not dry_run:
+        for slug in candidates.matched:
+            checked = candidates.contents[slug]
+            if forget is None:
+                removed = await _delete_page_if_unchanged(slug, checked, wiki_id)
+            else:
+                current = await get_page(slug, wiki_id)
+                removed = (
+                    current is not None
+                    and current["content"] == checked
+                    and await forget(slug)
+                )
+            if removed:
+                deleted.append(slug)
+            else:
+                skipped.append({"slug": slug, "reason": "changed since it was checked (row or vault file); left in place"})
+
+    return {
+        "prefix": folder,
+        "wiki_id": wiki_id,
+        "dry_run": dry_run,
+        "matched": candidates.matched,
+        "skipped": skipped,
+        "deleted": deleted,
+    }
 
 
 async def update_share_targets(mapping: dict[str, str], wiki_id: str = "default") -> None:

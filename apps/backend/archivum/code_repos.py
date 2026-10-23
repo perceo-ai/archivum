@@ -21,10 +21,12 @@ from __future__ import annotations
 import asyncio
 import logging
 import re
+import subprocess
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit
 
 import aiosqlite
 
@@ -126,6 +128,70 @@ def validate_repo_name(name: str) -> str:
     return candidate
 
 
+_UNSAFE_NAME_CHARS = re.compile(r"[^A-Za-z0-9._-]+")
+
+
+def _name_segment(value: str) -> str:
+    return _UNSAFE_NAME_CHARS.sub("-", value).strip("-._")
+
+
+def _identity_from_remote_url(url: str) -> str | None:
+    """`owner-repo` from a remote URL in https, ssh or scp form, else None.
+
+    Any host: the last two path segments are the owner and the repository.
+    """
+    url = url.strip()
+    if "://" in url:
+        path = urlsplit(url).path
+    elif ":" in url.split("/", 1)[0]:
+        path = url.split(":", 1)[1]  # git@host:owner/repo.git
+    else:
+        path = url
+    segments = [segment for segment in re.split(r"[/\\]", path) if segment]
+    if len(segments) < 2:
+        return None
+    owner = _name_segment(segments[-2])
+    repo = _name_segment(segments[-1].removesuffix(".git"))
+    if not owner or not repo:
+        return None
+    try:
+        return validate_repo_name(f"{owner}-{repo}".lower()[:_MAX_REPO_NAME_LENGTH])
+    except RepoError:
+        return None
+
+
+def _git(path: Path, *args: str) -> str | None:
+    try:
+        result = subprocess.run(
+            ["git", "-C", str(path), *args],
+            capture_output=True,
+            text=True,
+            timeout=5,
+            check=False,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    return result.stdout.strip() if result.returncode == 0 else None
+
+
+def _git_remote_identity(path: Path) -> str | None:
+    """The repository's name as its origin remote has it, or None.
+
+    The checkout directory's name says where a clone sits, not what it is: a
+    repository cloned into `nixos` was remembered as `nixos`, and every repo
+    checked out under a same-named directory collided into one namespace.
+
+    Only for the top of a working tree. `git -C` happily answers from inside a
+    subdirectory, and two subdirectories of one monorepo indexed on their own
+    would otherwise both take the monorepo's name and overwrite each other.
+    """
+    toplevel = _git(path, "rev-parse", "--show-toplevel")
+    if toplevel is None or Path(toplevel).resolve() != path:
+        return None
+    url = _git(path, "remote", "get-url", "origin")
+    return _identity_from_remote_url(url) if url else None
+
+
 def scope_for(name: str, *, wiki_id: str) -> str:
     """The canonical scope for one vault's copy of a repository.
 
@@ -166,7 +232,7 @@ async def register_repo(*, path: Path, wiki_id: str, name: str | None = None) ->
             f"{path}` uploads the repository and indexes it here."
         )
 
-    repo_name = validate_repo_name(name or resolved.name)
+    repo_name = validate_repo_name(name or _git_remote_identity(resolved) or resolved.name)
 
     scope = scope_for(repo_name, wiki_id=wiki_id)
     now = _now()
