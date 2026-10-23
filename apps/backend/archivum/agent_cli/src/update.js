@@ -3,6 +3,7 @@ import { spawnSync } from "node:child_process";
 import { composeCommand, ensureDockerReady, runCompose } from "./docker.js";
 import { createBackup } from "./recovery.js";
 import { ensureRoot, parseOptions } from "./util.js";
+import { ensureInternalGraphToken } from "./env.js";
 
 function runChecked(command, args) {
   const result = spawnSync(command, args, { stdio: "inherit", encoding: "utf8" });
@@ -28,6 +29,8 @@ export async function updateCommand(args) {
   if (!fs.existsSync(`${root}/.env`) && fs.existsSync(`${root}/.env.example`)) {
     fs.copyFileSync(`${root}/.env.example`, `${root}/.env`);
   }
+
+  if (ensureInternalGraphToken(root)) console.log("Generated INTERNAL_GRAPH_TOKEN (new in this release).");
 
   const base = composeCommand(compose, { useImages });
   if (useImages) {
