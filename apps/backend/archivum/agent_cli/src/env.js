@@ -14,6 +14,7 @@ export const DEFAULTS = {
   OWNER_PASSWORD: "",
   OWNER_USERNAME: "admin",
   MCP_API_KEY: "",
+  INTERNAL_GRAPH_TOKEN: "",
   ARCHIVUM_HOST: "",
   ARCHIVUM_FRONTEND_PORT: "8473",
   PUBLIC_WIKI_ENABLED: "false",
@@ -72,7 +73,7 @@ export function hasSecret(values, key) {
 }
 
 export function envNeedsConfiguration(values) {
-  for (const key of ["OWNER_PASSWORD", "JWT_SECRET", "MCP_API_KEY"]) {
+  for (const key of ["OWNER_PASSWORD", "JWT_SECRET", "MCP_API_KEY", "INTERNAL_GRAPH_TOKEN"]) {
     if (!hasSecret(values, key)) return true;
   }
 
@@ -152,6 +153,15 @@ export function loadEnv(root = process.cwd()) {
 export function saveEnv(envPath, values) {
   const existing = fs.existsSync(envPath) ? fs.readFileSync(envPath, "utf8") : "";
   fs.writeFileSync(envPath, writeEnvText(existing, values), "utf8");
+}
+
+// Compose requires INTERNAL_GRAPH_TOKEN, and an install that predates it has
+// none. Writes only that key, so the rest of an existing .env is left alone.
+export function ensureInternalGraphToken(root = process.cwd()) {
+  const env = loadEnv(root);
+  if (secretDefault(env.values.INTERNAL_GRAPH_TOKEN)) return false;
+  saveEnv(env.envPath, { INTERNAL_GRAPH_TOKEN: generateSecret(32) });
+  return true;
 }
 
 export function generateSecret(bytes = 32) {

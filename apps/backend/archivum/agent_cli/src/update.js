@@ -3,6 +3,7 @@ import { spawnSync } from "node:child_process";
 import { composeCommand, ensureDockerReady, runCompose } from "./docker.js";
 import { createBackup } from "./recovery.js";
 import { ensureRoot, parseOptions } from "./util.js";
+import { ensureInternalGraphToken } from "./env.js";
 
 function runChecked(command, args) {
   const result = spawnSync(command, args, { stdio: "inherit", encoding: "utf8" });
@@ -14,6 +15,7 @@ export async function updateCommand(args) {
   const root = ensureRoot();
   const useImages = !flags.has("build");
   const compose = ensureDockerReady();
+  if (ensureInternalGraphToken(root)) console.log("Generated INTERNAL_GRAPH_TOKEN (new in this release).");
   const backupDir = flags.has("no-backup")
     ? null
     : createBackup({ root, compose, prefix: "pre-update" });

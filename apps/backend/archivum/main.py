@@ -29,6 +29,7 @@ from archivum.api import shared as shared_routes
 from archivum.api import sharing as sharing_routes
 from archivum.api import suggestions as suggestions_routes
 from archivum.api.graph import router as graph_router
+from archivum.api.internal_graph import router as internal_graph_router
 from archivum.api.context import router as context_router
 from archivum.api.query import router as query_router
 from archivum.api.search import router as search_router
@@ -252,6 +253,8 @@ def create_app() -> FastAPI:
     app.include_router(context_router)
     app.include_router(query_router)
     app.include_router(graph_router)
+    # Kuzu's one owner serves the graph to the MCP process; see db/graph.py.
+    app.include_router(internal_graph_router)
     app.include_router(sources_router)
     app.include_router(repos_router)
     app.include_router(capture_router)

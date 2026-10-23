@@ -48,6 +48,9 @@ services:
       - SUMMARY_WORKER_INTERVAL_SECONDS=${SUMMARY_WORKER_INTERVAL_SECONDS:-3600}
       - MCP_PUBLIC_URL=${MCP_PUBLIC_URL:-}
       - API_PUBLIC_URL=${API_PUBLIC_URL:-}
+      # Kuzu admits one process per file: this one owns it and serves the
+      # graph to `mcp` over the compose network only.
+      - INTERNAL_GRAPH_TOKEN=${INTERNAL_GRAPH_TOKEN:?INTERNAL_GRAPH_TOKEN must be set}
     volumes:
       - wiki_data:/data/wiki
       - raw_data:/data/raw
@@ -122,6 +125,11 @@ services:
       - CODE_CACHE_DIR=${CODE_CACHE_DIR:-/data/code-cache}
       - SUMMARY_WORKER_ENABLED=${SUMMARY_WORKER_ENABLED:-true}
       - SUMMARY_WORKER_INTERVAL_SECONDS=${SUMMARY_WORKER_INTERVAL_SECONDS:-3600}
+      # Never open the Kuzu file here: `backend` holds it, and a second
+      # process opening it fails with "Could not set lock on file".
+      - KUZU_ROLE=client
+      - GRAPH_RPC_URL=http://backend:8000
+      - INTERNAL_GRAPH_TOKEN=${INTERNAL_GRAPH_TOKEN:?INTERNAL_GRAPH_TOKEN must be set}
     ports:
       - "127.0.0.1:${ARCHIVUM_MCP_PORT:-8001}:8001"
     volumes:
