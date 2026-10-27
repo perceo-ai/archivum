@@ -56,11 +56,10 @@ async def vault(temp_settings, monkeypatch):
         if hasattr(qdrant, name):
             monkeypatch.setattr(qdrant, name, _noop)
 
-    # Kuzu caches its connection in a module global, built from get_settings()
+    # Kuzu caches its database in a module global, built from get_settings()
     # on first use. Left alone it opens /data/kuzu, which is the container's
     # path and read-only here — and a move that cannot rename a graph node
     # fails outright rather than degrading.
-    monkeypatch.setattr(graph, "_conn", None, raising=False)
     monkeypatch.setattr(graph, "_db", None, raising=False)
     await graph.init_graph(temp_settings)
 

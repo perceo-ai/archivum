@@ -16,6 +16,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import threading
 import time
 from pathlib import Path
 from typing import Any
@@ -37,22 +38,30 @@ class GraphUnavailableError(RuntimeError):
 # ── Singleton database handle ─────────────────────────────────────────────────
 
 _db: kuzu.Database | None = None
-_conn: kuzu.Connection | None = None
 
 
 def _get_conn(settings: Settings | None = None) -> kuzu.Connection:
-    global _db, _conn
-    if _conn is None:
+    """A fresh connection on the one shared database, for a single operation.
+
+    Not a shared connection: a kuzu Connection keeps every statement it ever
+    prepared until it is closed, and every parameterized execute() prepares
+    one, so a connection held for the life of the process grew without bound.
+    Connections are cheap; the Database is the expensive, single handle.
+    """
+    global _db
+    if _db is None:
         s = settings or get_settings()
         kuzu_path = Path(s.kuzu_path)
         # kuzu.Database expects a database *file path* in current kuzu-python.
         # We store it under the configured directory.
         kuzu_path.mkdir(parents=True, exist_ok=True)
         db_file = kuzu_path / "archivum.kuzu"
-        _db = kuzu.Database(str(db_file))
-        _conn = kuzu.Connection(_db)
-        _init_schema(_conn)
-    return _conn
+        # Each committed write keeps in-memory version state until the next
+        # checkpoint, hundreds of times the bytes it adds to the WAL. Kuzu's own
+        # threshold is WAL size (16 MB), which left gigabytes resident first.
+        _db = kuzu.Database(str(db_file), checkpoint_threshold=s.kuzu_checkpoint_threshold_bytes)
+        _init_schema(kuzu.Connection(_db))
+    return kuzu.Connection(_db)
 
 
 def _init_schema(conn: kuzu.Connection) -> None:
@@ -133,9 +142,20 @@ def _execute_with_retry(conn: kuzu.Connection, query: str, params: dict[str, Any
 
 # ── Async wrappers ────────────────────────────────────────────────────────────
 
+# One operation at a time. Kuzu refuses a second concurrent write transaction
+# rather than waiting for it, and connections are per operation, so nothing
+# inside kuzu serializes them any more; this does, as the shared one used to.
+_ops_lock = threading.Lock()
+
+
+def _serialized(fn, *args, **kwargs):
+    with _ops_lock:
+        return fn(*args, **kwargs)
+
+
 async def _run(fn, *args, **kwargs):
     loop = asyncio.get_running_loop()
-    return await loop.run_in_executor(None, lambda: fn(*args, **kwargs))
+    return await loop.run_in_executor(None, lambda: _serialized(fn, *args, **kwargs))
 
 
 # ── Client role: calls go to the owner ────────────────────────────────────────

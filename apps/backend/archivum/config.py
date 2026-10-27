@@ -43,6 +43,9 @@ class Settings(BaseSettings):
     # refused at startup: a typo that fell through to "owner" would open the
     # file from a second process and bring back the lock error, silently.
     kuzu_role: Literal["owner", "client"] = "owner"
+    # WAL size at which Kuzu checkpoints. Memory held between checkpoints is a
+    # large multiple of this, so Kuzu's 16 MB default let the owner reach 11 GB.
+    kuzu_checkpoint_threshold_bytes: int = 64 * 1024
     graph_rpc_url: str = ""
     # Shared secret for /internal/graph. Empty means the endpoint refuses
     # every call, so a deployment that forgets to set it fails closed.
