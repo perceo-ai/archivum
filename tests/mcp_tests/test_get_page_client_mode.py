@@ -143,7 +143,6 @@ async def client_role(tmp_path, owner_process, monkeypatch):
     )
     monkeypatch.setattr(graph, "get_settings", lambda: client)
     monkeypatch.setattr(graph, "_db", None)
-    monkeypatch.setattr(graph, "_conn", None)
     monkeypatch.setattr(graph, "_rpc_client_override", None)
     monkeypatch.setattr(server, "settings", client)
     monkeypatch.setattr(sqlite, "_db_path", None)
@@ -194,4 +193,4 @@ async def test_get_page_with_backlinks_in_client_role_never_fails(client_role):
     assert {f"mcp-{i}" for i in range(50)} <= slugs
 
     # This process never held a Kuzu handle.
-    assert graph._db is None and graph._conn is None
+    assert graph._db is None

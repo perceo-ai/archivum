@@ -46,7 +46,6 @@ def roles(tmp_path, monkeypatch):
 async def owner_client(roles, monkeypatch):
     owner, _ = roles
     monkeypatch.setattr(graph, "_db", None)
-    monkeypatch.setattr(graph, "_conn", None)
     await graph.init_graph(owner)
 
     app = FastAPI()
@@ -56,8 +55,7 @@ async def owner_client(roles, monkeypatch):
     ) as client:
         monkeypatch.setattr(graph, "_rpc_client_override", client)
         yield client
-    if graph._conn is not None:
-        graph._conn.close()
+    if graph._db is not None:
         graph._db.close()
 
 
@@ -137,11 +135,10 @@ async def test_client_role_reads_and_writes_through_owner_under_concurrent_write
 async def test_client_role_init_graph_opens_nothing(roles, monkeypatch, no_new_databases):
     _, client = roles
     monkeypatch.setattr(graph, "_db", None)
-    monkeypatch.setattr(graph, "_conn", None)
 
     await graph.init_graph(client)
 
-    assert graph._db is None and graph._conn is None
+    assert graph._db is None
     assert no_new_databases == []
     assert not client.kuzu_path.exists()
 
