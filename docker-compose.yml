@@ -23,6 +23,7 @@ services:
       - RAW_DIR=/data/raw
       - DB_PATH=/data/archivum.db
       - KUZU_PATH=/data/kuzu
+      - KUZU_CHECKPOINT_THRESHOLD_BYTES=${KUZU_CHECKPOINT_THRESHOLD_BYTES:-65536}
       - MCP_API_KEY=${MCP_API_KEY:-}
       - EMBED_PROVIDER=${EMBED_PROVIDER:-local}
       - EMBED_MODEL=${EMBED_MODEL:-BAAI/bge-small-en-v1.5}
