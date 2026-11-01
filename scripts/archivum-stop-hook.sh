@@ -22,8 +22,12 @@
 #   3. Never break a session. Any unexpected condition exits 0 and stays quiet.
 #      A memory tool that stops someone working would be uninstalled by lunch.
 #
-# The transcript is read locally, only to answer "was record_work or
-# write_page called". It is never uploaded, and nothing here sends it anywhere.
+# The transcript is read locally to answer "was record_work or write_page
+# called", and — unless capture is turned off — handed to `archivum
+# capture-session`, which uploads it so the session becomes a Source the vault
+# distils. That upload is detached and its result is never waited for: see
+# rule 3. Turn it off with ARCHIVUM_CAPTURE=off, or `"capture": false` in
+# ~/.archivum/connection.json.
 
 set -uo pipefail
 
@@ -37,6 +41,35 @@ session_id="$(printf '%s' "$payload" | jq -r '.session_id // empty' 2>/dev/null)
 transcript="$(printf '%s' "$payload" | jq -r '.transcript_path // empty' 2>/dev/null)" || exit 0
 
 [ -n "$session_id" ] || exit 0
+
+# ── Automatic capture ────────────────────────────────────────────────────────
+#
+# The server's transcript watcher can only read transcripts the server can see,
+# and the owner's sessions run on the owner's machine, so none of them ever
+# reached the vault. This hook already knows where the transcript is and that
+# the turn has ended, so it is also where the upload belongs.
+#
+# Detached, output discarded, exit status never read: rule 3 again. A vault
+# that is down or slow must not hold a session open, so the hook starts the
+# upload and forgets about it. The command itself refuses silently when the
+# machine is not linked or capture is turned off.
+#
+# The command line comes from a file `archivum habits` writes at link time,
+# because this script cannot know where node or the CLI were installed and a
+# bare `archivum` is not on PATH in every hook environment. No file means no
+# upload, which is also what an unlinked machine should do.
+archivum_state="${ARCHIVUM_STATE_DIR:-$HOME/.archivum}"
+archivum_capture_cmd=""
+if [ "${ARCHIVUM_CAPTURE:-on}" != "off" ] && [ -n "$transcript" ] && [ -r "$transcript" ]; then
+  archivum_capture_cmd="$(cat "$archivum_state/capture-command" 2>/dev/null)" || archivum_capture_cmd=""
+fi
+if [ -n "$archivum_capture_cmd" ]; then
+  # The paths go through "$@" rather than into the command string: a project
+  # directory with a quote or a space in its name would otherwise be re-parsed
+  # by this shell.
+  nohup sh -c "$archivum_capture_cmd \"\$@\"" archivum-capture \
+    --transcript="$transcript" --session-id="$session_id" >/dev/null 2>&1 &
+fi
 
 marker_dir="${TMPDIR:-/tmp}/archivum-stop-hook"
 mkdir -p "$marker_dir" 2>/dev/null || exit 0

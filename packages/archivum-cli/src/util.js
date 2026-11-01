@@ -16,6 +16,9 @@ Commands:
   mcp config [--client claude|cursor|sse]
   connect <pairing-token> [--name NAME] [--client claude|cursor|codex]
   habits [--base URL]        install the memory skill, instructions, and Stop hook
+  capture-session --transcript PATH [--session-id ID]
+                             upload a finished session (the Stop hook runs this;
+                             ARCHIVUM_CAPTURE=off disables it)
   self-update [--base URL]   fetch the latest CLI from the linked server
   wiki <ingest|search|query|pages|open|write|lint|graph|rebuild-indexes>
 
@@ -59,7 +62,7 @@ export function parseOptions(args) {
       const [name, inlineValue] = arg.slice(2).split(/=(.*)/s, 2);
       if (inlineValue !== undefined) {
         values.set(name, inlineValue);
-      } else if (i + 1 < args.length && !args[i + 1].startsWith("-") && ["set", "title", "content", "slug", "tag", "client", "service", "host", "dir", "name", "base"].includes(name)) {
+      } else if (i + 1 < args.length && !args[i + 1].startsWith("-") && ["set", "title", "content", "slug", "tag", "client", "service", "host", "dir", "name", "base", "transcript", "session-id", "scope"].includes(name)) {
         const existing = values.get(name);
         const next = args[i + 1];
         values.set(name, existing === undefined ? next : Array.isArray(existing) ? [...existing, next] : [existing, next]);

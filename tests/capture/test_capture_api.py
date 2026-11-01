@@ -96,3 +96,39 @@ async def test_import_endpoint_queues_every_imported_conversation(client):
     jobs = await sqlite_mod.list_distillation_jobs("default")
     assert {job["source_id"] for job in jobs} == set(imported)
     assert all(job["status"] == "pending" for job in jobs)
+
+
+async def test_capture_endpoint_dedupes_a_resent_session(client):
+    """The Stop hook on a linked machine re-sends a session it has seen.
+
+    The client skips an unchanged transcript, but it cannot be the only
+    guard: a new machine, a cleared state directory, or a second client all
+    re-send the same file. Dedup is keyed on (origin_uri, content_hash), so
+    the same transcript lands on the Source that is already there.
+    """
+    body = {
+        "session_id": "sess-1",
+        "interface": "claude_code_hook",
+        "started_at": "2026-10-01T00:00:00Z",
+        "turns": [
+            {"role": "user", "text": "why is the test red"},
+            {"role": "assistant", "text": "the fixture is stale"},
+        ],
+        "origin_uri": "/Users/owner/.claude/projects/plasma/sess-1.jsonl",
+    }
+
+    first = client.post("/api/sources/capture", json=body)
+    second = client.post("/api/sources/capture", json=body)
+
+    assert first.status_code == second.status_code == 200
+    assert first.json()["deduplicated"] is False
+    assert second.json()["deduplicated"] is True
+    assert second.json()["source_id"] == first.json()["source_id"]
+    assert second.json()["version"] == first.json()["version"]
+
+    # A grown transcript is the same origin with new content: a new version of
+    # that Source, not a second one competing with it.
+    grown = {**body, "turns": [*body["turns"], {"role": "user", "text": "fixed it"}]}
+    third = client.post("/api/sources/capture", json=grown)
+    assert third.json()["deduplicated"] is False
+    assert third.json()["version"] == first.json()["version"] + 1

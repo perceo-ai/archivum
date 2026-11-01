@@ -88,11 +88,17 @@ Re-indexing an already-known repository diffs against the last indexed SHA, re-e
 
 Indexing remembers the code as it stands. Capture remembers how it got that way.
 
-Agent transcripts are watched and imported automatically — the same importer and
-redaction the manual route used, run on a poll rather than on request. Nothing
-downstream of capture (atoms, decisions, skills, `decided_in`) ever ran before,
-because nothing was capturing. Name the directories in `TRANSCRIPT_DIRS`; unset,
-the watcher does nothing rather than guessing at a path it cannot see.
+Agent transcripts are imported automatically — the same importer and redaction
+the manual route used. Nothing downstream of capture (atoms, decisions, skills,
+`decided_in`) ever ran before, because nothing was capturing.
+
+Two paths, because transcripts live on two kinds of machine. On the server, name
+the directories in `TRANSCRIPT_DIRS` and a poll imports them; unset, the watcher
+does nothing rather than guessing at a path it cannot see. On a machine you code
+on, the watcher cannot help — the server has no way to read that disk — so the
+Claude Code Stop hook `archivum habits` installs hands each finished session to
+`archivum capture-session`, which posts it to the same capture endpoint. Opt out
+with `ARCHIVUM_CAPTURE=off` or `"capture": false` in `~/.archivum/connection.json`.
 
 Each captured session becomes a small record:
 

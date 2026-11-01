@@ -155,7 +155,7 @@ test("--base wins over the stored connection", async () => {
 // there (rule 3) and there would be nothing to observe.
 const hasJq = spawnSync("sh", ["-c", "command -v jq"]).status === 0;
 
-function runHook(toolNames) {
+function runHook(toolNames, { captureCommand = null, captureEnv = {} } = {}) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "archivum-hook-"));
   const script = path.join(dir, "hook.sh");
   fs.writeFileSync(script, STOP_HOOK_SCRIPT, { mode: 0o755 });
@@ -164,15 +164,33 @@ function runHook(toolNames) {
     transcript,
     toolNames.map((name) => JSON.stringify({ type: "tool_use", name })).join("\n") + "\n",
   );
+  // ARCHIVUM_STATE_DIR keeps the capture side of the hook inside this temp
+  // directory. Without it the script reads the developer's own
+  // ~/.archivum/capture-command and a test run uploads a fake transcript.
+  const stateDir = path.join(dir, "state");
+  fs.mkdirSync(stateDir, { recursive: true });
+  if (captureCommand) fs.writeFileSync(path.join(stateDir, "capture-command"), captureCommand);
   const payload = JSON.stringify({ session_id: "s1", transcript_path: transcript });
-  const env = { ...process.env, TMPDIR: dir };
+  const env = { ...process.env, TMPDIR: dir, ARCHIVUM_STATE_DIR: stateDir, ...captureEnv };
   const once = () => spawnSync("bash", [script], { input: payload, env, encoding: "utf8" });
   const first = once();
   const second = once();
   return {
+    dir,
+    transcript,
     first: first.stdout ? JSON.parse(first.stdout) : null,
     second: second.stdout ? JSON.parse(second.stdout) : null,
   };
+}
+
+/** The upload is detached, so it finishes after the hook has already exited. */
+function waitForFile(file, timeoutMs = 5000) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if (fs.existsSync(file)) return fs.readFileSync(file, "utf8");
+    spawnSync("sleep", ["0.05"]);
+  }
+  return null;
 }
 
 test("stop hook: edits without a record are asked to record, once", { skip: !hasJq }, () => {
@@ -200,4 +218,45 @@ test("stop hook: a record and a page edit close the loop silently", { skip: !has
 test("stop hook: a read-only session is never asked", { skip: !hasJq }, () => {
   const { first } = runHook(["Read", "Grep"]);
   assert.equal(first, null);
+});
+
+test("stop hook: the transcript is handed to the capture command", { skip: !hasJq }, () => {
+  // The whole point of the client-side path: the server cannot see this file,
+  // so the hook is what ships it.
+  const receipt = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "archivum-receipt-")), "argv");
+  const { transcript } = runHook(["Read"], {
+    captureCommand: `sh -c 'printf "%s\\n" "$@" > ${receipt}' capture`,
+  });
+
+  const argv = waitForFile(receipt);
+  assert.ok(argv, "the capture command must have been run");
+  assert.match(argv, new RegExp(`--transcript=${transcript}`));
+  assert.match(argv, /--session-id=s1/);
+});
+
+test("stop hook: ARCHIVUM_CAPTURE=off uploads nothing", { skip: !hasJq }, () => {
+  const receipt = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "archivum-receipt-")), "argv");
+  runHook(["Read"], {
+    captureCommand: `sh -c 'printf ran > ${receipt}' capture`,
+    captureEnv: { ARCHIVUM_CAPTURE: "off" },
+  });
+  assert.equal(waitForFile(receipt, 500), null);
+});
+
+test("stop hook: no capture command means no upload and no error", { skip: !hasJq }, () => {
+  // An unlinked machine: the file `habits` writes is simply not there.
+  const { first } = runHook(["Read", "Grep"]);
+  assert.equal(first, null);
+});
+
+test("habits writes the capture command the Stop hook runs", async () => {
+  const home = linkedHome();
+  const summary = await habitsCommand([], { home, fetchImpl: skillFetch, log: () => {} });
+
+  const file = path.join(home, ".archivum", "capture-command");
+  assert.equal(summary.hook.captureCommand, file);
+  const command = fs.readFileSync(file, "utf8");
+  // An absolute node invocation, because a hook's PATH is not a login shell's.
+  assert.match(command, /capture-session$/m);
+  assert.ok(command.includes(process.execPath));
 });
