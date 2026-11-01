@@ -62,6 +62,11 @@ CREATE TABLE IF NOT EXISTS knowledge_objects (
 
 CREATE INDEX IF NOT EXISTS idx_knowledge_objects_kind_scope
     ON knowledge_objects(kind, scope);
+-- Retrieval lists a scope without naming a kind, and `scope` is not the leading
+-- column above, so that query could not use the index and scanned every object
+-- in the vault — hundreds of thousands of rows to answer a ten-node question.
+CREATE INDEX IF NOT EXISTS idx_knowledge_objects_scope
+    ON knowledge_objects(scope);
 
 CREATE TABLE IF NOT EXISTS knowledge_relationships (
     id                TEXT PRIMARY KEY,
@@ -78,6 +83,10 @@ CREATE INDEX IF NOT EXISTS idx_knowledge_relationships_src_scope
     ON knowledge_relationships(src_id, scope);
 CREATE INDEX IF NOT EXISTS idx_knowledge_relationships_dst_scope
     ON knowledge_relationships(dst_id, scope);
+-- Same reason as `idx_knowledge_objects_scope`: listing a scope's relationships
+-- without a node id could not use either index above.
+CREATE INDEX IF NOT EXISTS idx_knowledge_relationships_scope
+    ON knowledge_relationships(scope);
 
 CREATE TABLE IF NOT EXISTS knowledge_citations (
     knowledge_id   TEXT NOT NULL,
