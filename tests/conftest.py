@@ -1,6 +1,32 @@
 """Shared pytest fixtures for Archivum tests."""
 
+
 from __future__ import annotations
+
+# The app's background workers stay off for the whole suite, set before any
+# `archivum` import reads the environment.
+#
+# Any test entering a `TestClient` context runs the real lifespan, which starts
+# six long-lived workers. A test that does not cancel them leaves them running
+# for the rest of the session, so they accumulate and contend for the same
+# SQLite file. Idle workers hid that: they slept and cost nothing. Once capture
+# began queueing distillation on every path that captures, the leaked workers
+# had real work, and `tests/api` went from 78 seconds to over eighteen minutes
+# while every file in it still passed in seconds on its own.
+#
+# A test that wants a worker sets its flag and starts it itself.
+import os
+
+for _flag in (
+    "DISTILL_WORKER_ENABLED",
+    "PAGE_WRITE_WORKER_ENABLED",
+    "RETENTION_WORKER_ENABLED",
+    "CODE_REPO_WORKER_ENABLED",
+    "SUMMARY_WORKER_ENABLED",
+    "TRANSCRIPT_WATCH_ENABLED",
+    "VAULT_WATCH_ENABLED",
+):
+    os.environ.setdefault(_flag, "false")
 
 import contextlib
 from unittest.mock import AsyncMock, MagicMock, patch
