@@ -24,7 +24,7 @@ import logging
 import re
 import subprocess
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit
@@ -359,7 +359,24 @@ async def _set_status(scope: str, status: str, **fields: Any) -> None:
 
 
 async def index_repo(repo: CodeRepo, *, settings: Settings | None = None) -> CodeRepo:
-    """Read one repository into canonical knowledge, memory, and the vault."""
+    """Read one repository into canonical knowledge, memory, and the vault.
+
+    Claims the row as `indexing` first and marks it `error` if anything raises,
+    whichever caller got here. Both guarantees used to live only in the worker,
+    so an upload that failed — `sqlite3.OperationalError` is not a `RepoError`
+    and the upload route only catches `RepoError` — left a row that said
+    `pending` or `indexing` forever, and the worker only ever selects `pending`.
+    """
+    await _set_status(repo.scope, "indexing")
+    try:
+        return await _index_repo(repo, settings=settings)
+    except Exception as exc:
+        logger.warning("Indexing %s failed: %s", repo.scope, exc)
+        await _set_status(repo.scope, "error", error=f"{type(exc).__name__}: {exc}")
+        raise
+
+
+async def _index_repo(repo: CodeRepo, *, settings: Settings | None = None) -> CodeRepo:
     settings = settings or get_settings()
     root = Path(repo.path)
     if not root.is_dir():
@@ -450,15 +467,35 @@ async def run_pending_repo_indexing(
 
     done = 0
     for repo in pending:
-        await _set_status(repo.scope, "indexing")
         try:
+            # `index_repo` claims the row and records the failure itself.
             await index_repo(repo, settings=settings)
-        except Exception as exc:  # noqa: BLE001 - one bad repo must not stop the rest
-            logger.warning("Indexing %s failed: %s", repo.scope, exc)
-            await _set_status(repo.scope, "error", error=f"{type(exc).__name__}: {exc}")
+        except Exception:  # noqa: BLE001 - one bad repo must not stop the rest
             continue
         done += 1
     return done
+
+
+async def requeue_stale_indexing(*, older_than_seconds: float = 3600.0) -> int:
+    """Return abandoned `indexing` rows to `pending`. Returns how many moved.
+
+    A process that dies mid-ingest — an out-of-memory kill, a redeploy — leaves
+    the row claimed. Nothing selects `indexing`, so without this the repository
+    is never indexed again and the UI shows a spinner forever.
+    """
+    cutoff = datetime.now(UTC) - timedelta(seconds=older_than_seconds)
+    async with sqlite.get_db() as conn:
+        await init_repo_schema(conn)
+        cursor = await conn.execute(
+            "UPDATE code_repos SET status='pending', updated_at=? "
+            "WHERE status='indexing' AND updated_at < ?",
+            (_now(), cutoff.isoformat()),
+        )
+        await conn.commit()
+        moved = cursor.rowcount or 0
+    if moved:
+        logger.warning("Requeued %d repository index runs abandoned mid-flight", moved)
+    return moved
 
 
 async def run_code_repo_worker(settings: Settings) -> None:
