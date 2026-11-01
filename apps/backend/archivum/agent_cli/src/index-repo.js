@@ -267,6 +267,54 @@ export async function uploadRepo({ baseUrl, key, name, archive, fetchImpl = fetc
   return response.json();
 }
 
+// How long to wait for a queued index before saying so and leaving it running.
+// Generous, because a large repository legitimately takes minutes — but finite,
+// because a command that never returns is its own kind of failure.
+const INDEX_POLL_TIMEOUT_MS = 15 * 60 * 1000;
+const INDEX_POLL_INTERVAL_MS = 3000;
+
+/**
+ * Follow a queued index to its conclusion.
+ *
+ * The upload used to index inside the request, so the CLI could print the
+ * finished counts. A real repository outlives any proxy's patience: 669 files
+ * took longer than the Cloudflare tunnel's 100 seconds, so this printed
+ * `fetch failed` while the server indexed it perfectly well. Polling a short
+ * status route costs nothing and cannot be cut off mid-answer.
+ */
+export async function awaitIndexed({
+  baseUrl,
+  key,
+  name,
+  fetchImpl = fetch,
+  now = () => Date.now(),
+  sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+  timeoutMs = INDEX_POLL_TIMEOUT_MS,
+}) {
+  const deadline = now() + timeoutMs;
+  let last = null;
+  while (now() < deadline) {
+    const response = await fetchImpl(`${baseUrl}/api/repos`, {
+      headers: { Authorization: `Bearer ${key}` },
+    });
+    if (response.ok) {
+      const repos = await response.json().catch(() => []);
+      last = (Array.isArray(repos) ? repos : []).find((repo) => repo.name === name) ?? last;
+      if (last?.status === "ready") return { repo: last, state: "ready" };
+      if (last?.status === "error") return { repo: last, state: "error" };
+    }
+    await sleep(INDEX_POLL_INTERVAL_MS);
+  }
+  return { repo: last, state: "pending" };
+}
+
+function reportIndexed(repo) {
+  console.log(
+    `archivum: indexed "${repo.name}" — ${repo.files} files, ${repo.nodes} symbols, ${repo.edges} edges, ${repo.pages} pages.`,
+  );
+  console.log("  Your agents can now use retrieve_code_context and recall_fix for this repo.");
+}
+
 export async function indexCommand(
   args,
   { home = os.homedir(), cwd = process.cwd(), fetchImpl = fetch, spawnImpl = spawnSync } = {},
@@ -299,17 +347,42 @@ export async function indexCommand(
 
   const archive = packFiles(root, selected, { spawnImpl });
   try {
-    const repo = await uploadRepo({
+    const queued = await uploadRepo({
       baseUrl: state.base_url,
       key: state.key,
       name,
       archive,
       fetchImpl,
     });
-    console.log(
-      `archivum: indexed "${repo.name}" — ${repo.files} files, ${repo.nodes} symbols, ${repo.edges} edges, ${repo.pages} pages.`,
-    );
-    console.log("  Your agents can now use retrieve_code_context and recall_fix for this repo.");
+    // A server that already finished has nothing to poll for. Newer ones queue
+    // and answer `pending`; one that still indexes inside the request answers
+    // with the finished counts, and this command should work against both.
+    const alreadyDone =
+      queued.status === "ready" || (queued.status === undefined && queued.nodes !== undefined);
+    if (alreadyDone) {
+      reportIndexed(queued);
+      return;
+    }
+    console.log(`archivum: uploaded "${queued.name}" — indexing, this can take a few minutes.`);
+
+    const { repo, state: outcome } = await awaitIndexed({
+      baseUrl: state.base_url,
+      key: state.key,
+      name: queued.name,
+      fetchImpl,
+    });
+    if (outcome === "error") {
+      throw new Error(`Indexing "${queued.name}" failed: ${repo?.error ?? "unknown error"}`);
+    }
+    if (outcome === "pending") {
+      // Still running, not broken. Saying so beats inventing either verdict.
+      console.log(
+        `archivum: "${queued.name}" is still indexing on the server. ` +
+          "Check `archivum index --status` or the repositories page.",
+      );
+      return;
+    }
+    reportIndexed(repo);
   } finally {
     discardArchive(archive);
   }
