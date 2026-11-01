@@ -125,3 +125,47 @@ async def test_the_queue_records_a_failure_without_stopping(vault):  # noqa: F81
     # borealis is left as the stub left it — the real `_index_repo` is what
     # writes `ready`, and this test is about the failure not stopping the sweep.
     assert await get_repo(second.scope, wiki_id="default") is not None
+
+
+async def test_a_repo_is_ready_before_its_pages_are_narrated(vault):  # noqa: F811
+    """Readiness means retrieval works, and pages are not part of that.
+
+    Narration is one model call per cluster — up to 150 at concurrency 4 with a
+    180s timeout, so close to two hours. Gating `ready` on it was a livelock: a
+    restart during narration left the row claimed, the stale sweep requeued it,
+    and the next run began the same two hours again. Live, a repository whose
+    graph was built in minutes never once reached `ready`.
+    """
+    repo = await _registered(vault)
+    status_while_writing: list[str] = []
+
+    async def slow_pages(repo_arg, **_):
+        stored = await get_repo(repo_arg.scope, wiki_id="default")
+        status_while_writing.append(stored.status if stored else "missing")
+        return 4
+
+    with patch("archivum.code_repos.write_repo_pages", new=slow_pages):
+        await index_repo(repo)
+
+    assert status_while_writing == ["ready"], "pages must not gate readiness"
+    stored = await get_repo(repo.scope, wiki_id="default")
+    assert stored is not None
+    assert stored.status == "ready"
+    assert stored.pages == 4
+    assert stored.nodes > 0, "the graph is what readiness actually depends on"
+
+
+async def test_failing_to_write_pages_leaves_the_index_usable(vault):  # noqa: F811
+    """A page that cannot be narrated costs its page, not the whole index."""
+    repo = await _registered(vault)
+
+    async def pages_explode(repo_arg, **_):
+        raise RuntimeError("the model could not be reached")
+
+    with patch("archivum.code_repos.write_repo_pages", new=pages_explode):
+        indexed = await index_repo(repo)
+
+    assert indexed.status == "ready"
+    stored = await get_repo(repo.scope, wiki_id="default")
+    assert stored is not None and stored.status == "ready"
+    assert stored.nodes > 0

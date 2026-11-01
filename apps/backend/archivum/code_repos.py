@@ -435,8 +435,18 @@ async def _index_repo(repo: CodeRepo, *, settings: Settings | None = None) -> Co
         )
         await conn.commit()
 
-    pages = await write_repo_pages(repo, settings=settings)
-
+    # Ready as soon as retrieval works, which needs the graph and the lexical
+    # index — both of which exist by now.
+    #
+    # Page narration used to come first. It is one model call per cluster, up
+    # to 150 of them at concurrency 4 with a 180-second timeout, so close to
+    # two hours in the worst case. Gating `ready` on that was a livelock: a
+    # restart during narration left the row claimed, the stale sweep returned
+    # it to the queue, and the next run began the same two hours again. Live, a
+    # repository whose graph was built in minutes never once reached `ready`.
+    #
+    # Pages are a derived account of code that is already queryable, so they
+    # must not decide whether the code is queryable.
     await _set_status(
         repo.scope,
         "ready",
@@ -444,10 +454,17 @@ async def _index_repo(repo: CodeRepo, *, settings: Settings | None = None) -> Co
         files=report.files,
         nodes=report.nodes,
         edges=report.edges,
-        pages=pages,
         error=None,
         indexed_at=_now(),
     )
+
+    try:
+        pages = await write_repo_pages(repo, settings=settings)
+    except Exception as exc:  # noqa: BLE001 - pages are not worth losing an index over
+        logger.warning("Indexed %s but could not write its pages: %s", repo.scope, exc)
+    else:
+        await _set_status(repo.scope, "ready", pages=pages)
+
     updated = await get_repo(repo.scope, wiki_id=repo.wiki_id)
     assert updated is not None
     return updated
