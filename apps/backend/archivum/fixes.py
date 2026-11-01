@@ -44,11 +44,16 @@ _CHECK_HINTS = re.compile(
 
 # `SomeError: detail`, a traceback line, or an explicit failure phrase. The
 # error is the part worth keeping; the rest of the sentence is scaffolding.
-# The dotted prefix matters: Python reports `sqlite3.OperationalError`, and
-# requiring whitespace immediately before the class name meant the most common
-# shape of a real traceback line matched nothing.
+# Two things this has to tolerate, both found by recording a real session and
+# then failing to recall it. The dotted prefix, because Python reports
+# `sqlite3.OperationalError` and requiring whitespace before the class name
+# missed the most common shape of a traceback line. And any non-word character
+# before it, not just whitespace or `(`: agents write errors in backticks, and
+# `` `sqlite3.OperationalError: database is locked` `` matched nothing, so the
+# symptom silently fell back to the task description. `.` stays excluded so a
+# match cannot begin partway through a dotted name.
 _ERROR_RE = re.compile(
-    r"(?:^|[\s(])((?:[A-Za-z_]\w*\.)*(?:[A-Z][A-Za-z0-9_]*)?"
+    r"(?:^|[^\w.])((?:[A-Za-z_]\w*\.)*(?:[A-Z][A-Za-z0-9_]*)?"
     r"(?:Error|Exception|Warning)\b[^.\n]{0,160})"
 )
 _FAILURE_PHRASE_RE = re.compile(

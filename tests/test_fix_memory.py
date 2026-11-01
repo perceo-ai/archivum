@@ -12,7 +12,7 @@ failing to passing. Prose describing a bug never becomes a fix.
 from __future__ import annotations
 
 from archivum.capture.schema import Conversation, ToolCall, Turn
-from archivum.fixes import extract_fix, symptom_key
+from archivum.fixes import _symptom_of, extract_fix, symptom_key
 
 
 def _session(
@@ -195,3 +195,36 @@ def test_the_task_description_remains_the_last_resort():
 
     assert fix is not None
     assert fix.symptom == "Decided to store skills as vault pages."
+
+
+def test_an_error_in_backticks_is_still_the_symptom():
+    """Agents write errors in backticks, and that used to defeat extraction.
+
+    Found by recording a real session whose outcome said
+    `` `sqlite3.OperationalError: database is locked` `` and then failing to
+    recall it by that error: the pattern demanded whitespace or `(` before the
+    class name, so the symptom silently fell back to the task description.
+    """
+    session = _session(
+        "Finish diagnosing the deployed vault.",
+        assistant=(
+            "Cause: the `sqlite3.OperationalError: database is locked` that "
+            "ingest raised escaped as an HTTP 500."
+        ),
+        tools=(_EDIT,),
+    )
+
+    fix = extract_fix(session, stated=True)
+
+    assert fix is not None
+    assert "sqlite3.OperationalError" in fix.symptom
+    assert "database is locked" in fix.symptom
+
+
+def test_the_symptom_key_matches_across_backticks():
+    """Recall compares shapes, so quoting must not change the shape."""
+    from archivum.fixes import match_score
+
+    stored = "the `sqlite3.OperationalError: database is locked` that ingest raised"
+    pasted = "sqlite3.OperationalError: database is locked"
+    assert match_score(pasted, _symptom_of(stored)) >= 0.5
