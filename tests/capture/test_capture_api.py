@@ -1,3 +1,5 @@
+from pathlib import Path
+
 import pytest
 from starlette.testclient import TestClient
 
@@ -72,3 +74,25 @@ def test_capture_route_registered_on_app():
     paths = {r.path for r in create_app().routes}
     assert "/api/sources/capture" in paths
     assert "/api/sources/capture/import" in paths
+
+
+async def test_import_endpoint_queues_every_imported_conversation(client):
+    """A bulk import used to produce Sources nothing would ever distil.
+
+    `/capture` queued; `/capture/import` did not. Importing a year of history
+    therefore left a vault that looked full and recalled nothing, which is the
+    worst of both: the storage cost without the memory.
+    """
+    fixture = (
+        Path(__file__).parent.parent / "fixtures" / "capture" / "chatgpt_export.json"
+    )
+    resp = client.post(
+        "/api/sources/capture/import", json={"path": str(fixture)}
+    )
+    assert resp.status_code == 200
+    imported = [item["source_id"] for item in resp.json()["results"]]
+    assert imported, "the fixture must import at least one conversation"
+
+    jobs = await sqlite_mod.list_distillation_jobs("default")
+    assert {job["source_id"] for job in jobs} == set(imported)
+    assert all(job["status"] == "pending" for job in jobs)

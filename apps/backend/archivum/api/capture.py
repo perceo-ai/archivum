@@ -137,7 +137,12 @@ async def capture_import_endpoint(
     responses: list[CaptureResponse] = []
     for conv in result.conversations:
         scoped = conv if body.scope == "personal" else _rescope(conv, body.scope)
-        responses.append(_to_response(await store.capture(scoped)))
+        res = await store.capture(scoped)
+        # Same reason as `/capture`: without this an import produced Sources
+        # that never became memory, so a bulk history import left the vault
+        # looking full and recalling nothing.
+        await sqlite.enqueue_distillation(res.source_id, current_user.wiki_id)
+        responses.append(_to_response(res))
     return CaptureImportResponse(interface=result.interface, results=responses)
 
 

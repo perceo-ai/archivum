@@ -1208,6 +1208,10 @@ async def capture_conversation_impl(
     )
     store = CaptureStore(wiki_id=wiki_id, settings=get_settings())
     res = await store.capture(conv)
+    # Capture alone is inert: the Source exists but nothing ever reads it. The
+    # REST twin has always queued distillation here; this path did not, so a
+    # conversation captured through MCP never became memory of any kind.
+    await sqlite.enqueue_distillation(res.source_id, wiki_id)
     return {
         "source_id": res.source_id,
         "content_hash": res.content_hash,
