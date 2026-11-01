@@ -121,3 +121,77 @@ def test_the_key_ignores_the_specific_values_in_an_error():
 
 def test_different_errors_do_not_collide():
     assert symptom_key("KeyError: 'slug'") != symptom_key("TypeError: bad operand")
+
+
+def test_an_explicit_symptom_beats_whatever_extraction_would_guess():
+    """The caller usually knows exactly which error this was. Let them say it.
+
+    Extraction can only work from the words that happen to be present, and a
+    request like "prepare the branch for a PR" contains no error at all.
+    """
+    session = _session("Prepare the branch for a pull request.", tools=(_EDIT,))
+
+    fix = extract_fix(
+        session,
+        stated=True,
+        symptom="sqlite3.OperationalError: database is locked",
+    )
+
+    assert fix is not None
+    assert fix.symptom == "sqlite3.OperationalError: database is locked"
+
+
+def test_the_error_is_found_in_tool_output_not_only_in_the_request():
+    """You ask someone to fix the build; you do not paste the build.
+
+    A live vault recorded the symptom of a repair as "Prepare workspace
+    cross-platform-notifications for a pull request" — a task description no
+    later paste of the real error could match. The error is usually in the
+    session's output, so that is now read too.
+    """
+    failing = ToolCall(
+        name="Bash",
+        arguments={"command": "pytest"},
+        result="E   sqlite3.OperationalError: database is locked",
+        ok=False,
+    )
+    passing = ToolCall(name="Bash", arguments={"command": "pytest"}, result="ok")
+    session = _session(
+        "Figure out why indexing never finishes.", tools=(failing, _EDIT, passing)
+    )
+
+    fix = extract_fix(session, stated=True)
+
+    assert fix is not None
+    assert "database is locked" in fix.symptom
+    # Not the task description it used to fall back to.
+    assert "Figure out why" not in fix.symptom
+
+
+def test_the_request_still_wins_when_it_carries_the_error():
+    """A pasted error belongs to the person reporting it; prefer theirs."""
+    noise = ToolCall(
+        name="Bash", arguments={"command": "pytest"},
+        result="ValueError: something else entirely", ok=False,
+    )
+    passing = ToolCall(name="Bash", arguments={"command": "pytest"}, result="ok")
+    session = _session(
+        "deploy fails with KeyError: 'slug' every time",
+        tools=(noise, _EDIT, passing),
+    )
+
+    fix = extract_fix(session, stated=True)
+
+    assert fix is not None
+    assert "KeyError" in fix.symptom
+    assert "ValueError" not in fix.symptom
+
+
+def test_the_task_description_remains_the_last_resort():
+    """A session with no error anywhere is still worth keeping, as it was."""
+    session = _session("Decided to store skills as vault pages.", tools=(_EDIT,))
+
+    fix = extract_fix(session, stated=True)
+
+    assert fix is not None
+    assert fix.symptom == "Decided to store skills as vault pages."

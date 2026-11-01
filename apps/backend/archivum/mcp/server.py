@@ -802,6 +802,7 @@ async def record_work(
     outcome: str,
     changed_paths: list[str] | None = None,
     verified_by: str = "",
+    symptom: str = "",
     wiki_id: str = "default",
 ) -> dict[str, Any]:
     """Record what you just did and why, when it is worth keeping.
@@ -810,6 +811,13 @@ async def record_work(
     the one for when you know something mattered and want it stated plainly
     rather than inferred from a transcript. Say what was asked, what you found,
     which files changed, and how you checked.
+
+    `symptom` is how this trouble will *arrive* next time: paste the error, the
+    failing output, the sentence someone will type when they hit it again. It
+    is what `recall_fix` matches against. Leave it out and the failure is
+    guessed from this session's words, which for a request like "prepare the
+    branch for a PR" means the recorded symptom is that sentence — and no
+    future paste of the actual error will ever match it.
     """
     _require_key()
     set_trace_id(new_trace_id("mcp-record-work"))
@@ -844,6 +852,7 @@ async def record_work(
             # You are telling us this mattered. Do not re-derive that from
             # keywords in your own sentence.
             stated=True,
+            symptom=symptom,
         )
         await connection.commit()
 
