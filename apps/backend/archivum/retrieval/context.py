@@ -23,6 +23,12 @@ from archivum.knowledge.repository import KnowledgeRepository
 
 
 _OBJECT_SCAN_LIMIT = 10_000
+# Relationships were loaded unbounded while objects were capped, so one scope
+# could hydrate an order of magnitude more edges than nodes.
+_RELATIONSHIP_SCAN_LIMIT = 20_000
+# How many individually-named "excluded by max_nodes" entries a package carries
+# before it reports a count instead.
+_MAX_EXCLUSION_EXPLANATIONS = 25
 
 
 @dataclass(frozen=True)
@@ -75,7 +81,9 @@ async def build_context_package(
         if _is_pending_review(obj)
     }
     all_objects = [obj for obj in all_objects if obj.id not in pending_exclusions]
-    relationships = await repo.list_relationships(scope=request.scope)
+    relationships = await repo.list_relationships(
+        scope=request.scope, limit=_RELATIONSHIP_SCAN_LIMIT
+    )
     if _is_code_request(request):
         return await _build_code_context_package(
             repo,
@@ -136,11 +144,10 @@ async def _build_code_context_package(
         request.max_nodes,
     )
 
-    if not node_ids and request.source_type is None:
-        root = objects_by_id.get(SELF_ID)
-        if root is not None:
-            node_ids = [SELF_ID]
-            seeds = [SELF_ID]
+    # No substitution of the personal root here. A code query that matches
+    # nothing in its repository must say so: answering "who you are" to "where
+    # is the retry handler" reads like a ranking result and sent callers hunting
+    # for a relevance bug that did not exist.
 
     edges_by_key = {
         (relationship.src_id, relationship.dst_id, relationship.rel_type): relationship
@@ -173,7 +180,7 @@ async def _retrieve_code_subgraph(
     request: ContextRequest,
 ) -> ScopedSubgraph | None:
     connection = request.code_connection or repo._conn
-    if not await _has_lexical_index(connection):
+    if not await _has_lexical_index(connection, request.scope):
         return None
 
     adjacency: dict[str, list[dict]] = {}
@@ -184,7 +191,9 @@ async def _retrieve_code_subgraph(
             "scope": obj.scope,
             "confidence": obj.confidence,
             "extraction_method": obj.extraction_method,
-            "citation": obj.citations[0].chunk_id,
+            # An object with no citation is not worth failing the whole request
+            # over; its own id is a usable reference.
+            "citation": obj.citations[0].chunk_id if obj.citations else obj.id,
         }
         for obj in objects
     }
@@ -221,8 +230,8 @@ def _build_canonical_code_fallback(
     seeds = _bounded_unique(
         _select_seeds(list(objects_by_id.values()), request), request.max_nodes
     )
-    if not seeds and request.source_type is None and SELF_ID in objects_by_id:
-        seeds = [SELF_ID]
+    # As in `_build_code_context_package`: no personal-root substitution on a
+    # code query. An empty answer is the honest one.
     node_ids, edges = _expand(objects_by_id, relationships, seeds, request)
     return _package_from_records(
         request.query,
@@ -298,10 +307,27 @@ def _apply_scope_budget(
     return kept, excluded
 
 
-async def _has_lexical_index(connection: aiosqlite.Connection) -> bool:
+async def _has_lexical_index(
+    connection: aiosqlite.Connection, scope: str | None
+) -> bool:
+    """Whether the lexical projection can actually answer for `scope`.
+
+    An existing but empty table is not a usable index. Testing only for the
+    table's presence made the canonical fallback unreachable, so a scope with no
+    projected rows returned an empty subgraph instead of the label-matching
+    fallback that would have found its symbols.
+    """
     async with connection.execute(
         "SELECT 1 FROM sqlite_master WHERE type='table' AND name='code_node_text'"
     ) as cursor:
+        if await cursor.fetchone() is None:
+            return False
+    sql = "SELECT 1 FROM code_node_text"
+    params: tuple[object, ...] = ()
+    if scope is not None:
+        sql += " WHERE scope = ?"
+        params = (scope,)
+    async with connection.execute(sql + " LIMIT 1", params) as cursor:
         return await cursor.fetchone() is not None
 
 
@@ -425,11 +451,21 @@ def _package_from_records(
         )
         for node in nodes
     }
+    # One line per unselected object meant a 10-node answer about a 30,000-symbol
+    # repository shipped 30,000 explanations, all identical. Keep a sample and a
+    # count; the reason is the same for every one of them.
+    max_nodes_excluded = [
+        object_id for object_id in objects_by_id if object_id not in selected_ids
+    ]
     exclusion_explanations = {
         object_id: "Excluded by max_nodes budget."
-        for object_id in objects_by_id
-        if object_id not in selected_ids
+        for object_id in max_nodes_excluded[:_MAX_EXCLUSION_EXPLANATIONS]
     }
+    if len(max_nodes_excluded) > _MAX_EXCLUSION_EXPLANATIONS:
+        remaining = len(max_nodes_excluded) - _MAX_EXCLUSION_EXPLANATIONS
+        exclusion_explanations["…"] = (
+            f"And {remaining} more excluded by max_nodes budget."
+        )
     exclusion_explanations.update(budget_exclusions)
     exclusion_explanations.update(extra_exclusions or {})
     staleness_warnings = {

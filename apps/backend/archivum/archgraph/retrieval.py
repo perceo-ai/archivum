@@ -42,8 +42,10 @@ async def retrieve_code(
        kept nodes respecting the relations filter.
     """
     # ---- Step 1: seed selection ----
-    candidates = await trigram_candidates(conn, query)
-    scored = await score_nodes(conn, query, candidates)  # [(score, node_id), ...]
+    # Scope is pushed into SQL so a repo-scoped query never materialises every
+    # other repository's candidates just to discard them below.
+    candidates = await trigram_candidates(conn, query, scope=scope)
+    scored = await score_nodes(conn, query, candidates, scope=scope)
 
     # filter to nodes known in node_meta
     scored = [(s, nid) for s, nid in scored if nid in node_meta]

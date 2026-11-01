@@ -98,12 +98,16 @@ async def test_bfs_expands_neighbors(tmp_path):
 async def test_respects_max_nodes_and_scope(tmp_path):
     db = await aiosqlite.connect(tmp_path / "idx.db")
     try:
-        nodes = [
-            ("hypot", "hypot hypotenuse function"),
-            ("add", "add numbers"),
-            ("other", "other repo function"),
-        ]
-        await build_lexical_index(db, nodes)
+        # Projected per scope, matching `node_meta` below, so the scope filter
+        # is exercised rather than passing because the index is empty.
+        await build_lexical_index(
+            db,
+            [("hypot", "hypot hypotenuse function"), ("add", "add numbers")],
+            scope="repo:a",
+        )
+        await build_lexical_index(
+            db, [("other", "other repo function")], scope="repo:b"
+        )
 
         adjacency = {
             "hypot": [

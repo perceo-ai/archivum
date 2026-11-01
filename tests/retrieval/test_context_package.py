@@ -227,6 +227,7 @@ async def test_context_package_routes_code_requests_through_lexical_retrieval():
         await build_lexical_index(
             conn,
             [("symbol:runner", "runner executes"), ("symbol:helper", "helper")],
+            scope="repo:test",
         )
 
         package = await build_context_package(

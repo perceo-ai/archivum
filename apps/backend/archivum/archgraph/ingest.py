@@ -357,13 +357,14 @@ async def ingest_repo(
 
     # Step 8: rebuild lexical index from canonical code objects in this scope.
     # Incremental runs only extract touched files, but lexical is a full
-    # projection and its builder clears existing rows before repopulating.
+    # projection and its builder clears existing rows before repopulating — so
+    # it is passed the scope and clears only this repository's rows.
     code_nodes = [
         (object_.id, object_.label)
         for object_ in canonical_objects
         if object_.properties.get("source_scope") == scope
     ]
-    await build_lexical_index(lexical_conn, code_nodes)
+    await build_lexical_index(lexical_conn, code_nodes, scope=scope)
 
     # Count distinct records, not candidates. Two call sites for the same callee
     # produce two candidates and one relationship, so counting candidates made
