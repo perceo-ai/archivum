@@ -53,6 +53,30 @@ Read this before proposing anything that sounds like a return to one of them.
 Nothing was ever removed, which is why there are 123 REST routes and 29 MCP
 tools for a product that needs a fraction of them.
 
+### Reversed on 2026-10-31: session capture is wanted after all
+
+Capture and distillation used to be listed below as outside the product, on the
+grounds that the owner did not want conversation transcripts stored. The owner
+has reversed that. Automatic capture is now expected to be on, and the bar for
+bug memory is that `recall_fix` surfaces distilled sessions rather than only
+hand-written `record_work` calls.
+
+This is the 2026-09-17 measurement taken to its conclusion: if an agent will
+not reliably record what it learned, the record cannot depend on the agent
+remembering. So capture is a mechanism, not a nudge.
+
+What that commits us to, and what to do rather than re-litigate:
+
+- Capture must reach transcripts on *other* machines. The server-side watcher
+  only sees the server's own disk, which is why it looked switched off.
+- Distillation's output must be recallable. `recall_fix` reads `fix` knowledge
+  objects only, and distillation writes chat/scenario/skill assets instead, so
+  the two subsystems share nothing but the Source table. Closing that gap is
+  the work, not widening capture further.
+- Everything distillation registers is a `draft`, and the default listing shows
+  only `active`. A working pipeline still reports zero through that surface.
+  The vault needs an activation path before the counts mean anything.
+
 ### Outside the definition
 
 These exist and work to varying degrees. They are **not** the product. Do not
@@ -60,8 +84,6 @@ extend them, do not feature them in docs, and prefer removing them to improving
 them:
 
 - Sharing, grants, public wiki, HTML/PDF export
-- Session capture and transcript storage — `archivum watch` and the server-side
-  transcript watcher. The owner does not want conversation transcripts stored.
 - Life OS daily notes and project registration
 - The suggestion review queue
 

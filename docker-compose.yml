@@ -42,7 +42,7 @@ services:
       - OPENAI_COMPAT_AZURE_API_VERSION=${OPENAI_COMPAT_AZURE_API_VERSION:-2024-02-15-preview}
       # Session capture reads agent transcripts from a mounted directory; unset
       # here means the watcher does nothing rather than guessing at a path.
-      - TRANSCRIPT_DIRS=${TRANSCRIPT_DIRS:-}
+      - TRANSCRIPT_DIRS=${TRANSCRIPT_DIRS:-/data/transcripts}
       - TRANSCRIPT_WATCH_ENABLED=${TRANSCRIPT_WATCH_ENABLED:-true}
       - CODE_CACHE_DIR=${CODE_CACHE_DIR:-/data/code-cache}
       - SUMMARY_WORKER_ENABLED=${SUMMARY_WORKER_ENABLED:-true}
@@ -121,7 +121,7 @@ services:
       - OPENAI_COMPAT_AZURE_API_VERSION=${OPENAI_COMPAT_AZURE_API_VERSION:-2024-02-15-preview}
       # Session capture reads agent transcripts from a mounted directory; unset
       # here means the watcher does nothing rather than guessing at a path.
-      - TRANSCRIPT_DIRS=${TRANSCRIPT_DIRS:-}
+      - TRANSCRIPT_DIRS=${TRANSCRIPT_DIRS:-/data/transcripts}
       - TRANSCRIPT_WATCH_ENABLED=${TRANSCRIPT_WATCH_ENABLED:-true}
       - CODE_CACHE_DIR=${CODE_CACHE_DIR:-/data/code-cache}
       - SUMMARY_WORKER_ENABLED=${SUMMARY_WORKER_ENABLED:-true}

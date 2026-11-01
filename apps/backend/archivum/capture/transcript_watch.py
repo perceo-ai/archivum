@@ -129,7 +129,16 @@ async def sweep_transcripts(
 async def run_transcript_watcher(settings: Settings, *, wiki_id: str = "default") -> None:
     """Watch agent transcripts for the lifetime of the process."""
     if not settings.transcript_dirs:
-        logger.info("No transcript directories configured; session capture is off")
+        # Warning, not info: capture being on is now the expectation, so this
+        # is a misconfiguration rather than a choice. It read as `info` on a
+        # deploy whose vault held no chat assets at all, and the one line that
+        # explained why was indistinguishable from routine startup noise.
+        logger.warning(
+            "TRANSCRIPT_WATCH_ENABLED is set but TRANSCRIPT_DIRS is empty, so "
+            "session capture is off and nothing will be distilled. Name the "
+            "directories agents write transcripts into, mounted into this "
+            "container."
+        )
         return
 
     interval = max(settings.transcript_watch_interval_seconds, 1)
