@@ -531,6 +531,14 @@ async def purge_repo_scope(
         ):
             await run(table, f"DELETE FROM {table} WHERE scope=?", (scope,))
         await run("memory_scopes", "DELETE FROM memory_scopes WHERE id=?", (scope,))
+        # The codegraph asset and its knowledge object describe this repository
+        # but are registered at wiki scope, so the scope-matched deletes above
+        # never touch them. The repository is named in their id instead. Live,
+        # that left five codegraph records pointing at repositories that had
+        # just been deleted.
+        codegraph_id = f"codegraph:{scope}"
+        for table in ("memory_assets", "knowledge_objects"):
+            await run(table, f"DELETE FROM {table} WHERE id=?", (codegraph_id,))
         await run(
             "code_repos",
             "DELETE FROM code_repos WHERE scope=? AND wiki_id=?",
@@ -539,8 +547,22 @@ async def purge_repo_scope(
         await conn.commit()
 
     name = scope.rsplit(":", 1)[-1]
-    pages = await sqlite.delete_pages_under(f"code/{repo_folder(name)}", wiki_id)
+    # `repo_folder` already yields `code/<slug>`; prefixing it again addressed
+    # `code/code/<slug>` and silently matched nothing.
+    folder = repo_folder(name)
+    pages = await sqlite.delete_pages_under(folder, wiki_id)
     removed["pages"] = len(pages)
+
+    # Markdown is the source of truth, so deleting only the rows accomplishes
+    # nothing: the vault watcher finds the files still on disk and imports them
+    # straight back. Observed live — a purge was followed by the backend
+    # distilling all 35 pages of the repository that had just been removed.
+    page_dir = settings.wiki_dir / folder
+    if page_dir.is_dir() and page_dir.resolve().is_relative_to(
+        settings.wiki_dir.resolve()
+    ):
+        shutil.rmtree(page_dir, ignore_errors=True)
+        removed["page_files"] = 1
 
     # The parsed-AST cache is pure derived state and the largest thing on disk
     # after the database itself.

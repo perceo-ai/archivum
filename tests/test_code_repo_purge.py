@@ -136,6 +136,61 @@ async def test_a_scope_with_no_register_row_is_reported_as_an_orphan(vault):  # 
     assert await orphan_repo_scopes(wiki_id="default") == []
 
 
+async def test_purge_deletes_the_page_files_not_just_their_rows(vault):  # noqa: F811
+    """Markdown is the source of truth, so dropping rows accomplishes nothing.
+
+    Observed on the deploy: a purge removed 35 page rows, the vault watcher
+    found the files still on disk, and the backend spent its next startup
+    distilling all 35 pages of the repository that had just been deleted.
+    """
+    await _seed(vault, {"repo:default:junk": ["junk:a"]})
+    page_dir = vault.wiki_dir / "code" / "junk"
+    page_dir.mkdir(parents=True, exist_ok=True)
+    (page_dir / "index.md").write_text("# junk\n", encoding="utf-8")
+    keep = vault.wiki_dir / "projects"
+    keep.mkdir(parents=True, exist_ok=True)
+    (keep / "real.md").write_text("# real\n", encoding="utf-8")
+
+    await purge_repo_scope("repo:default:junk", wiki_id="default")
+
+    assert not page_dir.exists(), "the generated markdown must go with the rows"
+    assert (keep / "real.md").exists(), "hand-written pages are not ours to delete"
+
+
+async def test_purge_removes_the_codegraph_asset_registered_at_wiki_scope(vault):  # noqa: F811
+    """The codegraph record names its repo in its id, not in its scope.
+
+    So the scope-matched deletes miss it, and a purge left behind an asset and
+    a knowledge object describing a repository that no longer existed.
+    """
+    await _seed(vault, {"repo:default:junk": ["junk:a"]})
+    async with sqlite_mod.get_db() as conn:
+        await init_knowledge_schema(conn)
+        repo = KnowledgeRepository(conn)
+        asset = _symbol("codegraph:repo:default:junk", "wiki:default")
+        await repo.upsert_object(asset)
+        await conn.execute(
+            "INSERT INTO memory_assets (id, wiki_id, asset_type, scope, name, status) "
+            "VALUES (?, 'default', 'codegraph', 'wiki:default', ?, 'active')",
+            ("codegraph:repo:default:junk", "Code graph — repo:default:junk"),
+        )
+        await conn.commit()
+
+    await purge_repo_scope("repo:default:junk", wiki_id="default")
+
+    async with sqlite_mod.get_db() as conn:
+        async with conn.execute(
+            "SELECT COUNT(*) FROM memory_assets WHERE id=?",
+            ("codegraph:repo:default:junk",),
+        ) as cursor:
+            assert (await cursor.fetchone())[0] == 0
+        async with conn.execute(
+            "SELECT COUNT(*) FROM knowledge_objects WHERE id=?",
+            ("codegraph:repo:default:junk",),
+        ) as cursor:
+            assert (await cursor.fetchone())[0] == 0
+
+
 async def test_purging_an_unknown_scope_is_harmless(vault):  # noqa: F811
     await _seed(vault, {"repo:default:keep": ["keep:a"]})
 
