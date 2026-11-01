@@ -17,7 +17,14 @@ from starlette.applications import Starlette
 from starlette.routing import BaseRoute
 
 from archivum.capture.schema import Conversation, ToolCall, Turn
-from archivum.code_repos import index_repo, list_repos, register_repo, scope_for
+from archivum.code_repos import (
+    index_repo,
+    list_repos,
+    orphan_repo_scopes,
+    purge_repo_scope,
+    register_repo,
+    scope_for,
+)
 from archivum.devices.provisioning import PROVISION_PREFIX
 from archivum.devices.repository import DeviceRepository
 from archivum.fixes import recall_fixes, reindex_fixes
@@ -1172,6 +1179,30 @@ async def dispatch_command(command: str, wiki_id: str = "default") -> dict[str, 
                 "command": raw,
                 "tool": "reindex_fixes",
                 "result": {"embedded": count},
+            }
+
+        if cmd in {"purge-repo", "purge_repo"}:
+            # Deliberately explicit, one scope per call, and never wildcarded:
+            # this is the only command here that destroys memory, so it should
+            # be impossible to run by accident or in bulk by a typo.
+            if not rest.strip():
+                orphans = await orphan_repo_scopes(wiki_id=wiki_id)
+                return {
+                    "ok": True,
+                    "command": raw,
+                    "tool": "purge_repo",
+                    "result": {
+                        "orphan_scopes": orphans,
+                        "note": "Pass one scope to purge it. Nothing was deleted.",
+                    },
+                }
+            scope = rest.strip()
+            removed = await purge_repo_scope(scope, wiki_id=wiki_id)
+            return {
+                "ok": True,
+                "command": raw,
+                "tool": "purge_repo",
+                "result": {"scope": scope, "removed": removed},
             }
 
         if cmd in {"graph-export-demo", "graph_export_demo", "export_graph_demo"}:

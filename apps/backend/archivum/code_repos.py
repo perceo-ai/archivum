@@ -22,6 +22,7 @@ import asyncio
 import hashlib
 import logging
 import re
+import shutil
 import subprocess
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
@@ -474,6 +475,104 @@ async def run_pending_repo_indexing(
             continue
         done += 1
     return done
+
+
+async def purge_repo_scope(
+    scope: str, *, wiki_id: str = "default", settings: Settings | None = None
+) -> dict[str, int]:
+    """Delete everything a repository left behind. Returns rows removed per table.
+
+    `forget` only drops the register row, on the reasoning that canonical code
+    records are memory of work that happened. That reasoning does not hold for
+    a repository whose ingest never finished: what it leaves is not memory, it
+    is debris that nothing can reach, because retrieval finds code through the
+    register and the register entry is gone.
+
+    A vault was found at 21 GB, of which almost all was 192,704 orphaned symbol
+    objects from repositories whose own rows still read zero nodes. There was no
+    way to reclaim it, which is how it got that large.
+
+    Takes a scope rather than a name so an orphan with no register row at all —
+    the common case — can still be purged.
+    """
+    settings = settings or get_settings()
+    removed: dict[str, int] = {}
+
+    async with sqlite.get_db() as conn:
+        await init_repo_schema(conn)
+
+        async def run(table: str, sql: str, params: tuple[object, ...]) -> None:
+            try:
+                cursor = await conn.execute(sql, params)
+            except aiosqlite.OperationalError:
+                # A vault that never indexed code has no projection tables.
+                return
+            removed[table] = removed.get(table, 0) + (cursor.rowcount or 0)
+
+        # Citations first: they are keyed by the record they cite, so once the
+        # objects are gone there is nothing left to find them by.
+        for knowledge_type, source in (
+            ("object", "knowledge_objects"),
+            ("relationship", "knowledge_relationships"),
+        ):
+            await run(
+                "knowledge_citations",
+                "DELETE FROM knowledge_citations WHERE knowledge_type=? AND "
+                f"knowledge_id IN (SELECT id FROM {source} WHERE scope=?)",
+                (knowledge_type, scope),
+            )
+        for table in (
+            "knowledge_objects",
+            "knowledge_relationships",
+            "code_node_text",
+            "code_trigram",
+            "memory_assets",
+            "sources",
+        ):
+            await run(table, f"DELETE FROM {table} WHERE scope=?", (scope,))
+        await run("memory_scopes", "DELETE FROM memory_scopes WHERE id=?", (scope,))
+        await run(
+            "code_repos",
+            "DELETE FROM code_repos WHERE scope=? AND wiki_id=?",
+            (scope, wiki_id),
+        )
+        await conn.commit()
+
+    name = scope.rsplit(":", 1)[-1]
+    pages = await sqlite.delete_pages_under(f"code/{repo_folder(name)}", wiki_id)
+    removed["pages"] = len(pages)
+
+    # The parsed-AST cache is pure derived state and the largest thing on disk
+    # after the database itself.
+    cache_dir = settings.code_cache_dir / name
+    if cache_dir.is_dir() and cache_dir.resolve().is_relative_to(
+        settings.code_cache_dir.resolve()
+    ):
+        shutil.rmtree(cache_dir, ignore_errors=True)
+        removed["cache_dir"] = 1
+
+    logger.warning("Purged repository scope %s: %s", scope, removed)
+    return removed
+
+
+async def orphan_repo_scopes(*, wiki_id: str = "default") -> list[str]:
+    """Code scopes holding knowledge that no registered repository owns.
+
+    These are unreachable by construction: retrieval reaches code through the
+    register, so a scope with no register row can never be queried and only
+    costs space and write contention.
+    """
+    async with sqlite.get_db() as conn:
+        await init_repo_schema(conn)
+        async with conn.execute(
+            "SELECT DISTINCT scope FROM knowledge_objects WHERE scope LIKE 'repo:%'"
+        ) as cursor:
+            scopes = {row[0] for row in await cursor.fetchall()}
+        async with conn.execute(
+            "SELECT scope FROM code_repos WHERE wiki_id=?", (wiki_id,)
+        ) as cursor:
+            registered = {row[0] for row in await cursor.fetchall()}
+    return sorted(scopes - registered)
 
 
 async def requeue_stale_indexing(*, older_than_seconds: float = 3600.0) -> int:
