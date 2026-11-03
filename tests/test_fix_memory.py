@@ -228,3 +228,73 @@ def test_the_symptom_key_matches_across_backticks():
     stored = "the `sqlite3.OperationalError: database is locked` that ingest raised"
     pasted = "sqlite3.OperationalError: database is locked"
     assert match_score(pasted, _symptom_of(stored)) >= 0.5
+
+
+def test_a_passing_mention_of_failure_in_prose_is_not_the_symptom():
+    """A write-up that discusses failure is not a failure report.
+
+    Live, a session whose outcome mentioned "a repo whose ingest had failed,
+    and the only `ready` repo had none" had exactly that fragment stored as its
+    symptom — no paste of a real error would ever match it. The loose phrase
+    pattern now only reads the request, where someone is actually reporting;
+    a named error still counts from anywhere.
+    """
+    session = _session(
+        "Summarise what we changed in the vault.",
+        assistant=(
+            "The cause was a repo whose ingest had failed, and the only ready "
+            "repo had none of its rows left."
+        ),
+        tools=(_EDIT,),
+    )
+
+    fix = extract_fix(session, stated=True)
+
+    assert fix is not None
+    assert fix.symptom == "Summarise what we changed in the vault."
+    assert "had failed" not in fix.symptom
+
+
+def test_a_failure_reported_in_the_request_is_still_the_symptom():
+    """The request is where a described failure is trustworthy."""
+    session = _session("the workspace list hangs when a repo is indexing", tools=(_EDIT,))
+
+    fix = extract_fix(session, stated=True)
+
+    assert fix is not None
+    assert "hangs" in fix.symptom
+
+
+def test_a_named_error_still_wins_from_deep_in_the_session():
+    """A class name means the same thing wherever it appears."""
+    failing = ToolCall(
+        name="Bash",
+        arguments={"command": "pytest"},
+        result="E   KeyError: 'slug'",
+        ok=False,
+    )
+    passing = ToolCall(name="Bash", arguments={"command": "pytest"}, result="ok")
+    session = _session("Clean up the page writer.", tools=(failing, _EDIT, passing))
+
+    fix = extract_fix(session, stated=True)
+
+    assert fix is not None
+    assert "KeyError" in fix.symptom
+
+
+def test_a_failure_word_inside_another_word_is_not_a_failure():
+    """`hangs?` matched the "hang" in "changed", so ordinary prose read as a
+    reported failure. The same held for "breakfast" and "failover"."""
+    from archivum.fixes import _failure_phrase_in
+
+    for innocent in (
+        "Summarise what we changed in the vault.",
+        "The team had breakfast and shipped it.",
+        "Configure failover between the two regions.",
+        "An unbroken chain of citations.",
+    ):
+        assert _failure_phrase_in(innocent) == "", innocent
+
+    # Still catches the real thing.
+    assert "hangs" in _failure_phrase_in("the list hangs when a repo is indexing")
+    assert "fails" in _failure_phrase_in("deploy fails every time")

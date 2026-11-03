@@ -56,9 +56,12 @@ _ERROR_RE = re.compile(
     r"(?:^|[^\w.])((?:[A-Za-z_]\w*\.)*(?:[A-Z][A-Za-z0-9_]*)?"
     r"(?:Error|Exception|Warning)\b[^.\n]{0,160})"
 )
+# The failure words are word-bounded. They were not, so `hangs?` matched the
+# "hang" inside "changed" and "Summarise what we changed in the vault" was read
+# as a reported failure — as would "breakfast", "failover", "unbroken".
 _FAILURE_PHRASE_RE = re.compile(
-    r"\b((?:[\w\s]{0,40})?(?:crash(?:es|ed)?|fails?|failing|broken|breaks?"
-    r"|not working|doesn'?t work|hangs?|times? out|returns? nothing)[^.\n]{0,120})",
+    r"\b((?:[\w\s]{0,40})?\b(?:crash(?:es|ed)?|fails?|failing|broken|breaks?"
+    r"|not working|doesn'?t work|hangs?|times? out|returns? nothing)\b[^.\n]{0,120})",
     re.I,
 )
 
@@ -121,15 +124,27 @@ def _first_request(conversation: Conversation) -> str:
     return ""
 
 
-def _error_in(text: str) -> str:
-    """The failure inside a message, or "" if it carries none."""
+def _error_class_in(text: str) -> str:
+    """A named error or exception inside a message, or "" if there is none.
+
+    Safe to run over any part of a session: `KeyError: 'slug'` means the same
+    thing wherever it appears.
+    """
     error = _ERROR_RE.search(text)
-    if error:
-        return " ".join(error.group(1).split())[:_MAX_SYMPTOM]
+    return " ".join(error.group(1).split())[:_MAX_SYMPTOM] if error else ""
+
+
+def _failure_phrase_in(text: str) -> str:
+    """A described failure — "crashes", "times out" — or "" if there is none.
+
+    Only trustworthy where someone is reporting a failure, which is why this is
+    run over the request and not the whole session. Run over prose it latches
+    onto any passing use of the word: a session whose write-up mentioned "a
+    repo whose ingest had failed" had exactly that stored as its symptom, a
+    fragment no later paste would match.
+    """
     phrase = _FAILURE_PHRASE_RE.search(text)
-    if phrase:
-        return " ".join(phrase.group(1).split())[:_MAX_SYMPTOM]
-    return ""
+    return " ".join(phrase.group(1).split())[:_MAX_SYMPTOM] if phrase else ""
 
 
 def _symptom_of(request: str, conversation: Conversation | None = None) -> str:
@@ -148,17 +163,26 @@ def _symptom_of(request: str, conversation: Conversation | None = None) -> str:
     reporting it, then the rest of the session, where the error usually shows
     up in tool output. The task description is the last resort, not the first.
     """
-    found = _error_in(request)
+    # A named error beats everything, wherever it is: in the request, in what
+    # the session said, or in the output of something it ran.
+    found = _error_class_in(request)
     if found:
         return found
     for turn in (conversation.turns if conversation else ()):
-        found = _error_in(turn.text)
+        found = _error_class_in(turn.text)
         if found:
             return found
         for call in turn.tool_calls:
-            found = _error_in(str(call.result or ""))
+            found = _error_class_in(str(call.result or ""))
             if found:
                 return found
+
+    # Then a described failure, but only from the request. See
+    # `_failure_phrase_in` for why this one does not get the whole session.
+    found = _failure_phrase_in(request)
+    if found:
+        return found
+
     return " ".join(request.split())[:_MAX_SYMPTOM]
 
 
