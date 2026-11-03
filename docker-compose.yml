@@ -59,6 +59,10 @@ services:
       - kuzu_data:/data/kuzu
       - codex_home:/home/app/.codex
       - claude_home:/home/app/.claude
+      # The local embedding model, kept across restarts. Without this the
+      # backend re-downloaded it from HuggingFace on every single boot — five
+      # files, unauthenticated, before the first query could be answered.
+      - model_cache:/home/app/.cache
       # Agent transcripts, read-only: capture reads them and must never write
       # back into a directory another tool owns.
       - ${TRANSCRIPT_HOST_DIR:-./.no-transcripts}:/data/transcripts:ro
@@ -143,6 +147,10 @@ services:
       # unauthenticated and every summary silently fails.
       - codex_home:/home/app/.codex
       - claude_home:/home/app/.claude
+      # The local embedding model, kept across restarts. Without this the
+      # backend re-downloaded it from HuggingFace on every single boot — five
+      # files, unauthenticated, before the first query could be answered.
+      - model_cache:/home/app/.cache
     networks:
       - archivum-net
     depends_on:
@@ -173,6 +181,7 @@ volumes:
   qdrant_data:
   codex_home:
   claude_home:
+  model_cache:
 
 networks:
   archivum-net:

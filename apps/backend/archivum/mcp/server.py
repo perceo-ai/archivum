@@ -1281,6 +1281,23 @@ async def capture_conversation(
     )
 
 
+def _warm_embedder() -> None:
+    """Build the local embedding model now, so no request has to.
+
+    Best effort: a vault whose embeddings come from a remote provider has
+    nothing to warm, and one that cannot reach the model should still serve
+    every tool that does not need it. Failing to warm is a slow first query,
+    not a dead server.
+    """
+    if (settings.embed_provider or "local").strip().lower() != "local":
+        return
+    try:
+        qdrant.get_embedder(settings)
+        logger.info("Embedding model ready", extra={"model": settings.embed_model})
+    except Exception as exc:  # noqa: BLE001 - never block startup on this
+        logger.warning("Could not warm the embedding model: %s", exc)
+
+
 def main() -> None:
     import uvicorn
 
@@ -1303,6 +1320,12 @@ def main() -> None:
         set_transport("stdio")
         mcp.run(transport="stdio")
         return
+
+    # Warm the local embedder before serving. The API warms it during its own
+    # startup; this process never did, so the first `retrieve_memory` after any
+    # restart paid for constructing the model — a download on a cold container
+    # — inside the request, and could outlast a proxy's timeout.
+    _warm_embedder()
 
     # Default to HTTP for container usage: both /sse and /mcp are served. Host
     # is set when FastMCP is created; port is configured via MCP_PORT.
