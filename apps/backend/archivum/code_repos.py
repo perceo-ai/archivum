@@ -510,28 +510,55 @@ async def run_pending_repo_indexing(
     return len(indexed)
 
 
-# Narration tasks in flight, held so they are not garbage collected mid-run and
-# can be cancelled with the worker that started them.
-_narrations: set[asyncio.Task[int]] = set()
+# Narration in flight, keyed by scope so a repository can only have one, and
+# held so a task is not garbage collected mid-run.
+_narrations: dict[str, asyncio.Task[int]] = {}
+
+# Narration runs one repository at a time across the whole process. Each run is
+# already internally parallel, so without an outer gate a four-repository batch
+# launched sixteen model processes, and the next batch added more while those
+# were still going — expensive background work growing with the backlog, each
+# job holding its own copy of a loaded graph.
+_narration_gate: asyncio.Semaphore | None = None
+
+
+def _gate() -> asyncio.Semaphore:
+    # Built lazily: a semaphore binds to the running loop, and this module is
+    # imported long before there is one.
+    global _narration_gate
+    if _narration_gate is None:
+        _narration_gate = asyncio.Semaphore(1)
+    return _narration_gate
 
 
 def _spawn_narration(repo: CodeRepo, settings: Settings) -> None:
     """Start this repository's page narration without waiting for it.
 
-    Detached on purpose: the repository is already queryable, and the queue has
-    to keep draining. At most one narration per repository runs, because a
-    second pass only reaches a repository the queue handed out again.
+    Detached on purpose: the repository is already queryable and the queue has
+    to keep draining. A narration already running for this repository is
+    cancelled first — it describes a graph that has just been replaced, and
+    letting both finish meant the older one could write its pages over the
+    newer one's, or report `ready` for an index that had since failed.
     """
+    existing = _narrations.pop(repo.scope, None)
+    if existing is not None and not existing.done():
+        existing.cancel()
+
     task = asyncio.create_task(narrate_repo_pages(repo, settings=settings))
-    _narrations.add(task)
-    task.add_done_callback(_narrations.discard)
+    _narrations[repo.scope] = task
+    task.add_done_callback(
+        lambda done: _narrations.pop(repo.scope, None)
+        if _narrations.get(repo.scope) is done
+        else None
+    )
 
 
 async def cancel_narrations() -> None:
     """Stop any page narration still running. Called when the worker stops."""
-    for task in list(_narrations):
+    tasks = list(_narrations.values())
+    for task in tasks:
         task.cancel()
-    for task in list(_narrations):
+    for task in tasks:
         try:
             await task
         except (asyncio.CancelledError, Exception):  # noqa: BLE001
@@ -547,14 +574,40 @@ async def narrate_repo_pages(
     Separate from indexing because it is the slow half and the optional one:
     narration is one model call per cluster, and the repository is already
     queryable without a word of it.
+
+    The page count only lands if the row still belongs to the index this was
+    started for. A reindex during narration replaces that index, and writing
+    `ready` unconditionally would have reported success for whatever state the
+    row had reached — including a newer index that failed.
     """
     settings = settings or get_settings()
-    try:
-        pages = await write_repo_pages(repo, settings=settings)
-    except Exception as exc:  # noqa: BLE001 - pages are not worth losing an index over
-        logger.warning("Indexed %s but could not write its pages: %s", repo.scope, exc)
-        return 0
-    await _set_status(repo.scope, "ready", pages=pages)
+    before = await get_repo(repo.scope, wiki_id=repo.wiki_id)
+    stamp = before.indexed_at if before else None
+
+    async with _gate():
+        try:
+            pages = await write_repo_pages(repo, settings=settings)
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:  # noqa: BLE001 - pages are not worth an index
+            logger.warning(
+                "Indexed %s but could not write its pages: %s", repo.scope, exc
+            )
+            return 0
+
+    async with sqlite.get_db() as conn:
+        await init_repo_schema(conn)
+        cursor = await conn.execute(
+            "UPDATE code_repos SET pages=?, updated_at=? "
+            "WHERE scope=? AND status='ready' AND indexed_at IS ?",
+            (pages, _now(), repo.scope, stamp),
+        )
+        await conn.commit()
+    if not cursor.rowcount:
+        logger.info(
+            "Discarded page count for %s: its index changed while narrating",
+            repo.scope,
+        )
     return pages
 
 

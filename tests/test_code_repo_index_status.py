@@ -19,8 +19,10 @@ from unittest.mock import AsyncMock, patch
 import archivum.db.sqlite as sqlite_mod
 import pytest
 from archivum.code_repos import (
+    _set_status,
     cancel_narrations,
     get_repo,
+    narrate_repo_pages,
     index_repo,
     register_repo,
     requeue_stale_indexing,
@@ -219,4 +221,49 @@ async def test_narration_is_stopped_with_the_worker(vault):  # noqa: F811
 
     from archivum.code_repos import _narrations
 
-    assert _narrations == set()
+    assert _narrations == {}
+
+
+async def test_a_reindex_cancels_the_narration_it_supersedes(vault):  # noqa: F811
+    """The older narration describes a graph that has just been replaced.
+
+    Letting both finish meant the older one could write its pages over the
+    newer one's, or report `ready` for an index that had since failed.
+    """
+    repo = await _registered(vault)
+    first_started = asyncio.Event()
+
+    async def hangs(repo_arg, **_):
+        first_started.set()
+        await asyncio.Event().wait()
+
+    with patch("archivum.code_repos.write_repo_pages", new=hangs):
+        await run_pending_repo_indexing(settings=vault, narrate=False)
+        await asyncio.wait_for(first_started.wait(), timeout=5)
+        from archivum.code_repos import _narrations, _spawn_narration
+
+        first = _narrations[repo.scope]
+        _spawn_narration(repo, vault)  # as a reindex would
+        assert first.cancelled() or first.done() or True
+        await asyncio.sleep(0)
+        assert first.cancelled(), "the superseded narration must be cancelled"
+        assert _narrations[repo.scope] is not first
+        await cancel_narrations()
+
+
+async def test_a_stale_page_count_is_discarded(vault):  # noqa: F811
+    """A page count only lands if the row still holds the index it came from."""
+    repo = await _registered(vault)
+
+    async def pages_then_reindex(repo_arg, **_):
+        # Stand in for a reindex finishing while narration ran: the row moves
+        # to a new index, so this narration's count no longer describes it.
+        await _set_status(repo_arg.scope, "ready", indexed_at="2099-01-01T00:00:00+00:00")
+        return 7
+
+    with patch("archivum.code_repos.write_repo_pages", new=pages_then_reindex):
+        await narrate_repo_pages(repo, settings=vault)
+
+    stored = await get_repo(repo.scope, wiki_id="default")
+    assert stored is not None
+    assert stored.pages == 0, "a count from a replaced index must not be written"
