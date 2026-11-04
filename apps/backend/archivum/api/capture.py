@@ -11,6 +11,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
 
 from archivum.db import sqlite
+from archivum.api.devices import writer_or_device
 from archivum.auth import CurrentUser, require_writer
 from archivum.capture.importers import connector_for
 from archivum.capture.importers import chatgpt as _chatgpt  # noqa: F401 (self-register)
@@ -97,7 +98,7 @@ def _build_conversation(body: CaptureConversationRequest) -> Conversation:
 @router.post("/capture", response_model=CaptureResponse)
 async def capture_endpoint(
     body: CaptureConversationRequest,
-    current_user: CurrentUser = Depends(require_writer),
+    current_user: CurrentUser = Depends(writer_or_device),
     settings: Settings = Depends(get_settings),
 ) -> CaptureResponse:
     store = CaptureStore(wiki_id=current_user.wiki_id, settings=settings)
@@ -111,6 +112,12 @@ async def capture_endpoint(
 @router.post("/capture/import", response_model=CaptureImportResponse)
 async def capture_import_endpoint(
     body: CaptureImportRequest,
+    # A person, not a machine. Unlike `/capture`, this reads a path the caller
+    # chooses off the server's own disk, and the importer takes any readable
+    # transcript without asking whose it is. Widening it to device keys — which
+    # every linked machine holds — would have let one import server-local
+    # sessions it was never given, into its own wiki. A machine uploads its own
+    # transcript through `/capture`; it has no reason to name a server path.
     current_user: CurrentUser = Depends(require_writer),
     settings: Settings = Depends(get_settings),
 ) -> CaptureImportResponse:
@@ -137,7 +144,12 @@ async def capture_import_endpoint(
     responses: list[CaptureResponse] = []
     for conv in result.conversations:
         scoped = conv if body.scope == "personal" else _rescope(conv, body.scope)
-        responses.append(_to_response(await store.capture(scoped)))
+        res = await store.capture(scoped)
+        # Same reason as `/capture`: without this an import produced Sources
+        # that never became memory, so a bulk history import left the vault
+        # looking full and recalling nothing.
+        await sqlite.enqueue_distillation(res.source_id, current_user.wiki_id)
+        responses.append(_to_response(res))
     return CaptureImportResponse(interface=result.interface, results=responses)
 
 

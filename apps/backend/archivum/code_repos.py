@@ -22,9 +22,10 @@ import asyncio
 import hashlib
 import logging
 import re
+import shutil
 import subprocess
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit
@@ -358,8 +359,29 @@ async def _set_status(scope: str, status: str, **fields: Any) -> None:
 # ── Indexing ──────────────────────────────────────────────────────────────────
 
 
-async def index_repo(repo: CodeRepo, *, settings: Settings | None = None) -> CodeRepo:
-    """Read one repository into canonical knowledge, memory, and the vault."""
+async def index_repo(
+    repo: CodeRepo, *, settings: Settings | None = None, write_pages: bool = True
+) -> CodeRepo:
+    """Read one repository into canonical knowledge, memory, and the vault.
+
+    Claims the row as `indexing` first and marks it `error` if anything raises,
+    whichever caller got here. Both guarantees used to live only in the worker,
+    so an upload that failed — `sqlite3.OperationalError` is not a `RepoError`
+    and the upload route only catches `RepoError` — left a row that said
+    `pending` or `indexing` forever, and the worker only ever selects `pending`.
+    """
+    await _set_status(repo.scope, "indexing")
+    try:
+        return await _index_repo(repo, settings=settings, write_pages=write_pages)
+    except Exception as exc:
+        logger.warning("Indexing %s failed: %s", repo.scope, exc)
+        await _set_status(repo.scope, "error", error=f"{type(exc).__name__}: {exc}")
+        raise
+
+
+async def _index_repo(
+    repo: CodeRepo, *, settings: Settings | None = None, write_pages: bool = True
+) -> CodeRepo:
     settings = settings or get_settings()
     root = Path(repo.path)
     if not root.is_dir():
@@ -417,8 +439,18 @@ async def index_repo(repo: CodeRepo, *, settings: Settings | None = None) -> Cod
         )
         await conn.commit()
 
-    pages = await write_repo_pages(repo, settings=settings)
-
+    # Ready as soon as retrieval works, which needs the graph and the lexical
+    # index — both of which exist by now.
+    #
+    # Page narration used to come first. It is one model call per cluster, up
+    # to 150 of them at concurrency 4 with a 180-second timeout, so close to
+    # two hours in the worst case. Gating `ready` on that was a livelock: a
+    # restart during narration left the row claimed, the stale sweep returned
+    # it to the queue, and the next run began the same two hours again. Live, a
+    # repository whose graph was built in minutes never once reached `ready`.
+    #
+    # Pages are a derived account of code that is already queryable, so they
+    # must not decide whether the code is queryable.
     await _set_status(
         repo.scope,
         "ready",
@@ -426,19 +458,28 @@ async def index_repo(repo: CodeRepo, *, settings: Settings | None = None) -> Cod
         files=report.files,
         nodes=report.nodes,
         edges=report.edges,
-        pages=pages,
         error=None,
         indexed_at=_now(),
     )
+
+    if write_pages:
+        await narrate_repo_pages(repo, settings=settings)
+
     updated = await get_repo(repo.scope, wiki_id=repo.wiki_id)
     assert updated is not None
     return updated
 
 
 async def run_pending_repo_indexing(
-    *, settings: Settings | None = None, limit: int = 4
+    *, settings: Settings | None = None, limit: int = 4, narrate: bool = True
 ) -> int:
-    """Index up to `limit` queued repositories. Returns how many were indexed."""
+    """Index up to `limit` queued repositories. Returns how many were indexed.
+
+    `narrate` writes the cluster pages before returning. The long-running
+    worker passes `False` and starts narration separately, because narration is
+    one model call per cluster and must not hold the queue; a caller that wants
+    the pages on return — a test, a one-off reindex — leaves it alone.
+    """
     settings = settings or get_settings()
     async with sqlite.get_db() as conn:
         await init_repo_schema(conn)
@@ -448,17 +489,311 @@ async def run_pending_repo_indexing(
         ) as cursor:
             pending = [_row_to_repo(row) for row in await cursor.fetchall()]
 
-    done = 0
+    # Graphs only. Page writing is one model call per cluster and can run for
+    # close to two hours, so doing it here held the queue: marking the first
+    # repository `ready` released nothing, because the next one's code stayed
+    # unqueryable for the length of someone else's prose — and a repository
+    # uploaded during narration waited for it too.
+    indexed: list[CodeRepo] = []
     for repo in pending:
-        await _set_status(repo.scope, "indexing")
         try:
-            await index_repo(repo, settings=settings)
-        except Exception as exc:  # noqa: BLE001 - one bad repo must not stop the rest
-            logger.warning("Indexing %s failed: %s", repo.scope, exc)
-            await _set_status(repo.scope, "error", error=f"{type(exc).__name__}: {exc}")
+            # `index_repo` claims the row and records the failure itself.
+            indexed.append(await index_repo(repo, settings=settings, write_pages=False))
+        except Exception:  # noqa: BLE001 - one bad repo must not stop the rest
             continue
-        done += 1
-    return done
+
+    for repo in indexed:
+        if narrate:
+            await narrate_repo_pages(repo, settings=settings)
+        else:
+            _spawn_narration(repo, settings)
+    return len(indexed)
+
+
+# Narration in flight, keyed by scope so a repository can only have one, and
+# held so a task is not garbage collected mid-run.
+_narrations: dict[str, asyncio.Task[int]] = {}
+
+# Narration runs one repository at a time across the whole process. Each run is
+# already internally parallel, so without an outer gate a four-repository batch
+# launched sixteen model processes, and the next batch added more while those
+# were still going — expensive background work growing with the backlog, each
+# job holding its own copy of a loaded graph.
+_narration_gate: asyncio.Semaphore | None = None
+
+
+def _gate() -> asyncio.Semaphore:
+    # Built lazily: a semaphore binds to the running loop, and this module is
+    # imported long before there is one.
+    global _narration_gate
+    if _narration_gate is None:
+        _narration_gate = asyncio.Semaphore(1)
+    return _narration_gate
+
+
+def _spawn_narration(repo: CodeRepo, settings: Settings) -> None:
+    """Start this repository's page narration without waiting for it.
+
+    Detached on purpose: the repository is already queryable and the queue has
+    to keep draining. A narration already running for this repository is
+    cancelled first — it describes a graph that has just been replaced, and
+    letting both finish meant the older one could write its pages over the
+    newer one's, or report `ready` for an index that had since failed.
+    """
+    existing = _narrations.pop(repo.scope, None)
+    if existing is not None and not existing.done():
+        existing.cancel()
+
+    async def _after(previous: asyncio.Task[int] | None) -> int:
+        # Wait for the cancelled run to finish unwinding before taking the
+        # gate. Cancellation now kills its model processes, and that teardown
+        # has to complete before a replacement claims the same budget —
+        # otherwise both hold memory and model capacity at once, which is the
+        # thing the gate exists to prevent.
+        if previous is not None:
+            try:
+                await previous
+            except asyncio.CancelledError:
+                # Theirs or ours? Catching both swallowed this task's own
+                # cancellation and then started fresh model work, so a
+                # shutdown arriving during the handover waited out a whole
+                # narration run. `cancelling()` is non-zero only when someone
+                # asked *this* task to stop.
+                current = asyncio.current_task()
+                if current is not None and current.cancelling() > 0:
+                    raise
+            except Exception:  # noqa: BLE001 - a failed predecessor is not ours
+                pass
+        return await narrate_repo_pages(repo, settings=settings)
+
+    task = asyncio.create_task(_after(existing))
+    _narrations[repo.scope] = task
+    task.add_done_callback(
+        lambda done: _narrations.pop(repo.scope, None)
+        if _narrations.get(repo.scope) is done
+        else None
+    )
+
+
+async def cancel_narrations() -> None:
+    """Stop any page narration still running. Called when the worker stops."""
+    tasks = list(_narrations.values())
+    for task in tasks:
+        task.cancel()
+    for task in tasks:
+        try:
+            await task
+        except (asyncio.CancelledError, Exception):  # noqa: BLE001
+            pass
+    _narrations.clear()
+
+
+async def narrate_repo_pages(
+    repo: CodeRepo, *, settings: Settings | None = None
+) -> int:
+    """Write this repository's cluster pages. Returns how many landed.
+
+    Separate from indexing because it is the slow half and the optional one:
+    narration is one model call per cluster, and the repository is already
+    queryable without a word of it.
+
+    The page count only lands if the row still belongs to the index this was
+    started for. A reindex during narration replaces that index, and writing
+    `ready` unconditionally would have reported success for whatever state the
+    row had reached — including a newer index that failed.
+    """
+    settings = settings or get_settings()
+    before = await get_repo(repo.scope, wiki_id=repo.wiki_id)
+    stamp = before.indexed_at if before else None
+
+    async with _gate():
+        try:
+            pages = await write_repo_pages(repo, settings=settings)
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:  # noqa: BLE001 - pages are not worth an index
+            logger.warning(
+                "Indexed %s but could not write its pages: %s", repo.scope, exc
+            )
+            return 0
+
+    async with sqlite.get_db() as conn:
+        await init_repo_schema(conn)
+        cursor = await conn.execute(
+            "UPDATE code_repos SET pages=?, updated_at=? "
+            "WHERE scope=? AND status='ready' AND indexed_at IS ?",
+            (pages, _now(), repo.scope, stamp),
+        )
+        await conn.commit()
+    if not cursor.rowcount:
+        logger.info(
+            "Discarded page count for %s: its index changed while narrating",
+            repo.scope,
+        )
+    return pages
+
+
+async def purge_repo_scope(
+    scope: str, *, wiki_id: str = "default", settings: Settings | None = None
+) -> dict[str, int]:
+    """Delete everything a repository left behind. Returns rows removed per table.
+
+    `forget` only drops the register row, on the reasoning that canonical code
+    records are memory of work that happened. That reasoning does not hold for
+    a repository whose ingest never finished: what it leaves is not memory, it
+    is debris that nothing can reach, because retrieval finds code through the
+    register and the register entry is gone.
+
+    A vault was found at 21 GB, of which almost all was 192,704 orphaned symbol
+    objects from repositories whose own rows still read zero nodes. There was no
+    way to reclaim it, which is how it got that large.
+
+    Takes a scope rather than a name so an orphan with no register row at all —
+    the common case — can still be purged.
+
+    Raises `RepoError` for anything that is not this wiki's own repository
+    scope. Every delete below filters on `scope` alone, so without that guard
+    the caller chose what to erase: `personal` would take a vault's personal
+    sources, and another tenant's `repo:other:x` would take their code while
+    leaving their register row behind to claim it was still there.
+    """
+    expected_prefix = f"repo:{wiki_id}:"
+    name_part = scope[len(expected_prefix) :] if scope.startswith(expected_prefix) else ""
+    if not name_part or ":" in name_part:
+        raise RepoError(
+            f"'{scope}' is not a repository scope belonging to wiki '{wiki_id}'"
+        )
+    # The name still has to be a single safe path segment: it addresses a cache
+    # directory and a page folder further down.
+    validate_repo_name(name_part)
+
+    settings = settings or get_settings()
+    removed: dict[str, int] = {}
+
+    async with sqlite.get_db() as conn:
+        await init_repo_schema(conn)
+
+        async def run(table: str, sql: str, params: tuple[object, ...]) -> None:
+            try:
+                cursor = await conn.execute(sql, params)
+            except aiosqlite.OperationalError:
+                # A vault that never indexed code has no projection tables.
+                return
+            removed[table] = removed.get(table, 0) + (cursor.rowcount or 0)
+
+        # Citations first: they are keyed by the record they cite, so once the
+        # objects are gone there is nothing left to find them by.
+        for knowledge_type, source in (
+            ("object", "knowledge_objects"),
+            ("relationship", "knowledge_relationships"),
+        ):
+            await run(
+                "knowledge_citations",
+                "DELETE FROM knowledge_citations WHERE knowledge_type=? AND "
+                f"knowledge_id IN (SELECT id FROM {source} WHERE scope=?)",
+                (knowledge_type, scope),
+            )
+        for table in (
+            "knowledge_objects",
+            "knowledge_relationships",
+            "code_node_text",
+            "code_trigram",
+            "memory_assets",
+            "sources",
+        ):
+            await run(table, f"DELETE FROM {table} WHERE scope=?", (scope,))
+        await run("memory_scopes", "DELETE FROM memory_scopes WHERE id=?", (scope,))
+        # The codegraph asset and its knowledge object describe this repository
+        # but are registered at wiki scope, so the scope-matched deletes above
+        # never touch them. The repository is named in their id instead. Live,
+        # that left five codegraph records pointing at repositories that had
+        # just been deleted.
+        codegraph_id = f"codegraph:{scope}"
+        for table in ("memory_assets", "knowledge_objects"):
+            await run(table, f"DELETE FROM {table} WHERE id=?", (codegraph_id,))
+        await run(
+            "code_repos",
+            "DELETE FROM code_repos WHERE scope=? AND wiki_id=?",
+            (scope, wiki_id),
+        )
+        await conn.commit()
+
+    name = scope.rsplit(":", 1)[-1]
+    # `repo_folder` already yields `code/<slug>`; prefixing it again addressed
+    # `code/code/<slug>` and silently matched nothing.
+    folder = repo_folder(name)
+    pages = await sqlite.delete_pages_under(folder, wiki_id)
+    removed["pages"] = len(pages)
+
+    # Markdown is the source of truth, so deleting only the rows accomplishes
+    # nothing: the vault watcher finds the files still on disk and imports them
+    # straight back. Observed live — a purge was followed by the backend
+    # distilling all 35 pages of the repository that had just been removed.
+    page_dir = settings.wiki_dir / folder
+    if page_dir.is_dir() and page_dir.resolve().is_relative_to(
+        settings.wiki_dir.resolve()
+    ):
+        shutil.rmtree(page_dir, ignore_errors=True)
+        removed["page_files"] = 1
+
+    # The parsed-AST cache is pure derived state and the largest thing on disk
+    # after the database itself.
+    cache_dir = settings.code_cache_dir / name
+    if cache_dir.is_dir() and cache_dir.resolve().is_relative_to(
+        settings.code_cache_dir.resolve()
+    ):
+        shutil.rmtree(cache_dir, ignore_errors=True)
+        removed["cache_dir"] = 1
+
+    logger.warning("Purged repository scope %s: %s", scope, removed)
+    return removed
+
+
+async def orphan_repo_scopes(*, wiki_id: str = "default") -> list[str]:
+    """Code scopes holding knowledge that no registered repository owns.
+
+    These are unreachable by construction: retrieval reaches code through the
+    register, so a scope with no register row can never be queried and only
+    costs space and write contention.
+
+    Scoped to this wiki's own prefix. Listing every wiki's code scopes and
+    subtracting one wiki's registered repositories reported another tenant's
+    live repository as an orphan — an invitation to purge something in use.
+    """
+    async with sqlite.get_db() as conn:
+        await init_repo_schema(conn)
+        async with conn.execute(
+            "SELECT DISTINCT scope FROM knowledge_objects WHERE scope LIKE ?",
+            (f"repo:{wiki_id}:%",),
+        ) as cursor:
+            scopes = {row[0] for row in await cursor.fetchall()}
+        async with conn.execute(
+            "SELECT scope FROM code_repos WHERE wiki_id=?", (wiki_id,)
+        ) as cursor:
+            registered = {row[0] for row in await cursor.fetchall()}
+    return sorted(scopes - registered)
+
+
+async def requeue_stale_indexing(*, older_than_seconds: float = 3600.0) -> int:
+    """Return abandoned `indexing` rows to `pending`. Returns how many moved.
+
+    A process that dies mid-ingest — an out-of-memory kill, a redeploy — leaves
+    the row claimed. Nothing selects `indexing`, so without this the repository
+    is never indexed again and the UI shows a spinner forever.
+    """
+    cutoff = datetime.now(UTC) - timedelta(seconds=older_than_seconds)
+    async with sqlite.get_db() as conn:
+        await init_repo_schema(conn)
+        cursor = await conn.execute(
+            "UPDATE code_repos SET status='pending', updated_at=? "
+            "WHERE status='indexing' AND updated_at < ?",
+            (_now(), cutoff.isoformat()),
+        )
+        await conn.commit()
+        moved = cursor.rowcount or 0
+    if moved:
+        logger.warning("Requeued %d repository index runs abandoned mid-flight", moved)
+    return moved
 
 
 async def run_code_repo_worker(settings: Settings) -> None:
@@ -468,8 +803,18 @@ async def run_code_repo_worker(settings: Settings) -> None:
     while True:
         try:
             await asyncio.sleep(interval)
-            await run_pending_repo_indexing(settings=settings)
+            # Reclaim abandoned claims on every pass, not only at startup. A
+            # restart that lands inside the stale window left the row too
+            # recent for the startup sweep, and nothing selects `indexing`
+            # again — so the repository waited for a restart that happened to
+            # fall outside the window, which may never come.
+            await requeue_stale_indexing()
+            # Graphs here; narration runs detached so the queue keeps draining.
+            await run_pending_repo_indexing(settings=settings, narrate=False)
         except asyncio.CancelledError:
+            # Narration outlives a sweep by design, so it has to be stopped
+            # with the worker rather than left running after shutdown.
+            await cancel_narrations()
             raise
         except Exception as exc:  # noqa: BLE001 - one bad pass must not stop the pump
             logger.warning("Code repository sweep failed: %s", exc)

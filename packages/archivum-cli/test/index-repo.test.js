@@ -414,3 +414,179 @@ test("a real checkout with an origin names its upload after the remote", async (
 
   assert.equal(await uploadedName([], { cwd: root, spawnImpl: spawnSync, t }), "perceo-ai-conductor-arch");
 });
+
+// ── Queued indexing ───────────────────────────────────────────────────────────
+//
+// The upload used to index inside the request so this command could print the
+// finished counts. A real repository outlives any proxy's patience: 669 files
+// took longer than the Cloudflare tunnel's 100 seconds, so `archivum index`
+// printed `fetch failed` while the server indexed it perfectly well.
+
+test("awaitIndexed returns once the server reports the repo ready", async () => {
+  const seen = [];
+  const statuses = ["pending", "indexing", "ready"];
+  const fetchImpl = async () => {
+    const status = statuses[Math.min(seen.length, statuses.length - 1)];
+    seen.push(status);
+    return {
+      ok: true,
+      json: async () => [{ name: "atlas", status, files: 7, nodes: 9, edges: 3, pages: 2 }],
+    };
+  };
+  const { repo, state } = await indexRepo.awaitIndexed({
+    baseUrl: "http://x",
+    key: "k",
+    name: "atlas",
+    fetchImpl,
+    sleep: async () => {},
+  });
+  assert.equal(state, "ready");
+  assert.equal(repo.nodes, 9);
+  assert.deepEqual(seen, ["pending", "indexing", "ready"]);
+});
+
+test("awaitIndexed surfaces a server-side indexing failure", async () => {
+  const fetchImpl = async () => ({
+    ok: true,
+    json: async () => [{ name: "atlas", status: "error", error: "database is locked" }],
+  });
+  const { state, repo } = await indexRepo.awaitIndexed({
+    baseUrl: "http://x",
+    key: "k",
+    name: "atlas",
+    fetchImpl,
+    sleep: async () => {},
+  });
+  assert.equal(state, "error");
+  assert.equal(repo.error, "database is locked");
+});
+
+test("awaitIndexed gives up saying it is still running, not that it failed", async () => {
+  // A command that never returns is its own failure, but so is inventing a
+  // verdict. Still-indexing is the truth and is what gets reported.
+  let clock = 0;
+  const fetchImpl = async () => ({
+    ok: true,
+    json: async () => [{ name: "atlas", status: "indexing" }],
+  });
+  const { state } = await indexRepo.awaitIndexed({
+    baseUrl: "http://x",
+    key: "k",
+    name: "atlas",
+    fetchImpl,
+    now: () => (clock += 60_000),
+    sleep: async () => {},
+    timeoutMs: 120_000,
+  });
+  assert.equal(state, "pending");
+});
+
+test("awaitIndexed tolerates a transient status-route failure", async () => {
+  let calls = 0;
+  const fetchImpl = async () => {
+    calls += 1;
+    if (calls < 3) return { ok: false, json: async () => ({}) };
+    return { ok: true, json: async () => [{ name: "atlas", status: "ready", nodes: 1 }] };
+  };
+  const { state } = await indexRepo.awaitIndexed({
+    baseUrl: "http://x",
+    key: "k",
+    name: "atlas",
+    fetchImpl,
+    sleep: async () => {},
+  });
+  assert.equal(state, "ready");
+});
+
+test("index does not poll a server that already finished indexing", async (t) => {
+  // Older servers index inside the upload request and answer with the counts.
+  // This command has to work against both, and must not sit in a poll loop
+  // waiting for a status that already arrived.
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), "archivum-home-"));
+  fs.mkdirSync(path.join(home, ".archivum"), { recursive: true });
+  fs.writeFileSync(
+    path.join(home, ".archivum", "connection.json"),
+    JSON.stringify({ base_url: "https://v.example", key: "amk_1" }),
+  );
+  const root = tempRepo({ "src/app.ts": "export const a = 1\n" });
+  t.mock.method(console, "log", () => {});
+  const urls = [];
+
+  await indexCommand([], {
+    home,
+    cwd: root,
+    spawnImpl: noGit,
+    fetchImpl: async (url) => {
+      urls.push(url);
+      return {
+        ok: true,
+        json: async () => ({ name: "atlas", files: 1, nodes: 4, edges: 2, pages: 1 }),
+      };
+    },
+  });
+
+  assert.deepEqual(urls, ["https://v.example/api/repos/upload"]);
+});
+
+test("index polls when the server queued the work instead", async (t) => {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), "archivum-home-"));
+  fs.mkdirSync(path.join(home, ".archivum"), { recursive: true });
+  fs.writeFileSync(
+    path.join(home, ".archivum", "connection.json"),
+    JSON.stringify({ base_url: "https://v.example", key: "amk_1" }),
+  );
+  const root = tempRepo({ "src/app.ts": "export const a = 1\n" });
+  t.mock.method(console, "log", () => {});
+  const urls = [];
+
+  await indexCommand([], {
+    home,
+    cwd: root,
+    spawnImpl: noGit,
+    fetchImpl: async (url) => {
+      urls.push(url);
+      if (url.endsWith("/api/repos/upload")) {
+        return { ok: true, json: async () => ({ name: "atlas", status: "pending", nodes: 0 }) };
+      }
+      return {
+        ok: true,
+        json: async () => [
+          { name: "atlas", status: "ready", files: 1, nodes: 4, edges: 2, pages: 1 },
+        ],
+      };
+    },
+  });
+
+  assert.deepEqual(urls, [
+    "https://v.example/api/repos/upload",
+    "https://v.example/api/repos",
+  ]);
+});
+
+test("awaitIndexed survives a dropped connection", async () => {
+  // A rejected fetch says nothing about the indexing. Letting it end the
+  // command printed a failure while the server carried on working.
+  let calls = 0;
+  const fetchImpl = async () => {
+    calls += 1;
+    if (calls < 3) throw new TypeError("fetch failed");
+    return { ok: true, status: 200, json: async () => [{ name: "atlas", status: "ready", nodes: 1 }] };
+  };
+  const { state } = await indexRepo.awaitIndexed({
+    baseUrl: "http://x", key: "k", name: "atlas",
+    fetchImpl, sleep: async () => {},
+  });
+  assert.equal(state, "ready");
+  assert.equal(calls, 3);
+});
+
+test("awaitIndexed reports a rejected key instead of calling it pending", async () => {
+  // The status route did not accept device keys, so every poll was a 401 and
+  // the command waited the full timeout before reporting work still running.
+  const fetchImpl = async () => ({ ok: false, status: 401, json: async () => ({}) });
+  const { state } = await indexRepo.awaitIndexed({
+    baseUrl: "http://x", key: "k", name: "atlas",
+    fetchImpl, sleep: async () => {},
+  });
+  assert.equal(state, "unauthorized");
+});

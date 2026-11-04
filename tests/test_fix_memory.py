@@ -12,7 +12,7 @@ failing to passing. Prose describing a bug never becomes a fix.
 from __future__ import annotations
 
 from archivum.capture.schema import Conversation, ToolCall, Turn
-from archivum.fixes import extract_fix, symptom_key
+from archivum.fixes import _symptom_of, extract_fix, symptom_key
 
 
 def _session(
@@ -121,3 +121,180 @@ def test_the_key_ignores_the_specific_values_in_an_error():
 
 def test_different_errors_do_not_collide():
     assert symptom_key("KeyError: 'slug'") != symptom_key("TypeError: bad operand")
+
+
+def test_an_explicit_symptom_beats_whatever_extraction_would_guess():
+    """The caller usually knows exactly which error this was. Let them say it.
+
+    Extraction can only work from the words that happen to be present, and a
+    request like "prepare the branch for a PR" contains no error at all.
+    """
+    session = _session("Prepare the branch for a pull request.", tools=(_EDIT,))
+
+    fix = extract_fix(
+        session,
+        stated=True,
+        symptom="sqlite3.OperationalError: database is locked",
+    )
+
+    assert fix is not None
+    assert fix.symptom == "sqlite3.OperationalError: database is locked"
+
+
+def test_the_error_is_found_in_tool_output_not_only_in_the_request():
+    """You ask someone to fix the build; you do not paste the build.
+
+    A live vault recorded the symptom of a repair as "Prepare workspace
+    cross-platform-notifications for a pull request" — a task description no
+    later paste of the real error could match. The error is usually in the
+    session's output, so that is now read too.
+    """
+    failing = ToolCall(
+        name="Bash",
+        arguments={"command": "pytest"},
+        result="E   sqlite3.OperationalError: database is locked",
+        ok=False,
+    )
+    passing = ToolCall(name="Bash", arguments={"command": "pytest"}, result="ok")
+    session = _session(
+        "Figure out why indexing never finishes.", tools=(failing, _EDIT, passing)
+    )
+
+    fix = extract_fix(session, stated=True)
+
+    assert fix is not None
+    assert "database is locked" in fix.symptom
+    # Not the task description it used to fall back to.
+    assert "Figure out why" not in fix.symptom
+
+
+def test_the_request_still_wins_when_it_carries_the_error():
+    """A pasted error belongs to the person reporting it; prefer theirs."""
+    noise = ToolCall(
+        name="Bash", arguments={"command": "pytest"},
+        result="ValueError: something else entirely", ok=False,
+    )
+    passing = ToolCall(name="Bash", arguments={"command": "pytest"}, result="ok")
+    session = _session(
+        "deploy fails with KeyError: 'slug' every time",
+        tools=(noise, _EDIT, passing),
+    )
+
+    fix = extract_fix(session, stated=True)
+
+    assert fix is not None
+    assert "KeyError" in fix.symptom
+    assert "ValueError" not in fix.symptom
+
+
+def test_the_task_description_remains_the_last_resort():
+    """A session with no error anywhere is still worth keeping, as it was."""
+    session = _session("Decided to store skills as vault pages.", tools=(_EDIT,))
+
+    fix = extract_fix(session, stated=True)
+
+    assert fix is not None
+    assert fix.symptom == "Decided to store skills as vault pages."
+
+
+def test_an_error_in_backticks_is_still_the_symptom():
+    """Agents write errors in backticks, and that used to defeat extraction.
+
+    Found by recording a real session whose outcome said
+    `` `sqlite3.OperationalError: database is locked` `` and then failing to
+    recall it by that error: the pattern demanded whitespace or `(` before the
+    class name, so the symptom silently fell back to the task description.
+    """
+    session = _session(
+        "Finish diagnosing the deployed vault.",
+        assistant=(
+            "Cause: the `sqlite3.OperationalError: database is locked` that "
+            "ingest raised escaped as an HTTP 500."
+        ),
+        tools=(_EDIT,),
+    )
+
+    fix = extract_fix(session, stated=True)
+
+    assert fix is not None
+    assert "sqlite3.OperationalError" in fix.symptom
+    assert "database is locked" in fix.symptom
+
+
+def test_the_symptom_key_matches_across_backticks():
+    """Recall compares shapes, so quoting must not change the shape."""
+    from archivum.fixes import match_score
+
+    stored = "the `sqlite3.OperationalError: database is locked` that ingest raised"
+    pasted = "sqlite3.OperationalError: database is locked"
+    assert match_score(pasted, _symptom_of(stored)) >= 0.5
+
+
+def test_a_passing_mention_of_failure_in_prose_is_not_the_symptom():
+    """A write-up that discusses failure is not a failure report.
+
+    Live, a session whose outcome mentioned "a repo whose ingest had failed,
+    and the only `ready` repo had none" had exactly that fragment stored as its
+    symptom — no paste of a real error would ever match it. The loose phrase
+    pattern now only reads the request, where someone is actually reporting;
+    a named error still counts from anywhere.
+    """
+    session = _session(
+        "Summarise what we changed in the vault.",
+        assistant=(
+            "The cause was a repo whose ingest had failed, and the only ready "
+            "repo had none of its rows left."
+        ),
+        tools=(_EDIT,),
+    )
+
+    fix = extract_fix(session, stated=True)
+
+    assert fix is not None
+    assert fix.symptom == "Summarise what we changed in the vault."
+    assert "had failed" not in fix.symptom
+
+
+def test_a_failure_reported_in_the_request_is_still_the_symptom():
+    """The request is where a described failure is trustworthy."""
+    session = _session("the workspace list hangs when a repo is indexing", tools=(_EDIT,))
+
+    fix = extract_fix(session, stated=True)
+
+    assert fix is not None
+    assert "hangs" in fix.symptom
+
+
+def test_a_named_error_still_wins_from_deep_in_the_session():
+    """A class name means the same thing wherever it appears."""
+    failing = ToolCall(
+        name="Bash",
+        arguments={"command": "pytest"},
+        result="E   KeyError: 'slug'",
+        ok=False,
+    )
+    passing = ToolCall(name="Bash", arguments={"command": "pytest"}, result="ok")
+    session = _session("Clean up the page writer.", tools=(failing, _EDIT, passing))
+
+    fix = extract_fix(session, stated=True)
+
+    assert fix is not None
+    assert "KeyError" in fix.symptom
+
+
+def test_a_failure_word_inside_another_word_is_not_a_failure():
+    """`hangs?` matched the "hang" in "changed", so ordinary prose read as a
+    reported failure. The same held for "breakfast" and "failover"."""
+    from archivum.fixes import _failure_phrase_in
+
+    for innocent in (
+        "Summarise what we changed in the vault.",
+        "The team had breakfast and shipped it.",
+        "Configure failover between the two regions.",
+        "An unbroken chain of citations.",
+    ):
+        assert _failure_phrase_in(innocent) == "", innocent
+
+    # Still catches the real thing.
+    assert "hangs" in _failure_phrase_in("the list hangs when a repo is indexing")
+    assert "fails" in _failure_phrase_in("deploy fails every time")

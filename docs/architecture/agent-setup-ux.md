@@ -39,7 +39,7 @@ flowchart LR
     install --> cli
     cli -->|"writes config"| agents
     cli -->|"archivum index"| api
-    cli -->|"archivum watch"| api
+    cli -->|"Stop hook: capture-session"| api
     repo --> cli
     transcripts --> cli
     agents -->|"MCP tools, Bearer amk_"| mcp
@@ -111,7 +111,7 @@ flowchart TD
 
     dev --> d1["every MCP tool"]
     dev --> d2["upload a repo<br/>POST /api/repos/upload"]
-    dev --> d3["upload a transcript<br/>POST /api/sources/capture/upload"]
+    dev --> d3["upload a session<br/>POST /api/sources/capture"]
     dev --> d4["read and revoke itself<br/>/api/mcp/devices/self"]
 
     legacy --> d1
@@ -164,32 +164,39 @@ stops a file deleted since the last upload from surviving in the index.
 ```mermaid
 sequenceDiagram
     autonumber
-    participant W as archivum watch
-    participant F as Transcript files
+    participant CC as Claude Code
+    participant H as Stop hook
+    participant CLI as archivum capture-session
     participant S as Server
-    participant I as Existing importers
 
-    loop every 60s, or --once
-        W->>F: scan dirs named by the client registry
-        W->>W: skip unchanged (size + mtime)
+    CC->>H: Stop: session_id, transcript_path
+    H->>H: nudge logic (record_work, write_page)
+    H->>CLI: nohup, detached, output discarded
+    Note over H: the hook never waits for the upload:<br/>a vault that is down must not hold<br/>a session open
+    CLI->>CLI: ARCHIVUM_CAPTURE / "capture": false -> stop
+    CLI->>CLI: parse the JSONL, drop thinking blocks
 
-        rect rgb(255, 243, 205)
-            Note over W: redaction, before anything leaves
-            W->>W: sk-, sk-ant-, ghp_, xox, AIza, AKIA,<br/>amk_, arch1_, arch1p_, PEM blocks,<br/>KEY=value assignments
-        end
-
-        W->>S: POST /api/sources/capture/upload (Bearer amk_)
-        S->>I: connector_for, then parse
-        I-->>S: conversations
-        S->>S: CaptureStore, content-addressed
-        Note over S: unchanged transcript dedupes<br/>instead of duplicating
-        S-->>W: result
-        W->>W: record as seen, success or failure
+    rect rgb(255, 243, 205)
+        Note over CLI: redaction, before anything leaves
+        CLI->>CLI: sk-, sk-ant-, ghp_, xox, AIza, AKIA,<br/>amk_, arch1_, arch1p_, PEM blocks,<br/>KEY=value assignments
     end
+
+    CLI->>CLI: unchanged since the last Stop -> stop
+    CLI->>S: POST /api/sources/capture (Bearer amk_)
+    S->>S: strip hidden reasoning, content-address
+    Note over S: dedup on (origin_uri, content_hash):<br/>an unchanged session lands on the<br/>Source already there
+    S->>S: queue distillation
+    S-->>CLI: source_id
 ```
 
 Redaction is a set of shapes, not a guarantee. A secret that looks like prose
-survives. Nothing starts this watcher automatically; it is opt-in per machine.
+survives, which is why capture is opt-out per machine: `ARCHIVUM_CAPTURE=off` in
+the agent's environment, or `"capture": false` in `~/.archivum/connection.json`.
+
+There is no daemon. The hook is the only thing that runs, it runs at the end of
+a turn, and the client skips a transcript that has not changed since the last
+Stop — otherwise a long session would re-queue distillation of the same
+transcript a dozen times.
 
 ## 6. Revoking
 
@@ -265,7 +272,7 @@ indexed.
 | Client manifest | `GET /api/mcp/clients` | device |
 | Skill | `GET /api/mcp/skill` | none |
 | Upload a repository | `POST /api/repos/upload` | device |
-| Upload a transcript | `POST /api/sources/capture/upload` | device |
+| Upload a session | `POST /api/sources/capture` | device |
 | Self status and self-revoke | `GET`/`DELETE /api/mcp/devices/self` | device |
 | MCP tools | `:8001/sse` and `:8001/mcp` | device or legacy key |
 

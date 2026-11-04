@@ -44,12 +44,24 @@ _CHECK_HINTS = re.compile(
 
 # `SomeError: detail`, a traceback line, or an explicit failure phrase. The
 # error is the part worth keeping; the rest of the sentence is scaffolding.
+# Two things this has to tolerate, both found by recording a real session and
+# then failing to recall it. The dotted prefix, because Python reports
+# `sqlite3.OperationalError` and requiring whitespace before the class name
+# missed the most common shape of a traceback line. And any non-word character
+# before it, not just whitespace or `(`: agents write errors in backticks, and
+# `` `sqlite3.OperationalError: database is locked` `` matched nothing, so the
+# symptom silently fell back to the task description. `.` stays excluded so a
+# match cannot begin partway through a dotted name.
 _ERROR_RE = re.compile(
-    r"(?:^|[\s(])((?:[A-Z][A-Za-z0-9_]*)?(?:Error|Exception|Warning)\b[^.\n]{0,160})"
+    r"(?:^|[^\w.])((?:[A-Za-z_]\w*\.)*(?:[A-Z][A-Za-z0-9_]*)?"
+    r"(?:Error|Exception|Warning)\b[^.\n]{0,160})"
 )
+# The failure words are word-bounded. They were not, so `hangs?` matched the
+# "hang" inside "changed" and "Summarise what we changed in the vault" was read
+# as a reported failure — as would "breakfast", "failover", "unbroken".
 _FAILURE_PHRASE_RE = re.compile(
-    r"\b((?:[\w\s]{0,40})?(?:crash(?:es|ed)?|fails?|failing|broken|breaks?"
-    r"|not working|doesn'?t work|hangs?|times? out|returns? nothing)[^.\n]{0,120})",
+    r"\b((?:[\w\s]{0,40})?\b(?:crash(?:es|ed)?|fails?|failing|broken|breaks?"
+    r"|not working|doesn'?t work|hangs?|times? out|returns? nothing)\b[^.\n]{0,120})",
     re.I,
 )
 
@@ -112,14 +124,65 @@ def _first_request(conversation: Conversation) -> str:
     return ""
 
 
-def _symptom_of(request: str) -> str:
-    """The failure being reported, rather than the whole message around it."""
-    error = _ERROR_RE.search(request)
-    if error:
-        return " ".join(error.group(1).split())[:_MAX_SYMPTOM]
-    phrase = _FAILURE_PHRASE_RE.search(request)
-    if phrase:
-        return " ".join(phrase.group(1).split())[:_MAX_SYMPTOM]
+def _error_class_in(text: str) -> str:
+    """A named error or exception inside a message, or "" if there is none.
+
+    Safe to run over any part of a session: `KeyError: 'slug'` means the same
+    thing wherever it appears.
+    """
+    error = _ERROR_RE.search(text)
+    return " ".join(error.group(1).split())[:_MAX_SYMPTOM] if error else ""
+
+
+def _failure_phrase_in(text: str) -> str:
+    """A described failure — "crashes", "times out" — or "" if there is none.
+
+    Only trustworthy where someone is reporting a failure, which is why this is
+    run over the request and not the whole session. Run over prose it latches
+    onto any passing use of the word: a session whose write-up mentioned "a
+    repo whose ingest had failed" had exactly that stored as its symptom, a
+    fragment no later paste would match.
+    """
+    phrase = _FAILURE_PHRASE_RE.search(text)
+    return " ".join(phrase.group(1).split())[:_MAX_SYMPTOM] if phrase else ""
+
+
+def _symptom_of(request: str, conversation: Conversation | None = None) -> str:
+    """What went wrong, preferring an error over the task description.
+
+    Only the opening request used to be read, and when it named no error the
+    whole request was stored as the symptom. Most requests do not quote the
+    error — you ask someone to fix the build, you do not paste the build. A
+    live vault was found where the recorded "symptom" of a repair was
+    "Prepare workspace cross-platform-notifications for a pull request", which
+    no later paste of an actual error can ever match. Recall then only worked
+    on near-verbatim repetition of the request, which is not how anyone
+    arrives at it.
+
+    So: the request first, because a pasted error belongs to the person
+    reporting it, then the rest of the session, where the error usually shows
+    up in tool output. The task description is the last resort, not the first.
+    """
+    # A named error beats everything, wherever it is: in the request, in what
+    # the session said, or in the output of something it ran.
+    found = _error_class_in(request)
+    if found:
+        return found
+    for turn in (conversation.turns if conversation else ()):
+        found = _error_class_in(turn.text)
+        if found:
+            return found
+        for call in turn.tool_calls:
+            found = _error_class_in(str(call.result or ""))
+            if found:
+                return found
+
+    # Then a described failure, but only from the request. See
+    # `_failure_phrase_in` for why this one does not get the whole session.
+    found = _failure_phrase_in(request)
+    if found:
+        return found
+
     return " ".join(request.split())[:_MAX_SYMPTOM]
 
 
@@ -168,7 +231,9 @@ def _verification(conversation: Conversation) -> tuple[str, bool]:
     return "", False
 
 
-def extract_fix(conversation: Conversation, *, stated: bool = False) -> Fix | None:
+def extract_fix(
+    conversation: Conversation, *, stated: bool = False, symptom: str = ""
+) -> Fix | None:
     """The fix this session performed, or None if it did not perform one.
 
     `stated` marks work an agent reported deliberately through `record_work`,
@@ -179,6 +244,10 @@ def extract_fix(conversation: Conversation, *, stated: bool = False) -> Fix | No
     "Decided to store skills as vault pages" contains no word the classifier
     knows — so inference silently dropped exactly the decisions and plainly
     described failures this is meant to keep.
+
+    `symptom` is the failure as the caller names it. Extraction can only guess
+    from the words that happen to be present, and the caller usually knows
+    exactly which error this was; when they say, that wins outright.
 
     What stays true either way: something must have changed, and the session
     must not have ended failing. Stating that work happened is not the same as
@@ -197,11 +266,15 @@ def extract_fix(conversation: Conversation, *, stated: bool = False) -> Fix | No
         return None
 
     request = _first_request(conversation)
-    if not request:
+    if not request and not symptom.strip():
         return None
 
     return Fix(
-        symptom=_symptom_of(request),
+        symptom=(
+            " ".join(symptom.split())[:_MAX_SYMPTOM]
+            if symptom.strip()
+            else _symptom_of(request, conversation)
+        ),
         diagnosis=_diagnosis_of(conversation),
         changed_paths=changed,
         verified_by=verified_by,

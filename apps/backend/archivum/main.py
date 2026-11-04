@@ -48,7 +48,7 @@ from archivum.observability import new_trace_id, set_trace_id
 from archivum.memory.retention import run_retention_worker
 from archivum.page_write_queue import run_page_write_worker
 from archivum.capture.transcript_watch import run_transcript_watcher
-from archivum.code_repos import run_code_repo_worker
+from archivum.code_repos import requeue_stale_indexing, run_code_repo_worker
 from archivum.summaries import run_summary_worker
 from archivum.distillation import run_distill_worker
 from archivum.indexing import reconcile_vault
@@ -188,6 +188,13 @@ async def lifespan(app: FastAPI):
     # reading a repo is slow, and the wiki has to stay responsive meanwhile.
     code_repo_task: asyncio.Task[None] | None = None
     if settings.code_repo_worker_enabled:
+        # An ingest killed mid-flight leaves its row claimed as `indexing`, and
+        # the queue only ever selects `pending`. Reclaim those before draining,
+        # or a repo orphaned by one out-of-memory kill is never indexed again.
+        try:
+            await requeue_stale_indexing()
+        except Exception as exc:  # noqa: BLE001 - never block startup on this
+            logger.warning("Could not requeue stale repository indexing: %s", exc)
         code_repo_task = asyncio.create_task(run_code_repo_worker(settings))
 
     # Sessions arrive without being asked for. Everything downstream of capture

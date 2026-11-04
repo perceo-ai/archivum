@@ -22,33 +22,70 @@ def _trigrams(text: str) -> set[str]:
     return {t[i : i + 3] for i in range(len(t) - 2)}
 
 
+# Every row carries the scope it was projected from. Without it the index is a
+# single global bucket, and because a rebuild clears before repopulating,
+# indexing one repository silently erased every other repository's rows — the
+# surviving repo answered every query and all the others returned no seeds at
+# all. Scope is part of the primary key because ids collide across repos (every
+# repository has an `__init__.py` file node).
+_SCHEMA = """
+CREATE TABLE IF NOT EXISTS code_trigram (
+    scope   TEXT NOT NULL,
+    trigram TEXT NOT NULL,
+    node_id TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS code_node_text (
+    scope   TEXT NOT NULL,
+    node_id TEXT NOT NULL,
+    text    TEXT NOT NULL,
+    PRIMARY KEY (scope, node_id)
+);
+-- `trigram IN (...)` is the hot lookup on every code query and had no index at
+-- all, so each retrieval scanned the whole posting list.
+CREATE INDEX IF NOT EXISTS idx_code_trigram_scope_trigram
+    ON code_trigram(scope, trigram);
+CREATE INDEX IF NOT EXISTS idx_code_trigram_trigram
+    ON code_trigram(trigram);
+CREATE INDEX IF NOT EXISTS idx_code_node_text_scope
+    ON code_node_text(scope);
+"""
+
+
+async def _ensure_schema(conn: aiosqlite.Connection) -> None:
+    """Create the projection tables, migrating pre-scope ones by discarding them.
+
+    These two tables are a derived projection of the canonical code objects, so
+    throwing them away costs an ingest and never loses source data. That is
+    cheaper and less error-prone than back-filling a scope we no longer know:
+    rows written before this column existed cannot be attributed to a repo.
+    """
+    for table in ("code_trigram", "code_node_text"):
+        cursor = await conn.execute(f"PRAGMA table_info({table})")
+        columns = {row[1] for row in await cursor.fetchall()}
+        if columns and "scope" not in columns:
+            await conn.execute(f"DROP TABLE {table}")
+    await conn.executescript(_SCHEMA)
+
+
 async def build_lexical_index(
     conn: aiosqlite.Connection,
     code_nodes: list[tuple[str, str]],
+    *,
+    scope: str = "",
 ) -> None:
     """Build (or rebuild) the trigram posting list and node text tables.
 
-    Tables created if they don't exist; existing rows are cleared before
-    repopulating, making the function idempotent/rebuildable.
+    Only `scope`'s rows are cleared, so rebuilding one repository leaves every
+    other repository's index intact.
 
     Args:
         conn: An open aiosqlite connection.
         code_nodes: List of (node_id, text) pairs.
+        scope: The scope these nodes belong to, e.g. `repo:default:archivum`.
     """
-    await conn.executescript(
-        """
-        CREATE TABLE IF NOT EXISTS code_trigram (
-            trigram TEXT NOT NULL,
-            node_id TEXT NOT NULL
-        );
-        CREATE TABLE IF NOT EXISTS code_node_text (
-            node_id TEXT PRIMARY KEY,
-            text    TEXT NOT NULL
-        );
-        DELETE FROM code_trigram;
-        DELETE FROM code_node_text;
-        """
-    )
+    await _ensure_schema(conn)
+    await conn.execute("DELETE FROM code_trigram WHERE scope = ?", (scope,))
+    await conn.execute("DELETE FROM code_node_text WHERE scope = ?", (scope,))
 
     # Collapse duplicate node_ids (last text wins). The index is a rebuildable
     # projection keyed by node_id, so the same id is the same node — real repos
@@ -58,14 +95,13 @@ async def build_lexical_index(
 
     for node_id, text in deduped.items():
         await conn.execute(
-            "INSERT INTO code_node_text (node_id, text) VALUES (?, ?)",
-            (node_id, text),
+            "INSERT INTO code_node_text (scope, node_id, text) VALUES (?, ?, ?)",
+            (scope, node_id, text),
         )
-        for tri in _trigrams(text):
-            await conn.execute(
-                "INSERT INTO code_trigram (trigram, node_id) VALUES (?, ?)",
-                (tri, node_id),
-            )
+        await conn.executemany(
+            "INSERT INTO code_trigram (scope, trigram, node_id) VALUES (?, ?, ?)",
+            [(scope, tri, node_id) for tri in _trigrams(text)],
+        )
 
     await conn.commit()
 
@@ -73,17 +109,25 @@ async def build_lexical_index(
 async def trigram_candidates(
     conn: aiosqlite.Connection,
     query: str,
+    *,
+    scope: str | None = None,
 ) -> set[str]:
-    """Return the union of node_ids that share at least one trigram with query."""
+    """Return the union of node_ids that share at least one trigram with query.
+
+    `scope` filters in SQL rather than afterwards in Python, so a query against
+    one repository does not pay for every other repository's postings.
+    """
     tris = _trigrams(query)
     if not tris:
         return set()
 
     placeholders = ",".join("?" * len(tris))
-    cursor = await conn.execute(
-        f"SELECT DISTINCT node_id FROM code_trigram WHERE trigram IN ({placeholders})",
-        tuple(tris),
-    )
+    sql = f"SELECT DISTINCT node_id FROM code_trigram WHERE trigram IN ({placeholders})"
+    params: tuple[object, ...] = tuple(tris)
+    if scope is not None:
+        sql += " AND scope = ?"
+        params += (scope,)
+    cursor = await conn.execute(sql, params)
     rows = await cursor.fetchall()
     return {row[0] for row in rows}
 
@@ -97,6 +141,8 @@ async def score_nodes(
     conn: aiosqlite.Connection,
     query: str,
     candidate_ids: set[str],
+    *,
+    scope: str | None = None,
 ) -> list[tuple[float, str]]:
     """Score candidate nodes using IDF-weighted term matching.
 
@@ -110,8 +156,17 @@ async def score_nodes(
     if not candidate_ids:
         return []
 
+    # The corpus is the scope being searched, not the whole vault. Scoping it
+    # keeps IDF meaningful per repository and keeps the `LIKE` scans below
+    # proportional to one repo instead of every repo ever indexed.
+    scope_sql = "" if scope is None else " AND scope = ?"
+    scope_params: tuple[object, ...] = () if scope is None else (scope,)
+    where_scope = "" if scope is None else " WHERE scope = ?"
+
     # Fetch total doc count
-    cursor = await conn.execute("SELECT COUNT(*) FROM code_node_text")
+    cursor = await conn.execute(
+        f"SELECT COUNT(*) FROM code_node_text{where_scope}", scope_params
+    )
     row = await cursor.fetchone()
     n_docs: int = row[0] if row else 0
 
@@ -120,17 +175,19 @@ async def score_nodes(
     # Fetch texts for candidates only
     placeholders = ",".join("?" * len(candidate_ids))
     cursor = await conn.execute(
-        f"SELECT node_id, text FROM code_node_text WHERE node_id IN ({placeholders})",
-        tuple(candidate_ids),
+        f"SELECT node_id, text FROM code_node_text WHERE node_id IN ({placeholders})"
+        f"{scope_sql}",
+        tuple(candidate_ids) + scope_params,
     )
     node_texts: dict[str, str] = {r[0]: r[1].lower() for r in await cursor.fetchall()}
 
-    # Compute IDF for each term (df = count across ALL docs, not just candidates)
+    # Compute IDF for each term (df = count across all docs in scope, not just
+    # the candidates).
     term_idf: dict[str, float] = {}
     for term in terms:
         cursor = await conn.execute(
-            "SELECT COUNT(*) FROM code_node_text WHERE lower(text) LIKE ?",
-            (f"%{term}%",),
+            "SELECT COUNT(*) FROM code_node_text WHERE lower(text) LIKE ?" + scope_sql,
+            (f"%{term}%",) + scope_params,
         )
         df_row = await cursor.fetchone()
         df = df_row[0] if df_row else 0

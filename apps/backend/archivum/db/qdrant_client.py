@@ -104,9 +104,22 @@ async def resolve_embed_dim(s: Settings) -> int:
 
     # Probe a single vector.
     if provider == "local":
-        embedder = get_embedder(s)
-        vec = next(embedder.embed(["dimension probe"]))
-        dim = int(getattr(vec, "shape", [len(vec)])[0] if hasattr(vec, "shape") else len(vec))
+        # In a thread, like `embed_texts` below. Constructing the embedder
+        # downloads the model on a cold container and then runs an inference,
+        # and doing that inline pinned the event loop for the whole download —
+        # so the first query after any restart could outlast a proxy's timeout
+        # while the server looked busy rather than slow. The mcp container has
+        # no startup warmup at all, so for it that first query is a request.
+        loop = asyncio.get_running_loop()
+
+        def _probe() -> int:
+            embedder = get_embedder(s)
+            vec = next(embedder.embed(["dimension probe"]))
+            return int(
+                getattr(vec, "shape", [len(vec)])[0] if hasattr(vec, "shape") else len(vec)
+            )
+
+        dim = await loop.run_in_executor(None, _probe)
     else:
         vectors = await _embed_texts_openai_compat(["dimension probe"], s)
         dim = int(len(vectors[0]) if vectors else 0)

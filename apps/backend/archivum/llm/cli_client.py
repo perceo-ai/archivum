@@ -170,6 +170,15 @@ async def _run_process(args: list[str], stdin: str | None, *, timeout_seconds: i
         proc.kill()
         await proc.wait()
         raise CliModelError(f"CLI model timed out after {timeout_seconds} seconds") from exc
+    except asyncio.CancelledError:
+        # The child outlives this coroutine unless it is killed here, and
+        # cancelling takes the timeout with it — so an abandoned model process
+        # would run unbounded, holding memory and model capacity while whatever
+        # cancelled us carried on. Reindexing a repository cancels its previous
+        # narration, which is exactly this case.
+        proc.kill()
+        await proc.wait()
+        raise
 
     out = stdout.decode("utf-8", errors="replace").strip()
     err = stderr.decode("utf-8", errors="replace").strip()

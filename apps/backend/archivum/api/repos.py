@@ -16,13 +16,12 @@ from pathlib import Path
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
 from pydantic import BaseModel
 
-from archivum.api.devices import require_device
+from archivum.api.devices import require_device, writer_or_device
 from archivum.auth import CurrentUser, get_current_user, require_owner
 from archivum.code_repos import (
     CodeRepo,
     RepoError,
     get_repo,
-    index_repo,
     list_repos,
     register_repo,
     scope_for,
@@ -77,7 +76,11 @@ def _to_summary(repo: CodeRepo) -> RepoSummary:
 
 @router.get("", response_model=list[RepoSummary])
 async def list_registered_repos(
-    current_user: CurrentUser = Depends(get_current_user),
+    # A machine that may upload a repository may read back how its own index
+    # went. `awaitIndexed` in the CLI polls this; against `get_current_user` it
+    # got 401 every time, read that as "not finished", and after fifteen
+    # minutes reported the work still running whatever had actually happened.
+    current_user: CurrentUser = Depends(writer_or_device),
 ) -> list[RepoSummary]:
     return [_to_summary(repo) for repo in await list_repos(wiki_id=current_user.wiki_id)]
 
@@ -151,7 +154,11 @@ async def forget(
         await conn.commit()
 
 
-@router.post("/upload", response_model=RepoSummary)
+@router.post(
+    "/upload",
+    response_model=RepoSummary,
+    status_code=status.HTTP_202_ACCEPTED,
+)
 async def upload_repo(
     name: str = Form(...),
     archive: UploadFile = File(...),
@@ -203,15 +210,18 @@ async def upload_repo(
         staged_path.unlink(missing_ok=True)
 
     try:
+        # Queued, not run inline. Indexing used to happen inside this request so
+        # the CLI could wait on the answer, but a real repository outlives any
+        # proxy's patience: a 669-file checkout took longer than the Cloudflare
+        # tunnel's 100 seconds, so `archivum index` printed `fetch failed` while
+        # the server went on indexing it perfectly well. A false failure is
+        # worse than a slow success, and the queue already exists for this.
         repo = await register_repo(path=destination, wiki_id=wiki_id, name=repo_name)
-        # Run rather than queue: the caller is a CLI waiting on the answer, and
-        # a queued upload that fails later is indistinguishable from a slow one.
-        repo = await index_repo(repo, settings=settings)
     except RepoError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
     logger.info(
-        "Indexed uploaded repository",
-        extra={"repo": repo_name, "wiki_id": wiki_id, "files": repo.files},
+        "Queued uploaded repository for indexing",
+        extra={"repo": repo_name, "wiki_id": wiki_id},
     )
     return _to_summary(repo)

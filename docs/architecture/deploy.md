@@ -61,11 +61,16 @@ TRANSCRIPT_DIRS=/data/transcripts
 
 On a hosted deployment this only covers transcripts on the VM. Agents running on
 your laptops write their transcripts to those laptops, which the server cannot
-read, so **automatic capture does not cover them**. What works today is explicit
-`record_work` — it is an MCP tool, so it travels over the wire from any linked
-machine, and the `archivum-memory` skill is what gets an agent to call it without
-being asked. A transcript shipper that closes this gap is planned; until it ships,
-do not assume work done on a laptop appears in the stream on its own.
+read — a mount does not cross machines. Those sessions are shipped from the
+machine instead: `archivum habits` (which `connect` runs) installs a Claude Code
+Stop hook that hands each finished session to `archivum capture-session`, which
+posts it to `POST /api/sources/capture` with the machine's device key. Same
+endpoint, same redaction, same dedup as every other capture path.
+
+To turn that off, either set `ARCHIVUM_CAPTURE=off` in the environment the agent
+runs in, or put `"capture": false` in `~/.archivum/connection.json` on that
+machine. Either one makes the hook a no-op; the nudge to call `record_work`
+stays.
 
 **3. Set the public URLs** so pairing hands out addresses that work off the VM:
 

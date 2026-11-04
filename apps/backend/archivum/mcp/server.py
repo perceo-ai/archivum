@@ -17,7 +17,14 @@ from starlette.applications import Starlette
 from starlette.routing import BaseRoute
 
 from archivum.capture.schema import Conversation, ToolCall, Turn
-from archivum.code_repos import index_repo, list_repos, register_repo, scope_for
+from archivum.code_repos import (
+    index_repo,
+    list_repos,
+    orphan_repo_scopes,
+    purge_repo_scope,
+    register_repo,
+    scope_for,
+)
 from archivum.devices.provisioning import PROVISION_PREFIX
 from archivum.devices.repository import DeviceRepository
 from archivum.fixes import recall_fixes, reindex_fixes
@@ -802,6 +809,7 @@ async def record_work(
     outcome: str,
     changed_paths: list[str] | None = None,
     verified_by: str = "",
+    symptom: str = "",
     wiki_id: str = "default",
 ) -> dict[str, Any]:
     """Record what you just did and why, when it is worth keeping.
@@ -810,6 +818,13 @@ async def record_work(
     the one for when you know something mattered and want it stated plainly
     rather than inferred from a transcript. Say what was asked, what you found,
     which files changed, and how you checked.
+
+    `symptom` is how this trouble will *arrive* next time: paste the error, the
+    failing output, the sentence someone will type when they hit it again. It
+    is what `recall_fix` matches against. Leave it out and the failure is
+    guessed from this session's words, which for a request like "prepare the
+    branch for a PR" means the recorded symptom is that sentence — and no
+    future paste of the actual error will ever match it.
     """
     _require_key()
     set_trace_id(new_trace_id("mcp-record-work"))
@@ -844,6 +859,7 @@ async def record_work(
             # You are telling us this mattered. Do not re-derive that from
             # keywords in your own sentence.
             stated=True,
+            symptom=symptom,
         )
         await connection.commit()
 
@@ -1165,6 +1181,30 @@ async def dispatch_command(command: str, wiki_id: str = "default") -> dict[str, 
                 "result": {"embedded": count},
             }
 
+        if cmd in {"purge-repo", "purge_repo"}:
+            # Deliberately explicit, one scope per call, and never wildcarded:
+            # this is the only command here that destroys memory, so it should
+            # be impossible to run by accident or in bulk by a typo.
+            if not rest.strip():
+                orphans = await orphan_repo_scopes(wiki_id=wiki_id)
+                return {
+                    "ok": True,
+                    "command": raw,
+                    "tool": "purge_repo",
+                    "result": {
+                        "orphan_scopes": orphans,
+                        "note": "Pass one scope to purge it. Nothing was deleted.",
+                    },
+                }
+            scope = rest.strip()
+            removed = await purge_repo_scope(scope, wiki_id=wiki_id)
+            return {
+                "ok": True,
+                "command": raw,
+                "tool": "purge_repo",
+                "result": {"scope": scope, "removed": removed},
+            }
+
         if cmd in {"graph-export-demo", "graph_export_demo", "export_graph_demo"}:
             result = await export_graph_demo(output_dir=rest or None)
             return {"ok": True, "command": raw, "tool": "export_graph_demo", "result": result}
@@ -1208,6 +1248,10 @@ async def capture_conversation_impl(
     )
     store = CaptureStore(wiki_id=wiki_id, settings=get_settings())
     res = await store.capture(conv)
+    # Capture alone is inert: the Source exists but nothing ever reads it. The
+    # REST twin has always queued distillation here; this path did not, so a
+    # conversation captured through MCP never became memory of any kind.
+    await sqlite.enqueue_distillation(res.source_id, wiki_id)
     return {
         "source_id": res.source_id,
         "content_hash": res.content_hash,
@@ -1237,6 +1281,23 @@ async def capture_conversation(
     )
 
 
+def _warm_embedder() -> None:
+    """Build the local embedding model now, so no request has to.
+
+    Best effort: a vault whose embeddings come from a remote provider has
+    nothing to warm, and one that cannot reach the model should still serve
+    every tool that does not need it. Failing to warm is a slow first query,
+    not a dead server.
+    """
+    if (settings.embed_provider or "local").strip().lower() != "local":
+        return
+    try:
+        qdrant.get_embedder(settings)
+        logger.info("Embedding model ready", extra={"model": settings.embed_model})
+    except Exception as exc:  # noqa: BLE001 - never block startup on this
+        logger.warning("Could not warm the embedding model: %s", exc)
+
+
 def main() -> None:
     import uvicorn
 
@@ -1259,6 +1320,12 @@ def main() -> None:
         set_transport("stdio")
         mcp.run(transport="stdio")
         return
+
+    # Warm the local embedder before serving. The API warms it during its own
+    # startup; this process never did, so the first `retrieve_memory` after any
+    # restart paid for constructing the model — a download on a cold container
+    # — inside the request, and could outlast a proxy's timeout.
+    _warm_embedder()
 
     # Default to HTTP for container usage: both /sse and /mcp are served. Host
     # is set when FastMCP is created; port is configured via MCP_PORT.

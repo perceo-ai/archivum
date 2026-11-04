@@ -168,7 +168,11 @@ class KnowledgeRepository:
             f"SELECT * FROM knowledge_objects{where} ORDER BY id LIMIT ?", params
         ) as cursor:
             rows = await cursor.fetchall()
-        return [await self._row_to_object(row) for row in rows]
+        citations = await self._citations_for("object", [row["id"] for row in rows])
+        return [
+            await self._row_to_object(row, citations.get(row["id"], []))
+            for row in rows
+        ]
 
     async def get_relationship(self, relationship_id: str) -> KnowledgeRelationship | None:
         async with self._conn.execute(
@@ -178,10 +182,26 @@ class KnowledgeRepository:
         return await self._row_to_relationship(row) if row else None
 
     async def list_relationships(
-        self, node_id: str | None = None, scope: str | None = None
+        self,
+        node_id: str | None = None,
+        scope: str | None = None,
+        limit: int | None = None,
+        among_ids: list[str] | None = None,
     ) -> list[KnowledgeRelationship]:
+        """Relationships in a scope, optionally only those joining known nodes.
+
+        `among_ids` is how retrieval bounds this safely. A plain `limit` takes
+        the first rows by id, which is decided before anything knows what the
+        query matched — so in a large scope a matched symbol could lose every
+        one of its edges because unrelated ones happened to sort first. Asking
+        for the edges between the nodes already loaded cannot drop a relevant
+        one, because an edge to a node outside that set has nowhere to land.
+        """
+        if among_ids is not None:
+            return await self._relationships_among(among_ids, scope)
+
         clauses: list[str] = []
-        params: list[str] = []
+        params: list[str | int] = []
         if node_id is not None:
             clauses.append("(src_id=? OR dst_id=?)")
             params.extend((node_id, node_id))
@@ -189,11 +209,64 @@ class KnowledgeRepository:
             clauses.append("scope=?")
             params.append(scope)
         where = f" WHERE {' AND '.join(clauses)}" if clauses else ""
+        # This had no bound at all, and retrieval calls it per request. A repo
+        # with eight thousand edges hydrated all eight thousand to return ten.
+        suffix = ""
+        if limit is not None:
+            suffix = " LIMIT ?"
+            params.append(limit)
         async with self._conn.execute(
-            f"SELECT * FROM knowledge_relationships{where} ORDER BY id", params
+            f"SELECT * FROM knowledge_relationships{where} ORDER BY id{suffix}", params
         ) as cursor:
             rows = await cursor.fetchall()
-        return [await self._row_to_relationship(row) for row in rows]
+        return await self._hydrate_relationships(rows)
+
+    async def _relationships_among(
+        self, node_ids: list[str], scope: str | None
+    ) -> list[KnowledgeRelationship]:
+        """Edges whose both endpoints are in `node_ids`.
+
+        Through a temp table rather than batched `IN (...)` lists. Batching the
+        ids and requiring both endpoints inside the *same* batch drops every
+        edge that happens to span two of them — with a few hundred ids per
+        batch and a repository of a few thousand symbols, that is most of the
+        graph, silently. A dangling edge is still excluded: one whose other end
+        was never loaded has nowhere to traverse to.
+        """
+        if not node_ids:
+            return []
+        await self._conn.execute(
+            "CREATE TEMP TABLE IF NOT EXISTS _relationship_scope_ids (id TEXT PRIMARY KEY)"
+        )
+        await self._conn.execute("DELETE FROM _relationship_scope_ids")
+        await self._conn.executemany(
+            "INSERT OR IGNORE INTO _relationship_scope_ids (id) VALUES (?)",
+            [(node_id,) for node_id in node_ids],
+        )
+        sql = (
+            "SELECT r.* FROM knowledge_relationships r "
+            "JOIN _relationship_scope_ids a ON a.id = r.src_id "
+            "JOIN _relationship_scope_ids b ON b.id = r.dst_id"
+        )
+        params: tuple[object, ...] = ()
+        if scope is not None:
+            sql += " WHERE r.scope = ?"
+            params = (scope,)
+        async with self._conn.execute(sql + " ORDER BY r.id", params) as cursor:
+            rows = await cursor.fetchall()
+        await self._conn.execute("DELETE FROM _relationship_scope_ids")
+        return await self._hydrate_relationships(rows)
+
+    async def _hydrate_relationships(
+        self, rows: list[aiosqlite.Row]
+    ) -> list[KnowledgeRelationship]:
+        citations = await self._citations_for(
+            "relationship", [row["id"] for row in rows]
+        )
+        return [
+            await self._row_to_relationship(row, citations.get(row["id"], []))
+            for row in rows
+        ]
 
     async def delete_relationships(
         self,
@@ -425,7 +498,40 @@ class KnowledgeRepository:
             rows = await cursor.fetchall()
         return [Citation(**dict(row)) for row in rows]
 
-    async def _row_to_object(self, row: aiosqlite.Row) -> KnowledgeObject:
+    async def _citations_for(
+        self, knowledge_type: str, knowledge_ids: list[str]
+    ) -> dict[str, list[Citation]]:
+        """Citations for many records in one pass, grouped by record id.
+
+        Hydrating a list used to issue one citation query per row. Retrieval
+        lists every object and every relationship in a scope, so answering a
+        ten-node question about a repository of thirty thousand symbols cost
+        tens of thousands of sequential round trips, each one a thread hop.
+        """
+        grouped: dict[str, list[Citation]] = {}
+        # SQLITE_MAX_VARIABLE_NUMBER is 999 on older builds; stay well inside it.
+        for start in range(0, len(knowledge_ids), 500):
+            batch = knowledge_ids[start : start + 500]
+            placeholders = ",".join("?" * len(batch))
+            async with self._conn.execute(
+                f"""
+                SELECT knowledge_id, source_id, chunk_id, span_start, span_end, quote
+                FROM knowledge_citations
+                WHERE knowledge_type=? AND knowledge_id IN ({placeholders})
+                ORDER BY knowledge_id, position
+                """,
+                (knowledge_type, *batch),
+            ) as cursor:
+                for row in await cursor.fetchall():
+                    fields = dict(row)
+                    grouped.setdefault(fields.pop("knowledge_id"), []).append(
+                        Citation(**fields)
+                    )
+        return grouped
+
+    async def _row_to_object(
+        self, row: aiosqlite.Row, citations: list[Citation] | None = None
+    ) -> KnowledgeObject:
         return KnowledgeObject(
             id=row["id"],
             kind=row["kind"],
@@ -433,11 +539,17 @@ class KnowledgeRepository:
             scope=row["scope"],
             confidence=row["confidence"],
             extraction_method=row["extraction_method"],
-            citations=await self._citations("object", row["id"]),
+            citations=(
+                citations
+                if citations is not None
+                else await self._citations("object", row["id"])
+            ),
             properties=json.loads(row["properties"]),
         )
 
-    async def _row_to_relationship(self, row: aiosqlite.Row) -> KnowledgeRelationship:
+    async def _row_to_relationship(
+        self, row: aiosqlite.Row, citations: list[Citation] | None = None
+    ) -> KnowledgeRelationship:
         return KnowledgeRelationship(
             id=row["id"],
             src_id=row["src_id"],
@@ -446,6 +558,10 @@ class KnowledgeRepository:
             scope=row["scope"],
             confidence=row["confidence"],
             extraction_method=row["extraction_method"],
-            citations=await self._citations("relationship", row["id"]),
+            citations=(
+                citations
+                if citations is not None
+                else await self._citations("relationship", row["id"])
+            ),
             properties=json.loads(row["properties"]),
         )

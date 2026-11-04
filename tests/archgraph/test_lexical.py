@@ -33,6 +33,83 @@ async def test_build_index_idempotent_on_duplicate_node_ids(tmp_path):
         await db.close()
 
 
+async def test_rebuilding_one_scope_leaves_other_scopes_indexed(tmp_path):
+    # The projection used to be one global bucket cleared on every rebuild, so
+    # indexing the second repository silently erased the first one's rows. Every
+    # repo but the most recently indexed then returned no seeds at all.
+    db = await aiosqlite.connect(tmp_path / "idx.db")
+    try:
+        await build_lexical_index(
+            db, [("a:retry", "retry handler")], scope="repo:default:a"
+        )
+        await build_lexical_index(
+            db, [("b:parser", "parser entry")], scope="repo:default:b"
+        )
+
+        assert await trigram_candidates(
+            db, "retry", scope="repo:default:a"
+        ) == {"a:retry"}
+        assert await trigram_candidates(
+            db, "parser", scope="repo:default:b"
+        ) == {"b:parser"}
+        # A scoped query must not reach into another repository's rows.
+        assert await trigram_candidates(db, "parser", scope="repo:default:a") == set()
+    finally:
+        await db.close()
+
+
+async def test_rebuilding_a_scope_replaces_only_its_own_rows(tmp_path):
+    db = await aiosqlite.connect(tmp_path / "idx.db")
+    try:
+        await build_lexical_index(
+            db, [("a:retry", "retry handler")], scope="repo:default:a"
+        )
+        await build_lexical_index(
+            db, [("b:parser", "parser entry")], scope="repo:default:b"
+        )
+        # Re-index a with different contents: its old row goes, b's stays.
+        await build_lexical_index(
+            db, [("a:backoff", "backoff policy")], scope="repo:default:a"
+        )
+
+        assert await trigram_candidates(db, "retry", scope="repo:default:a") == set()
+        assert await trigram_candidates(
+            db, "backoff", scope="repo:default:a"
+        ) == {"a:backoff"}
+        assert await trigram_candidates(
+            db, "parser", scope="repo:default:b"
+        ) == {"b:parser"}
+    finally:
+        await db.close()
+
+
+async def test_build_index_migrates_a_pre_scope_projection(tmp_path):
+    # Deployed vaults have scope-less tables. The projection is derived, so the
+    # builder drops and rebuilds rather than inventing a scope for old rows.
+    db = await aiosqlite.connect(tmp_path / "idx.db")
+    try:
+        await db.executescript(
+            """
+            CREATE TABLE code_trigram (trigram TEXT NOT NULL, node_id TEXT NOT NULL);
+            CREATE TABLE code_node_text (
+                node_id TEXT PRIMARY KEY, text TEXT NOT NULL
+            );
+            INSERT INTO code_node_text (node_id, text) VALUES ('old', 'stale row');
+            INSERT INTO code_trigram (trigram, node_id) VALUES ('sta', 'old');
+            """
+        )
+        await db.commit()
+
+        await build_lexical_index(
+            db, [("a:retry", "retry handler")], scope="repo:default:a"
+        )
+
+        cur = await db.execute("SELECT node_id, scope FROM code_node_text")
+        assert await cur.fetchall() == [("a:retry", "repo:default:a")]
+    finally:
+        await db.close()
+
+
 def test_trigrams_short():
     result = _trigrams("ab")
     assert len(result) == 1
