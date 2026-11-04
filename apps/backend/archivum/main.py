@@ -48,7 +48,11 @@ from archivum.observability import new_trace_id, set_trace_id
 from archivum.memory.retention import run_retention_worker
 from archivum.page_write_queue import run_page_write_worker
 from archivum.capture.transcript_watch import run_transcript_watcher
-from archivum.code_repos import requeue_stale_indexing, run_code_repo_worker
+from archivum.code_repos import (
+    requeue_stale_indexing,
+    resume_owed_narration,
+    run_code_repo_worker,
+)
 from archivum.summaries import run_summary_worker
 from archivum.distillation import run_distill_worker
 from archivum.indexing import reconcile_vault
@@ -141,7 +145,21 @@ async def lifespan(app: FastAPI):
 
     # Init derived stores
     await sqlite.init_db(settings)
-    await qdrant.init_collection(settings)
+    try:
+        await qdrant.init_collection(settings)
+    except Exception as exc:  # noqa: BLE001 - see below
+        # Embeddings are one retrieval channel, not the service. This used to
+        # abort startup, and on 2026-11-04 it took the deployment down for
+        # twenty minutes: one interrupted model download left a snapshot
+        # directory with no model file in it, `onnxruntime` raised
+        # `NO_SUCHFILE`, and the backend then refused to start on every
+        # restart of that container — taking the wiki, code search and fix
+        # recall with it, none of which need a vector.
+        logger.warning(
+            "Vector search is unavailable this run; everything else still "
+            "works and it is retried per query: %s",
+            exc,
+        )
     await graph.init_graph(settings)
 
     # Ensure owner exists
@@ -195,6 +213,13 @@ async def lifespan(app: FastAPI):
             await requeue_stale_indexing()
         except Exception as exc:  # noqa: BLE001 - never block startup on this
             logger.warning("Could not requeue stale repository indexing: %s", exc)
+        # Narration that a restart interrupted. The repositories are `ready`
+        # and the queue only selects `pending`, so without this their pages
+        # were simply never written.
+        try:
+            await resume_owed_narration(settings=settings)
+        except Exception as exc:  # noqa: BLE001 - never block startup on prose
+            logger.warning("Could not resume page narration: %s", exc)
         code_repo_task = asyncio.create_task(run_code_repo_worker(settings))
 
     # Sessions arrive without being asked for. Everything downstream of capture

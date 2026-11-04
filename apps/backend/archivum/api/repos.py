@@ -16,7 +16,7 @@ from pathlib import Path
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
 from pydantic import BaseModel
 
-from archivum.api.devices import require_device, writer_or_device
+from archivum.api.devices import require_device, user_or_device
 from archivum.auth import CurrentUser, get_current_user, require_owner
 from archivum.code_repos import (
     CodeRepo,
@@ -80,7 +80,9 @@ async def list_registered_repos(
     # went. `awaitIndexed` in the CLI polls this; against `get_current_user` it
     # got 401 every time, read that as "not finished", and after fifteen
     # minutes reported the work still running whatever had actually happened.
-    current_user: CurrentUser = Depends(writer_or_device),
+    # Read-capable rather than writer-only: listing repositories is not a
+    # write, and demanding one locked viewers out of the graph picker.
+    current_user: CurrentUser = Depends(user_or_device),
 ) -> list[RepoSummary]:
     return [_to_summary(repo) for repo in await list_repos(wiki_id=current_user.wiki_id)]
 

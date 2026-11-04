@@ -22,7 +22,9 @@ from archivum.code_repos import (
     _set_status,
     cancel_narrations,
     get_repo,
+    init_repo_schema,
     narrate_repo_pages,
+    resume_owed_narration,
     index_repo,
     register_repo,
     requeue_stale_indexing,
@@ -301,3 +303,123 @@ async def test_shutdown_during_a_handover_does_not_start_new_narration(vault):  
     from archivum.code_repos import _narrations
 
     assert _narrations == {}
+
+
+async def test_owed_narration_is_resumed_after_a_restart(vault):  # noqa: F811
+    """A restart cancels the task; nothing else would ever look again.
+
+    The repository is `ready` and the queue selects `pending` only, so the
+    pages were simply never written. The flag is what survives the restart.
+    """
+    repo = await _registered(vault)
+    first_started = asyncio.Event()
+
+    async def hangs(repo_arg, **_):
+        first_started.set()
+        await asyncio.Event().wait()
+
+    with patch("archivum.code_repos.write_repo_pages", new=hangs):
+        await run_pending_repo_indexing(settings=vault, narrate=False)
+        await asyncio.wait_for(first_started.wait(), timeout=5)
+        stored = await get_repo(repo.scope, wiki_id="default")
+        assert stored is not None and stored.narration_owed is True
+        # The restart.
+        await cancel_narrations()
+
+    # Still owed, because the pages never landed.
+    stored = await get_repo(repo.scope, wiki_id="default")
+    assert stored is not None and stored.narration_owed is True
+
+    resumed_started = asyncio.Event()
+
+    async def writes(repo_arg, **_):
+        resumed_started.set()
+        return 3
+
+    with patch("archivum.code_repos.write_repo_pages", new=writes):
+        assert await resume_owed_narration(settings=vault) == 1
+        await asyncio.wait_for(resumed_started.wait(), timeout=5)
+        await asyncio.sleep(0.1)
+
+    stored = await get_repo(repo.scope, wiki_id="default")
+    assert stored is not None
+    assert stored.pages == 3
+    assert stored.narration_owed is False, "a written page is no longer owed"
+
+
+async def test_a_purge_stops_the_narration_that_would_rewrite_its_pages(vault):  # noqa: F811
+    """A narration in flight goes on to write the markdown being deleted.
+
+    Markdown is the source of truth, so leaving those files behind means the
+    vault watcher imports the purged repository straight back.
+    """
+    repo = await _registered(vault)
+    started = asyncio.Event()
+
+    async def hangs(repo_arg, **_):
+        started.set()
+        await asyncio.Event().wait()
+
+    with patch("archivum.code_repos.write_repo_pages", new=hangs):
+        await run_pending_repo_indexing(settings=vault, narrate=False)
+        await asyncio.wait_for(started.wait(), timeout=5)
+
+        from archivum.code_repos import _narrations, purge_repo_scope
+
+        assert repo.scope in _narrations
+        await asyncio.wait_for(
+            purge_repo_scope(repo.scope, wiki_id="default"), timeout=10
+        )
+        assert repo.scope not in _narrations, "the writer must be gone first"
+
+    assert await get_repo(repo.scope, wiki_id="default") is None
+
+
+async def test_forget_does_not_let_narration_delete_the_pages(vault):  # noqa: F811
+    """`forget` drops the registration and keeps the pages on purpose.
+
+    A missing register row alone does not say which kind of gone this is, and
+    treating it as a purge would have erased pages a person edited by hand.
+    The knowledge objects are the difference: `forget` leaves them.
+    """
+    repo = await _registered(vault)
+    page_dir = vault.wiki_dir / "code" / "atlas"
+    page_dir.mkdir(parents=True, exist_ok=True)
+    (page_dir / "hand-written.md").write_text("# mine\n", encoding="utf-8")
+
+    async def writes(repo_arg, **_):
+        # Unregistered mid-narration, as `forget` does — records left behind.
+        async with sqlite_mod.get_db() as conn:
+            await conn.execute("DELETE FROM code_repos WHERE scope=?", (repo_arg.scope,))
+            await conn.execute(
+                "INSERT OR IGNORE INTO knowledge_objects "
+                "(id, kind, label, scope, confidence, extraction_method, properties) "
+                "VALUES (?,?,?,?,?,?,?)",
+                (f"{repo_arg.scope}:sym", "symbol", "sym", repo_arg.scope, 1.0, "EXTRACTED", "{}"),
+            )
+            await conn.commit()
+        return 2
+
+    with patch("archivum.code_repos.write_repo_pages", new=writes):
+        await narrate_repo_pages(repo, settings=vault)
+
+    assert (page_dir / "hand-written.md").exists(), "forget must keep the pages"
+
+
+async def test_two_first_callers_can_both_initialise_the_schema(vault):  # noqa: F811
+    """Both read the old columns before either alters the table.
+
+    The loser used to fail its whole request on a duplicate column; the column
+    existing is what both of them wanted.
+    """
+    await sqlite_mod.init_db(vault)
+
+    async def init_once():
+        async with sqlite_mod.get_db() as conn:
+            await init_repo_schema(conn)
+
+    await asyncio.gather(*(init_once() for _ in range(6)))
+
+    async with sqlite_mod.get_db() as conn:
+        cursor = await conn.execute("PRAGMA table_info(code_repos)")
+        assert "narration_owed" in {row[1] for row in await cursor.fetchall()}

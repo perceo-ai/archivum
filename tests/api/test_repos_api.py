@@ -18,7 +18,7 @@ import pytest_asyncio
 from fastapi.testclient import TestClient
 
 import archivum.db.sqlite as sqlite_mod
-from archivum.api.devices import writer_or_device
+from archivum.api.devices import user_or_device, writer_or_device
 from archivum.auth import CurrentUser, get_current_user, require_writer
 from archivum.code_repos import run_pending_repo_indexing
 from archivum.config import Settings, get_settings
@@ -81,8 +81,10 @@ async def env(tmp_path):
     owner = CurrentUser(username="owner", role="owner", wiki_id="default")
     app.dependency_overrides[get_current_user] = lambda: owner
     app.dependency_overrides[require_writer] = lambda: owner
-    # The status route accepts a linked machine as well as a person.
+    # The status route accepts a linked machine as well as a person, and only
+    # requires read access — a viewer may list repositories.
     app.dependency_overrides[writer_or_device] = lambda: owner
+    app.dependency_overrides[user_or_device] = lambda: owner
     app.dependency_overrides[get_settings] = lambda: settings
 
     yield TestClient(app, raise_server_exceptions=True), settings

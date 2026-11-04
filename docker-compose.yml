@@ -26,6 +26,14 @@ services:
       - KUZU_CHECKPOINT_THRESHOLD_BYTES=${KUZU_CHECKPOINT_THRESHOLD_BYTES:-65536}
       - MCP_API_KEY=${MCP_API_KEY:-}
       - EMBED_PROVIDER=${EMBED_PROVIDER:-local}
+      # Where the local embedding model is kept. fastembed defaults to
+      # /tmp/fastembed_cache, which the `model_cache` volume below does not
+      # cover — so mounting the volume alone cached nothing, and every restart
+      # re-downloaded the model. Worse, a download interrupted in /tmp leaves a
+      # snapshot directory with no model file in it, and onnxruntime then fails
+      # on every later restart of that container. That took the deployment down
+      # on 2026-11-04.
+      - FASTEMBED_CACHE_PATH=${FASTEMBED_CACHE_PATH:-/home/app/.cache/fastembed}
       - EMBED_MODEL=${EMBED_MODEL:-BAAI/bge-small-en-v1.5}
       - EMBED_DIM=${EMBED_DIM:-0}
       - EMBED_OPENAI_COMPAT_PROVIDER=${EMBED_OPENAI_COMPAT_PROVIDER:-openai}
@@ -59,9 +67,7 @@ services:
       - kuzu_data:/data/kuzu
       - codex_home:/home/app/.codex
       - claude_home:/home/app/.claude
-      # The local embedding model, kept across restarts. Without this the
-      # backend re-downloaded it from HuggingFace on every single boot — five
-      # files, unauthenticated, before the first query could be answered.
+      # Holds the embedding model across restarts; see FASTEMBED_CACHE_PATH.
       - model_cache:/home/app/.cache
       # Agent transcripts, read-only: capture reads them and must never write
       # back into a directory another tool owns.
@@ -109,6 +115,14 @@ services:
       - MCP_HOST=0.0.0.0
       - MCP_PORT=8001
       - EMBED_PROVIDER=${EMBED_PROVIDER:-local}
+      # Where the local embedding model is kept. fastembed defaults to
+      # /tmp/fastembed_cache, which the `model_cache` volume below does not
+      # cover — so mounting the volume alone cached nothing, and every restart
+      # re-downloaded the model. Worse, a download interrupted in /tmp leaves a
+      # snapshot directory with no model file in it, and onnxruntime then fails
+      # on every later restart of that container. That took the deployment down
+      # on 2026-11-04.
+      - FASTEMBED_CACHE_PATH=${FASTEMBED_CACHE_PATH:-/home/app/.cache/fastembed}
       - EMBED_MODEL=${EMBED_MODEL:-BAAI/bge-small-en-v1.5}
       - EMBED_DIM=${EMBED_DIM:-0}
       - EMBED_OPENAI_COMPAT_PROVIDER=${EMBED_OPENAI_COMPAT_PROVIDER:-openai}
@@ -147,9 +161,7 @@ services:
       # unauthenticated and every summary silently fails.
       - codex_home:/home/app/.codex
       - claude_home:/home/app/.claude
-      # The local embedding model, kept across restarts. Without this the
-      # backend re-downloaded it from HuggingFace on every single boot — five
-      # files, unauthenticated, before the first query could be answered.
+      # Holds the embedding model across restarts; see FASTEMBED_CACHE_PATH.
       - model_cache:/home/app/.cache
     networks:
       - archivum-net

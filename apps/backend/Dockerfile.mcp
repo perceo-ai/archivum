@@ -17,6 +17,11 @@ COPY archivum/ archivum/
 # Run as non-root
 RUN useradd -m -u 10001 app
 
+# Same as the API image: `.cache` is a named volume at run time holding the
+# embedding model, and a fresh volume takes the ownership of the path it
+# covers. Root-owned, the warmup cannot write it.
+RUN mkdir -p /home/app/.cache/fastembed && chown -R app:app /home/app/.cache
+
 EXPOSE 8001
 
 USER app

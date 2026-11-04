@@ -26,8 +26,13 @@ COPY archivum/ archivum/
 RUN useradd -m -u 10001 app
 
 # Create required data directories
+# `.cache` holds the embedding model and is a named volume at run time. It has
+# to exist and belong to `app` here, because a fresh volume takes the
+# ownership of the path it covers — root-owned, and the model download then
+# fails for a container that runs as `app`.
 RUN mkdir -p /data/wiki /data/raw /data/kuzu /home/app/.codex /home/app/.claude \
-  && chown -R app:app /data /home/app/.codex /home/app/.claude
+  /home/app/.cache/fastembed \
+  && chown -R app:app /data /home/app/.codex /home/app/.claude /home/app/.cache
 
 USER app
 

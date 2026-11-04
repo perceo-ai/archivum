@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import re
+import threading
 import uuid
 from typing import Any
 
@@ -32,11 +33,24 @@ _embedder: TextEmbedding | None = None
 _embed_dim_cache: dict[tuple[str, str, str], int] = {}
 
 
+# Construction downloads and loads the model, so it must happen once. The probe
+# and `embed_texts` both run in a thread, which made two searches able to see
+# `_embedder is None` at the same time and each build their own — two downloads
+# and two copies in memory, exactly when a vault is recovering from not having
+# the model at all.
+_embedder_lock = threading.Lock()
+
+
 def get_embedder(settings: Settings | None = None) -> TextEmbedding:
     global _embedder
-    if _embedder is None:
-        s = settings or get_settings()
-        _embedder = TextEmbedding(s.embed_model)
+    if _embedder is not None:
+        return _embedder
+    s = settings or get_settings()
+    with _embedder_lock:
+        # Re-checked under the lock: whoever held it may have built it while
+        # this call was waiting.
+        if _embedder is None:
+            _embedder = TextEmbedding(s.embed_model)
     return _embedder
 
 

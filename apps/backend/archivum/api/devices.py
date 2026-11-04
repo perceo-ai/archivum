@@ -116,6 +116,23 @@ async def require_device(request: Request) -> dict[str, Any]:
 DEVICE_ROLE = "device"
 
 
+async def user_or_device(
+    request: Request,
+    settings: Settings = Depends(get_settings),
+) -> CurrentUser:
+    """Authenticate any signed-in member or a linked machine, for read routes.
+
+    `writer_or_device` demands `owner` or `collaborator`, so using it on a read
+    route locked out viewers that previously had access — the frontend's
+    repository picker turned the 403 into an empty list and the graphs simply
+    vanished for them. Reading what repositories exist is not a write.
+    """
+    device = await _device_from(request)
+    if device is not None:
+        return device
+    return await _token_user(request, settings)
+
+
 async def writer_or_device(
     request: Request,
     settings: Settings = Depends(get_settings),
@@ -133,30 +150,43 @@ async def writer_or_device(
     The device is resolved first because its key is unmistakable and cheap to
     check; anything else falls through to the normal token path.
     """
-    header = request.headers.get("Authorization", "")
-    scheme, _, raw_key = header.partition(" ")
-    if scheme.lower() == "bearer" and raw_key:
-        async with sqlite.get_db() as conn:
-            device = await DeviceRepository(conn).verify(raw_key)
-        if device is not None:
-            return CurrentUser(
-                username=str(device.get("name") or "device"),
-                role=DEVICE_ROLE,
-                wiki_id=str(device["wiki_id"]),
-            )
+    device = await _device_from(request)
+    if device is not None:
+        return device
 
-    user = await get_current_user(
-        request=request,
-        authorization=header or None,
-        access_token=request.cookies.get("access_token"),
-        settings=settings,
-    )
+    user = await _token_user(request, settings)
     if user.role not in {"owner", "collaborator"}:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Write access required",
         )
     return user
+
+
+async def _device_from(request: Request) -> CurrentUser | None:
+    """The linked machine behind this request, or None if it is not one."""
+    header = request.headers.get("Authorization", "")
+    scheme, _, raw_key = header.partition(" ")
+    if scheme.lower() != "bearer" or not raw_key:
+        return None
+    async with sqlite.get_db() as conn:
+        device = await DeviceRepository(conn).verify(raw_key)
+    if device is None:
+        return None
+    return CurrentUser(
+        username=str(device.get("name") or "device"),
+        role=DEVICE_ROLE,
+        wiki_id=str(device["wiki_id"]),
+    )
+
+
+async def _token_user(request: Request, settings: Settings) -> CurrentUser:
+    return await get_current_user(
+        request=request,
+        authorization=request.headers.get("Authorization") or None,
+        access_token=request.cookies.get("access_token"),
+        settings=settings,
+    )
 
 
 @router.post("/pairing-tokens")

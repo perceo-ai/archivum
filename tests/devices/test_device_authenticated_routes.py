@@ -115,3 +115,50 @@ async def test_a_device_cannot_import_a_file_off_the_server(linked, tmp_path):
     )
 
     assert response.status_code in (401, 403), response.text
+
+
+async def test_a_viewer_can_still_list_repositories(linked):
+    """Listing repositories is a read, and demanding write access broke it.
+
+    `writer_or_device` requires owner or collaborator, so a signed-in viewer
+    got 403 and the frontend's repository picker turned that into an empty
+    list — the graphs simply disappeared for them.
+    """
+    from archivum.api.devices import user_or_device
+    from archivum.auth import CurrentUser
+
+    client, _ = linked
+    viewer = CurrentUser(username="reader", role="viewer", wiki_id="default")
+    client.app.dependency_overrides[user_or_device] = lambda: viewer
+
+    assert client.get("/api/repos").status_code == 200
+
+
+async def test_capture_still_demands_write_access(monkeypatch):
+    """The read route widened; the write route did not."""
+    from fastapi import HTTPException
+
+    import archivum.api.devices as devices_mod
+    from archivum.auth import CurrentUser
+
+    viewer = CurrentUser(username="reader", role="viewer", wiki_id="default")
+
+    async def _no_device(_request):
+        return None
+
+    async def _the_viewer(_request, _settings):
+        return viewer
+
+    monkeypatch.setattr(devices_mod, "_device_from", _no_device)
+    monkeypatch.setattr(devices_mod, "_token_user", _the_viewer)
+
+    class _Request:
+        headers: dict[str, str] = {}
+        cookies: dict[str, str] = {}
+
+    with pytest.raises(HTTPException) as caught:
+        await devices_mod.writer_or_device(_Request(), None)
+    assert caught.value.status_code == 403
+
+    # The same viewer passes the read-capable one.
+    assert (await devices_mod.user_or_device(_Request(), None)).role == "viewer"
