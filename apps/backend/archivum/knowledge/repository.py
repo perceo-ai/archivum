@@ -186,7 +186,20 @@ class KnowledgeRepository:
         node_id: str | None = None,
         scope: str | None = None,
         limit: int | None = None,
+        among_ids: list[str] | None = None,
     ) -> list[KnowledgeRelationship]:
+        """Relationships in a scope, optionally only those joining known nodes.
+
+        `among_ids` is how retrieval bounds this safely. A plain `limit` takes
+        the first rows by id, which is decided before anything knows what the
+        query matched — so in a large scope a matched symbol could lose every
+        one of its edges because unrelated ones happened to sort first. Asking
+        for the edges between the nodes already loaded cannot drop a relevant
+        one, because an edge to a node outside that set has nowhere to land.
+        """
+        if among_ids is not None:
+            return await self._relationships_among(among_ids, scope)
+
         clauses: list[str] = []
         params: list[str | int] = []
         if node_id is not None:
@@ -206,6 +219,36 @@ class KnowledgeRepository:
             f"SELECT * FROM knowledge_relationships{where} ORDER BY id{suffix}", params
         ) as cursor:
             rows = await cursor.fetchall()
+        return await self._hydrate_relationships(rows)
+
+    async def _relationships_among(
+        self, node_ids: list[str], scope: str | None
+    ) -> list[KnowledgeRelationship]:
+        if not node_ids:
+            return []
+        seen: dict[str, aiosqlite.Row] = {}
+        # Batched for SQLITE_MAX_VARIABLE_NUMBER, and both endpoints have to be
+        # in the set: a dangling edge is not traversable either way.
+        for start in range(0, len(node_ids), 400):
+            batch = node_ids[start : start + 400]
+            marks = ",".join("?" * len(batch))
+            sql = (
+                f"SELECT * FROM knowledge_relationships "
+                f"WHERE src_id IN ({marks}) AND dst_id IN ({marks})"
+            )
+            params: list[object] = [*batch, *batch]
+            if scope is not None:
+                sql += " AND scope=?"
+                params.append(scope)
+            async with self._conn.execute(sql, params) as cursor:
+                for row in await cursor.fetchall():
+                    seen[row["id"]] = row
+        rows = [seen[key] for key in sorted(seen)]
+        return await self._hydrate_relationships(rows)
+
+    async def _hydrate_relationships(
+        self, rows: list[aiosqlite.Row]
+    ) -> list[KnowledgeRelationship]:
         citations = await self._citations_for(
             "relationship", [row["id"] for row in rows]
         )

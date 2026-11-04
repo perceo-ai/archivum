@@ -23,9 +23,6 @@ from archivum.knowledge.repository import KnowledgeRepository
 
 
 _OBJECT_SCAN_LIMIT = 10_000
-# Relationships were loaded unbounded while objects were capped, so one scope
-# could hydrate an order of magnitude more edges than nodes.
-_RELATIONSHIP_SCAN_LIMIT = 20_000
 # How many individually-named "excluded by max_nodes" entries a package carries
 # before it reports a count instead.
 _MAX_EXCLUSION_EXPLANATIONS = 25
@@ -81,8 +78,12 @@ async def build_context_package(
         if _is_pending_review(obj)
     }
     all_objects = [obj for obj in all_objects if obj.id not in pending_exclusions]
+    # Edges between the objects just loaded, rather than the first N by id.
+    # A plain limit is decided before anything knows what the query matched, so
+    # a matched symbol could lose all of its edges to unrelated ones that
+    # happened to sort first.
     relationships = await repo.list_relationships(
-        scope=request.scope, limit=_RELATIONSHIP_SCAN_LIMIT
+        scope=request.scope, among_ids=[obj.id for obj in all_objects]
     )
     if _is_code_request(request):
         return await _build_code_context_package(
@@ -316,11 +317,20 @@ async def _has_lexical_index(
     table's presence made the canonical fallback unreachable, so a scope with no
     projected rows returned an empty subgraph instead of the label-matching
     fallback that would have found its symbols.
+
+    A table from before the projection carried a scope is treated as no index.
+    It is only rebuilt by an ingest, so an upgraded vault whose repositories are
+    already `ready` would otherwise raise `no such column: scope` on every code
+    query until someone happened to reindex — a read path cannot assume a write
+    path has run.
     """
     async with connection.execute(
         "SELECT 1 FROM sqlite_master WHERE type='table' AND name='code_node_text'"
     ) as cursor:
         if await cursor.fetchone() is None:
+            return False
+    async with connection.execute("PRAGMA table_info(code_node_text)") as cursor:
+        if "scope" not in {row[1] for row in await cursor.fetchall()}:
             return False
     sql = "SELECT 1 FROM code_node_text"
     params: tuple[object, ...] = ()
