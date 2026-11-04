@@ -11,7 +11,8 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
 
 from archivum.db import sqlite
-from archivum.auth import CurrentUser, require_writer
+from archivum.api.devices import writer_or_device
+from archivum.auth import CurrentUser
 from archivum.capture.importers import connector_for
 from archivum.capture.importers import chatgpt as _chatgpt  # noqa: F401 (self-register)
 from archivum.capture.importers import claude_code as _cc  # noqa: F401 (self-register)
@@ -97,7 +98,7 @@ def _build_conversation(body: CaptureConversationRequest) -> Conversation:
 @router.post("/capture", response_model=CaptureResponse)
 async def capture_endpoint(
     body: CaptureConversationRequest,
-    current_user: CurrentUser = Depends(require_writer),
+    current_user: CurrentUser = Depends(writer_or_device),
     settings: Settings = Depends(get_settings),
 ) -> CaptureResponse:
     store = CaptureStore(wiki_id=current_user.wiki_id, settings=settings)
@@ -111,7 +112,7 @@ async def capture_endpoint(
 @router.post("/capture/import", response_model=CaptureImportResponse)
 async def capture_import_endpoint(
     body: CaptureImportRequest,
-    current_user: CurrentUser = Depends(require_writer),
+    current_user: CurrentUser = Depends(writer_or_device),
     settings: Settings = Depends(get_settings),
 ) -> CaptureImportResponse:
     path = Path(body.path)

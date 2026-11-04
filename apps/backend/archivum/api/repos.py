@@ -16,7 +16,7 @@ from pathlib import Path
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
 from pydantic import BaseModel
 
-from archivum.api.devices import require_device
+from archivum.api.devices import require_device, writer_or_device
 from archivum.auth import CurrentUser, get_current_user, require_owner
 from archivum.code_repos import (
     CodeRepo,
@@ -76,7 +76,11 @@ def _to_summary(repo: CodeRepo) -> RepoSummary:
 
 @router.get("", response_model=list[RepoSummary])
 async def list_registered_repos(
-    current_user: CurrentUser = Depends(get_current_user),
+    # A machine that may upload a repository may read back how its own index
+    # went. `awaitIndexed` in the CLI polls this; against `get_current_user` it
+    # got 401 every time, read that as "not finished", and after fifteen
+    # minutes reported the work still running whatever had actually happened.
+    current_user: CurrentUser = Depends(writer_or_device),
 ) -> list[RepoSummary]:
     return [_to_summary(repo) for repo in await list_repos(wiki_id=current_user.wiki_id)]
 

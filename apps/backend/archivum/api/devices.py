@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel, Field
 
-from archivum.auth import CurrentUser, require_owner
+from archivum.auth import CurrentUser, get_current_user, require_owner
 from archivum.config import Settings, get_settings
 from archivum.db import sqlite
 from archivum.devices.clients import client_registry
@@ -109,6 +109,54 @@ async def require_device(request: Request) -> dict[str, Any]:
     if device is None:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Device key required")
     return device
+
+
+# The device role. A linked machine writes its own sessions and reads its own
+# repositories; it is not a person and holds no wider permission than that.
+DEVICE_ROLE = "device"
+
+
+async def writer_or_device(
+    request: Request,
+    settings: Settings = Depends(get_settings),
+) -> CurrentUser:
+    """Authenticate a signed-in writer or a linked machine, whichever called.
+
+    A machine holds an opaque `amk_` device key, not a JWT. Routes that asked
+    for `require_writer` therefore answered 401 to every one of them, and
+    because the capture hook is built to fail silently — a memory tool must
+    never hold up a session — automatic capture uploaded nothing at all from
+    any machine, for as long as it existed, while reporting success. Verified
+    against the deployment: `POST /api/sources/capture` and `GET /api/repos`
+    both returned 401 to a key that `POST /api/repos/upload` accepted.
+
+    The device is resolved first because its key is unmistakable and cheap to
+    check; anything else falls through to the normal token path.
+    """
+    header = request.headers.get("Authorization", "")
+    scheme, _, raw_key = header.partition(" ")
+    if scheme.lower() == "bearer" and raw_key:
+        async with sqlite.get_db() as conn:
+            device = await DeviceRepository(conn).verify(raw_key)
+        if device is not None:
+            return CurrentUser(
+                username=str(device.get("name") or "device"),
+                role=DEVICE_ROLE,
+                wiki_id=str(device["wiki_id"]),
+            )
+
+    user = await get_current_user(
+        request=request,
+        authorization=header or None,
+        access_token=request.cookies.get("access_token"),
+        settings=settings,
+    )
+    if user.role not in {"owner", "collaborator"}:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Write access required",
+        )
+    return user
 
 
 @router.post("/pairing-tokens")

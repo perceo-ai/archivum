@@ -272,6 +272,7 @@ export async function uploadRepo({ baseUrl, key, name, archive, fetchImpl = fetc
 // because a command that never returns is its own kind of failure.
 const INDEX_POLL_TIMEOUT_MS = 15 * 60 * 1000;
 const INDEX_POLL_INTERVAL_MS = 3000;
+const INDEX_POLL_REQUEST_TIMEOUT_MS = 20_000;
 
 /**
  * Follow a queued index to its conclusion.
@@ -294,9 +295,28 @@ export async function awaitIndexed({
   const deadline = now() + timeoutMs;
   let last = null;
   while (now() < deadline) {
-    const response = await fetchImpl(`${baseUrl}/api/repos`, {
-      headers: { Authorization: `Bearer ${key}` },
-    });
+    let response;
+    try {
+      response = await fetchImpl(`${baseUrl}/api/repos`, {
+        headers: { Authorization: `Bearer ${key}` },
+        // One slow request must not eat the whole budget.
+        signal: AbortSignal.timeout(INDEX_POLL_REQUEST_TIMEOUT_MS),
+      });
+    } catch {
+      // A dropped connection says nothing about the indexing. Letting it end
+      // the command printed a failure while the server carried on working —
+      // the same misleading answer this polling exists to avoid.
+      await sleep(INDEX_POLL_INTERVAL_MS);
+      continue;
+    }
+    // A rejected key is not pending work. Treating every failure as "not
+    // finished yet" is how this waited the full fifteen minutes and then
+    // reported indexing still running: the status route did not accept device
+    // keys at all, so every poll was a 401 and the answer never depended on
+    // what the server had actually done.
+    if (response.status === 401 || response.status === 403) {
+      return { repo: null, state: "unauthorized" };
+    }
     if (response.ok) {
       const repos = await response.json().catch(() => []);
       last = (Array.isArray(repos) ? repos : []).find((repo) => repo.name === name) ?? last;
@@ -373,6 +393,15 @@ export async function indexCommand(
     });
     if (outcome === "error") {
       throw new Error(`Indexing "${queued.name}" failed: ${repo?.error ?? "unknown error"}`);
+    }
+    if (outcome === "unauthorized") {
+      // The upload was accepted, so the work is queued; this machine just
+      // cannot read the status. Say that rather than claim either outcome.
+      console.log(
+        `archivum: uploaded "${queued.name}", but this server will not report its ` +
+          "status to a device key. It is indexing; check the repositories page.",
+      );
+      return;
     }
     if (outcome === "pending") {
       // Still running, not broken. Saying so beats inventing either verdict.

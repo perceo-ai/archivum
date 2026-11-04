@@ -14,12 +14,15 @@ async def client(tmp_path, monkeypatch):
     monkeypatch.setattr("archivum.api.capture.get_settings", lambda: settings)
 
     from archivum.api.capture import router
-    from archivum.auth import CurrentUser, require_writer
+    from archivum.api.devices import writer_or_device
+    from archivum.auth import CurrentUser
     from fastapi import FastAPI
 
     app = FastAPI()
     # A real CurrentUser: the endpoint is typed for one and reads wiki_id off it.
-    app.dependency_overrides[require_writer] = lambda: CurrentUser(
+    # Capture takes `writer_or_device` now: a linked machine holds a device
+    # key, not a JWT, and the old dependency refused every one of them.
+    app.dependency_overrides[writer_or_device] = lambda: CurrentUser(
         username="admin", role="owner", wiki_id="default"
     )
     app.dependency_overrides[get_settings] = lambda: settings
