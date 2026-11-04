@@ -224,26 +224,37 @@ class KnowledgeRepository:
     async def _relationships_among(
         self, node_ids: list[str], scope: str | None
     ) -> list[KnowledgeRelationship]:
+        """Edges whose both endpoints are in `node_ids`.
+
+        Through a temp table rather than batched `IN (...)` lists. Batching the
+        ids and requiring both endpoints inside the *same* batch drops every
+        edge that happens to span two of them — with a few hundred ids per
+        batch and a repository of a few thousand symbols, that is most of the
+        graph, silently. A dangling edge is still excluded: one whose other end
+        was never loaded has nowhere to traverse to.
+        """
         if not node_ids:
             return []
-        seen: dict[str, aiosqlite.Row] = {}
-        # Batched for SQLITE_MAX_VARIABLE_NUMBER, and both endpoints have to be
-        # in the set: a dangling edge is not traversable either way.
-        for start in range(0, len(node_ids), 400):
-            batch = node_ids[start : start + 400]
-            marks = ",".join("?" * len(batch))
-            sql = (
-                f"SELECT * FROM knowledge_relationships "
-                f"WHERE src_id IN ({marks}) AND dst_id IN ({marks})"
-            )
-            params: list[object] = [*batch, *batch]
-            if scope is not None:
-                sql += " AND scope=?"
-                params.append(scope)
-            async with self._conn.execute(sql, params) as cursor:
-                for row in await cursor.fetchall():
-                    seen[row["id"]] = row
-        rows = [seen[key] for key in sorted(seen)]
+        await self._conn.execute(
+            "CREATE TEMP TABLE IF NOT EXISTS _relationship_scope_ids (id TEXT PRIMARY KEY)"
+        )
+        await self._conn.execute("DELETE FROM _relationship_scope_ids")
+        await self._conn.executemany(
+            "INSERT OR IGNORE INTO _relationship_scope_ids (id) VALUES (?)",
+            [(node_id,) for node_id in node_ids],
+        )
+        sql = (
+            "SELECT r.* FROM knowledge_relationships r "
+            "JOIN _relationship_scope_ids a ON a.id = r.src_id "
+            "JOIN _relationship_scope_ids b ON b.id = r.dst_id"
+        )
+        params: tuple[object, ...] = ()
+        if scope is not None:
+            sql += " WHERE r.scope = ?"
+            params = (scope,)
+        async with self._conn.execute(sql + " ORDER BY r.id", params) as cursor:
+            rows = await cursor.fetchall()
+        await self._conn.execute("DELETE FROM _relationship_scope_ids")
         return await self._hydrate_relationships(rows)
 
     async def _hydrate_relationships(

@@ -13,11 +13,13 @@ out-of-memory kill was never looked at again.
 
 from __future__ import annotations
 
+import asyncio
 from unittest.mock import AsyncMock, patch
 
 import archivum.db.sqlite as sqlite_mod
 import pytest
 from archivum.code_repos import (
+    cancel_narrations,
     get_repo,
     index_repo,
     register_repo,
@@ -169,3 +171,52 @@ async def test_failing_to_write_pages_leaves_the_index_usable(vault):  # noqa: F
     stored = await get_repo(repo.scope, wiki_id="default")
     assert stored is not None and stored.status == "ready"
     assert stored.nodes > 0
+
+
+async def test_the_worker_does_not_hold_its_queue_for_narration(vault):  # noqa: F811
+    """Narration must not decide when the next repository gets indexed.
+
+    Page writing is one model call per cluster and can run for close to two
+    hours. Doing it on the queue meant marking the first repository `ready`
+    released nothing: a repository uploaded during narration waited for it.
+    """
+    repo = await _registered(vault)
+    started = asyncio.Event()
+    release = asyncio.Event()
+
+    async def slow_narration(repo_arg, **_):
+        started.set()
+        await release.wait()
+        return 1
+
+    with patch("archivum.code_repos.write_repo_pages", new=slow_narration):
+        # `narrate=False` is what the worker passes.
+        indexed = await asyncio.wait_for(
+            run_pending_repo_indexing(settings=vault, narrate=False), timeout=5
+        )
+        assert indexed == 1
+        # The sweep returned while narration is still going.
+        await asyncio.wait_for(started.wait(), timeout=5)
+        stored = await get_repo(repo.scope, wiki_id="default")
+        assert stored is not None and stored.status == "ready"
+        release.set()
+        await cancel_narrations()
+
+
+async def test_narration_is_stopped_with_the_worker(vault):  # noqa: F811
+    """A detached task that outlives shutdown is a leak, so it is cancelled."""
+    await _registered(vault)
+    started = asyncio.Event()
+
+    async def never_finishes(repo_arg, **_):
+        started.set()
+        await asyncio.Event().wait()
+
+    with patch("archivum.code_repos.write_repo_pages", new=never_finishes):
+        await run_pending_repo_indexing(settings=vault, narrate=False)
+        await asyncio.wait_for(started.wait(), timeout=5)
+        await asyncio.wait_for(cancel_narrations(), timeout=5)
+
+    from archivum.code_repos import _narrations
+
+    assert _narrations == set()

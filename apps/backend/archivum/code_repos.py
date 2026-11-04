@@ -471,9 +471,15 @@ async def _index_repo(
 
 
 async def run_pending_repo_indexing(
-    *, settings: Settings | None = None, limit: int = 4
+    *, settings: Settings | None = None, limit: int = 4, narrate: bool = True
 ) -> int:
-    """Index up to `limit` queued repositories. Returns how many were indexed."""
+    """Index up to `limit` queued repositories. Returns how many were indexed.
+
+    `narrate` writes the cluster pages before returning. The long-running
+    worker passes `False` and starts narration separately, because narration is
+    one model call per cluster and must not hold the queue; a caller that wants
+    the pages on return — a test, a one-off reindex — leaves it alone.
+    """
     settings = settings or get_settings()
     async with sqlite.get_db() as conn:
         await init_repo_schema(conn)
@@ -483,11 +489,11 @@ async def run_pending_repo_indexing(
         ) as cursor:
             pending = [_row_to_repo(row) for row in await cursor.fetchall()]
 
-    # Graphs for everything queued, then narration. Page writing is one model
-    # call per cluster and can run for close to two hours, so narrating the
-    # first repository before touching the second meant marking it `ready`
-    # released nothing: the next repository's code stayed unqueryable for the
-    # length of someone else's prose.
+    # Graphs only. Page writing is one model call per cluster and can run for
+    # close to two hours, so doing it here held the queue: marking the first
+    # repository `ready` released nothing, because the next one's code stayed
+    # unqueryable for the length of someone else's prose — and a repository
+    # uploaded during narration waited for it too.
     indexed: list[CodeRepo] = []
     for repo in pending:
         try:
@@ -497,11 +503,40 @@ async def run_pending_repo_indexing(
             continue
 
     for repo in indexed:
-        try:
+        if narrate:
             await narrate_repo_pages(repo, settings=settings)
-        except Exception:  # noqa: BLE001 - already logged; pages are optional
-            continue
+        else:
+            _spawn_narration(repo, settings)
     return len(indexed)
+
+
+# Narration tasks in flight, held so they are not garbage collected mid-run and
+# can be cancelled with the worker that started them.
+_narrations: set[asyncio.Task[int]] = set()
+
+
+def _spawn_narration(repo: CodeRepo, settings: Settings) -> None:
+    """Start this repository's page narration without waiting for it.
+
+    Detached on purpose: the repository is already queryable, and the queue has
+    to keep draining. At most one narration per repository runs, because a
+    second pass only reaches a repository the queue handed out again.
+    """
+    task = asyncio.create_task(narrate_repo_pages(repo, settings=settings))
+    _narrations.add(task)
+    task.add_done_callback(_narrations.discard)
+
+
+async def cancel_narrations() -> None:
+    """Stop any page narration still running. Called when the worker stops."""
+    for task in list(_narrations):
+        task.cancel()
+    for task in list(_narrations):
+        try:
+            await task
+        except (asyncio.CancelledError, Exception):  # noqa: BLE001
+            pass
+    _narrations.clear()
 
 
 async def narrate_repo_pages(
@@ -699,8 +734,12 @@ async def run_code_repo_worker(settings: Settings) -> None:
             # again — so the repository waited for a restart that happened to
             # fall outside the window, which may never come.
             await requeue_stale_indexing()
-            await run_pending_repo_indexing(settings=settings)
+            # Graphs here; narration runs detached so the queue keeps draining.
+            await run_pending_repo_indexing(settings=settings, narrate=False)
         except asyncio.CancelledError:
+            # Narration outlives a sweep by design, so it has to be stopped
+            # with the worker rather than left running after shutdown.
+            await cancel_narrations()
             raise
         except Exception as exc:  # noqa: BLE001 - one bad pass must not stop the pump
             logger.warning("Code repository sweep failed: %s", exc)

@@ -12,7 +12,7 @@ from pydantic import BaseModel
 
 from archivum.db import sqlite
 from archivum.api.devices import writer_or_device
-from archivum.auth import CurrentUser
+from archivum.auth import CurrentUser, require_writer
 from archivum.capture.importers import connector_for
 from archivum.capture.importers import chatgpt as _chatgpt  # noqa: F401 (self-register)
 from archivum.capture.importers import claude_code as _cc  # noqa: F401 (self-register)
@@ -112,7 +112,13 @@ async def capture_endpoint(
 @router.post("/capture/import", response_model=CaptureImportResponse)
 async def capture_import_endpoint(
     body: CaptureImportRequest,
-    current_user: CurrentUser = Depends(writer_or_device),
+    # A person, not a machine. Unlike `/capture`, this reads a path the caller
+    # chooses off the server's own disk, and the importer takes any readable
+    # transcript without asking whose it is. Widening it to device keys — which
+    # every linked machine holds — would have let one import server-local
+    # sessions it was never given, into its own wiki. A machine uploads its own
+    # transcript through `/capture`; it has no reason to name a server path.
+    current_user: CurrentUser = Depends(require_writer),
     settings: Settings = Depends(get_settings),
 ) -> CaptureImportResponse:
     path = Path(body.path)

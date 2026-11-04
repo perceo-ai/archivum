@@ -293,3 +293,69 @@ async def test_canonical_code_fallback_preserves_explicit_seed_ids():
 
         assert package.seeds == ["symbol:helper"]
         assert [node.id for node in package.nodes] == ["symbol:helper"]
+
+
+async def test_edges_survive_between_objects_far_apart_in_the_set():
+    """Both endpoints are checked against the whole loaded set, not a batch.
+
+    Batching the ids and requiring both ends inside the *same* batch dropped
+    every edge spanning two batches. With a few hundred ids per batch and a
+    repository of a few thousand symbols that is most of the graph, silently.
+    """
+    async with aiosqlite.connect(":memory:") as conn:
+        await init_knowledge_schema(conn)
+        repo = KnowledgeRepository(conn)
+
+        count = 1000
+        ids = [f"symbol:{i:05d}" for i in range(count)]
+        for object_id in ids:
+            await repo.upsert_object(_object(object_id, object_id, scope="repo:test"))
+        # First to last: as far apart in the id order as the set allows.
+        await repo.upsert_relationship(
+            _relationship("rel:ends", ids[0], ids[-1], "calls", scope="repo:test")
+        )
+        # And one pair either side of a plausible batch boundary.
+        await repo.upsert_relationship(
+            _relationship("rel:span", ids[399], ids[400], "calls", scope="repo:test")
+        )
+
+        found = await repo.list_relationships(scope="repo:test", among_ids=ids)
+
+        assert {rel.id for rel in found} == {"rel:ends", "rel:span"}
+
+
+async def test_an_edge_to_an_unloaded_node_is_left_out():
+    """A dangling edge has nowhere to traverse to, so it is not returned."""
+    async with aiosqlite.connect(":memory:") as conn:
+        await init_knowledge_schema(conn)
+        repo = KnowledgeRepository(conn)
+        await repo.upsert_object(_object("a", "a", scope="repo:test"))
+        await repo.upsert_object(_object("outside", "outside", scope="repo:test"))
+        await repo.upsert_relationship(
+            _relationship("rel:dangling", "a", "outside", "calls", scope="repo:test")
+        )
+
+        found = await repo.list_relationships(scope="repo:test", among_ids=["a"])
+
+        assert found == []
+
+
+async def test_repeated_queries_do_not_accumulate_ids():
+    """The temp table is scratch space, so one query cannot leak into the next."""
+    async with aiosqlite.connect(":memory:") as conn:
+        await init_knowledge_schema(conn)
+        repo = KnowledgeRepository(conn)
+        for object_id in ("a", "b", "c"):
+            await repo.upsert_object(_object(object_id, object_id, scope="repo:test"))
+        await repo.upsert_relationship(
+            _relationship("rel:ab", "a", "b", "calls", scope="repo:test")
+        )
+        await repo.upsert_relationship(
+            _relationship("rel:bc", "b", "c", "calls", scope="repo:test")
+        )
+
+        first = await repo.list_relationships(scope="repo:test", among_ids=["a", "b"])
+        second = await repo.list_relationships(scope="repo:test", among_ids=["b", "c"])
+
+        assert {rel.id for rel in first} == {"rel:ab"}
+        assert {rel.id for rel in second} == {"rel:bc"}

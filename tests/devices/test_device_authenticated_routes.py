@@ -93,3 +93,25 @@ async def test_an_unknown_key_is_still_refused(linked):
             "/api/sources/capture", json=_body(), headers=headers
         ).status_code in (401, 403)
         assert client.get("/api/repos", headers=headers).status_code in (401, 403)
+
+
+async def test_a_device_cannot_import_a_file_off_the_server(linked, tmp_path):
+    """Capture takes a device key; local-file import must not.
+
+    `/capture/import` reads a path the caller chooses off the server's own
+    disk, and the importer takes any readable transcript without asking whose
+    it is. Accepting a device key — which every linked machine holds — would
+    let one import server-local sessions it was never given, into its own
+    wiki. A machine uploads its own transcript through `/capture`.
+    """
+    client, key = linked
+    someone_elses = tmp_path / "private.jsonl"
+    someone_elses.write_text("{}\n", encoding="utf-8")
+
+    response = client.post(
+        "/api/sources/capture/import",
+        json={"path": str(someone_elses)},
+        headers={"Authorization": f"Bearer {key}"},
+    )
+
+    assert response.status_code in (401, 403), response.text

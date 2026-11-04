@@ -15,16 +15,18 @@ async def client(tmp_path, monkeypatch):
 
     from archivum.api.capture import router
     from archivum.api.devices import writer_or_device
-    from archivum.auth import CurrentUser
+    from archivum.auth import CurrentUser, require_writer
     from fastapi import FastAPI
 
     app = FastAPI()
     # A real CurrentUser: the endpoint is typed for one and reads wiki_id off it.
     # Capture takes `writer_or_device` now: a linked machine holds a device
     # key, not a JWT, and the old dependency refused every one of them.
-    app.dependency_overrides[writer_or_device] = lambda: CurrentUser(
-        username="admin", role="owner", wiki_id="default"
-    )
+    owner = CurrentUser(username="admin", role="owner", wiki_id="default")
+    # Two dependencies now, deliberately: `/capture` accepts a linked machine,
+    # `/capture/import` does not, because it reads a path off the server.
+    app.dependency_overrides[writer_or_device] = lambda: owner
+    app.dependency_overrides[require_writer] = lambda: owner
     app.dependency_overrides[get_settings] = lambda: settings
     app.include_router(router)
     return TestClient(app, raise_server_exceptions=True)
