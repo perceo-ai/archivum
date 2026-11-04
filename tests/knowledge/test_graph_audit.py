@@ -363,3 +363,73 @@ def test_a_cluster_with_no_file_falls_back_to_its_hub():
     communities = graph_audit.detect_communities(nodes, edges)
 
     assert communities[0].label == "Alpha"
+
+
+def _link(src, dst, scope="cross_repo"):
+    return _edge(src, dst, "same_symbol_as").model_copy(update={"scope": scope})
+
+
+@pytest.mark.asyncio
+async def test_a_scoped_load_never_reads_link_edges_that_miss_it():
+    """Reading a whole link scope to filter it in Python is what ran out of memory.
+
+    Live, 3.3M `cross_repo` edges were hydrated every hour to find the few that
+    touched a wiki record, and the backend was killed at its 4 GiB limit.
+    """
+    async with aiosqlite.connect(":memory:") as conn:
+        await init_knowledge_schema(conn)
+        repo = KnowledgeRepository(conn)
+        await repo.upsert_object(_node("page:default:notes"))
+        await repo.upsert_object(_node("page:default:other"))
+        await repo.upsert_relationship(_link("page:default:notes", "page:default:other"))
+        for number in range(50):
+            await repo.upsert_relationship(_link(f"gone:{number}", f"also-gone:{number}"))
+
+        hydrated = 0
+        real_hydrate = repo._hydrate_relationships
+
+        async def counting_hydrate(rows):
+            nonlocal hydrated
+            hydrated += len(rows)
+            return await real_hydrate(rows)
+
+        repo._hydrate_relationships = counting_hydrate
+        nodes, edges = await graph_audit.load_graph(
+            repo, scope="wiki:default", allowed_scopes={"wiki:default"}
+        )
+
+    assert hydrated == 1
+    assert [edge.src_id for edge in edges] == ["page:default:notes"]
+    assert {node.id for node in nodes} == {"page:default:notes", "page:default:other"}
+
+
+@pytest.mark.asyncio
+async def test_a_write_still_works_straight_after_a_scoped_load():
+    """The summary worker upserts right after loading, and that opens a BEGIN."""
+    async with aiosqlite.connect(":memory:") as conn:
+        await init_knowledge_schema(conn)
+        repo = KnowledgeRepository(conn)
+        await repo.upsert_object(_node("page:default:notes"))
+
+        await graph_audit.load_graph(repo, scope="wiki:default")
+        await repo.upsert_object(_node("page:default:after"))
+
+        assert await repo.get_object("page:default:after") is not None
+
+
+@pytest.mark.asyncio
+async def test_touching_edges_are_found_across_query_batches():
+    async with aiosqlite.connect(":memory:") as conn:
+        await init_knowledge_schema(conn)
+        repo = KnowledgeRepository(conn)
+        await repo.upsert_relationship(_link("n0000", "n1199"))
+        await repo.upsert_relationship(_link("elsewhere", "n1199"))
+        await repo.upsert_relationship(_link("elsewhere", "nowhere"))
+
+        ids = [f"n{number:04d}" for number in range(1200)]
+        found = await repo.relationships_touching(ids, scope="cross_repo")
+
+    assert sorted((edge.src_id, edge.dst_id) for edge in found) == [
+        ("elsewhere", "n1199"),
+        ("n0000", "n1199"),
+    ]

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Iterable
 from contextlib import asynccontextmanager
 
 from typing import Any
@@ -12,6 +12,10 @@ import aiosqlite
 
 from archivum.knowledge.models import Citation, KnowledgeObject, KnowledgeRelationship
 from archivum.store.schema import init_evidence_schema
+
+# Each id appears twice in the query, once per endpoint, so this stays well inside
+# SQLite's bound variable limit.
+_TOUCHING_BATCH_SIZE = 500
 
 
 async def init_knowledge_schema(conn: aiosqlite.Connection) -> None:
@@ -256,6 +260,35 @@ class KnowledgeRepository:
             rows = await cursor.fetchall()
         await self._conn.execute("DELETE FROM _relationship_scope_ids")
         return await self._hydrate_relationships(rows)
+
+    async def relationships_touching(
+        self, node_ids: Iterable[str], *, scope: str
+    ) -> list[KnowledgeRelationship]:
+        """Edges in `scope` with at least one endpoint in `node_ids`.
+
+        Batching is safe here, unlike `_relationships_among`: one endpoint is
+        enough, so an edge is found by whichever batch holds it. Plain `IN` lists
+        also leave no transaction open, which a temp table insert would, and
+        callers go straight on to write.
+        """
+        ids = sorted(set(node_ids))
+        rows_by_id: dict[str, aiosqlite.Row] = {}
+        for start in range(0, len(ids), _TOUCHING_BATCH_SIZE):
+            batch = ids[start : start + _TOUCHING_BATCH_SIZE]
+            placeholders = ",".join("?" for _ in batch)
+            # One query per endpoint: with `OR` the planner takes the scope index
+            # and walks the whole scope, once per batch.
+            for column in ("src_id", "dst_id"):
+                async with self._conn.execute(
+                    "SELECT * FROM knowledge_relationships "
+                    f"WHERE scope=? AND {column} IN ({placeholders})",
+                    (scope, *batch),
+                ) as cursor:
+                    for row in await cursor.fetchall():
+                        rows_by_id[row["id"]] = row
+        return await self._hydrate_relationships(
+            [rows_by_id[edge_id] for edge_id in sorted(rows_by_id)]
+        )
 
     async def _hydrate_relationships(
         self, rows: list[aiosqlite.Row]
