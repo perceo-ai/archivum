@@ -1207,8 +1207,8 @@ async def dispatch_command(command: str, wiki_id: str = "default") -> dict[str, 
             }
 
         if cmd in {"purge-dangling-links", "purge_dangling_links"}:
-            # Only removes edges that point at nothing, so unlike `purge-repo`
-            # it has no memory to destroy, but it is a large write: run on purpose.
+            # Only removes derived `cross_repo` edges that point at nothing, so
+            # unlike `purge-repo` it destroys no memory, but it is a large write.
             removed = await purge_dangling_links()
             return {
                 "ok": True,

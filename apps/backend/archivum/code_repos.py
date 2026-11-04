@@ -37,7 +37,6 @@ from archivum.archgraph.repo import snapshot_repo
 from archivum.code_pages import repo_folder, write_repo_pages
 from archivum.config import Settings, get_settings
 from archivum.db import sqlite
-from archivum.knowledge.graph_audit import LINK_SCOPES
 from archivum.knowledge.personal_root import ensure_personal_root
 from archivum.knowledge.repository import KnowledgeRepository, init_knowledge_schema
 from archivum.memory.catalog import register_codegraph_asset
@@ -826,16 +825,17 @@ async def purge_repo_scope(
         # Citations first: they are keyed by the record they cite, so once the
         # objects are gone there is nothing left to find them by.
         #
-        # Link edges sit in their own scope, so the scope-matched deletes below
-        # never reach them and every purge left them pointing at nothing. Live,
-        # that was 3.3M edges and most of the citations table.
-        placeholders = ",".join("?" for _ in LINK_SCOPES)
+        # `cross_repo` edges sit in their own scope, so the scope-matched deletes
+        # below never reach them and every purge left them pointing at nothing.
+        # Live, that was 3.3M edges and most of the citations table. `bridge` is
+        # left alone: it holds recorded `fixes` and `touched` links, which no
+        # index rebuilds, so they stay in case the repository comes back.
         touching = (
-            f"SELECT id FROM knowledge_relationships WHERE scope IN ({placeholders}) "
+            "SELECT id FROM knowledge_relationships WHERE scope='cross_repo' "
             "AND (src_id IN (SELECT id FROM knowledge_objects WHERE scope=?) "
             "OR dst_id IN (SELECT id FROM knowledge_objects WHERE scope=?))"
         )
-        link_params = (*LINK_SCOPES, scope, scope)
+        link_params = (scope, scope)
         await run(
             "knowledge_citations",
             "DELETE FROM knowledge_citations WHERE knowledge_type='relationship' "
@@ -914,15 +914,17 @@ async def purge_repo_scope(
 
 
 async def purge_dangling_links(*, batch_size: int = 5_000) -> int:
-    """Delete link edges whose endpoint no longer exists. Returns how many went.
+    """Delete `cross_repo` edges whose endpoint is gone. Returns how many went.
 
-    Clears what purges left behind before `purge_repo_scope` took link edges
-    with it. Limited to link scopes, which are rederived on every index, and
-    batched so the write lock is released between commits.
+    Clears what purges left behind before `purge_repo_scope` took these edges
+    with it. Limited to `cross_repo` because every index rederives that scope,
+    so an edge caught mid-reindex comes back. `bridge` holds recorded `fixes`
+    and `touched` links that nothing rebuilds, and an incremental index removes
+    symbols briefly before rewriting them, so a sweep there would lose memory.
+    Batched so the write lock is released between commits.
     """
-    placeholders = ",".join("?" for _ in LINK_SCOPES)
     select = (
-        f"SELECT id FROM knowledge_relationships r WHERE r.scope IN ({placeholders}) "
+        "SELECT id FROM knowledge_relationships r WHERE r.scope='cross_repo' "
         "AND (NOT EXISTS (SELECT 1 FROM knowledge_objects o WHERE o.id = r.src_id) "
         "OR NOT EXISTS (SELECT 1 FROM knowledge_objects o WHERE o.id = r.dst_id)) "
         "LIMIT ?"
@@ -930,7 +932,7 @@ async def purge_dangling_links(*, batch_size: int = 5_000) -> int:
     removed = 0
     async with sqlite.get_db() as conn:
         while True:
-            async with conn.execute(select, (*LINK_SCOPES, batch_size)) as cursor:
+            async with conn.execute(select, (batch_size,)) as cursor:
                 ids = [(row[0],) for row in await cursor.fetchall()]
             if not ids:
                 break

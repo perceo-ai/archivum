@@ -524,18 +524,20 @@ async def _surviving_edges() -> tuple[set[str], int]:
 
 
 async def test_purging_a_repo_takes_the_links_that_reached_it(vault):  # noqa: F811
-    """Link edges live in their own scope, so a scope-matched delete missed them."""
+    """`cross_repo` edges have their own scope, so a scope-matched delete missed them."""
     repo = await _registered(vault)
     await _seed_object("gone", repo.scope)
     await _seed_object("kept", "repo:default:other")
     await _seed_object("kept-too", "repo:default:third")
     await _seed_link("gone", "kept")
-    await _seed_link("kept", "gone", scope="bridge")
+    await _seed_link("kept", "gone")
     unrelated = await _seed_link("kept", "kept-too")
+    # Recorded memory: no index rebuilds it, so a purge must not take it.
+    recorded = await _seed_link("fix", "gone", scope="bridge")
 
     await purge_repo_scope(repo.scope, wiki_id="default")
 
-    assert await _surviving_edges() == ({unrelated}, 1)
+    assert await _surviving_edges() == ({unrelated, recorded}, 2)
 
 
 async def test_dangling_links_are_purged_and_nothing_else(vault):  # noqa: F811
@@ -544,13 +546,15 @@ async def test_dangling_links_are_purged_and_nothing_else(vault):  # noqa: F811
     await _seed_object("b", "repo:default:b")
     live = await _seed_link("a", "b")
     await _seed_link("a", "missing")
-    await _seed_link("missing", "b", scope="bridge")
-    # Not a link scope: whether this one dangles is not this sweep's call.
+    await _seed_link("missing", "b")
+    # An incremental index removes symbols before rewriting them, and nothing
+    # rebuilds a recorded link, so these must outlive a sweep.
+    recorded = await _seed_link("fix", "missing", scope="bridge")
     other = await _seed_link("missing", "also-missing", scope="repo:default:a")
 
     assert await purge_dangling_links(batch_size=1) == 2
 
-    assert await _surviving_edges() == ({live, other}, 2)
+    assert await _surviving_edges() == ({live, recorded, other}, 3)
 
 
 async def test_two_first_callers_can_both_initialise_the_schema(vault):  # noqa: F811
