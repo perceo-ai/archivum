@@ -8,8 +8,13 @@ from pathlib import Path
 import aiosqlite
 import pytest
 
-from archivum.archgraph.ingest import changed_files, ingest_repo, prune_dangling
-from archivum.archgraph.mapper import CandidateEntity, Provenance
+from archivum.archgraph.ingest import (
+    _write_candidates,
+    changed_files,
+    ingest_repo,
+    prune_dangling,
+)
+from archivum.archgraph.mapper import CandidateEntity, CandidateRelationship, Provenance
 from archivum.knowledge.repository import KnowledgeRepository, init_knowledge_schema
 
 
@@ -606,3 +611,74 @@ def test_prune_dangling_pure():
     assert "live_func" in kept_names
     assert "mixed_func" in kept_names
     assert "no_prov_func" in kept_names
+
+
+def _edge(chunk_id: str, *, number: int = 0) -> CandidateRelationship:
+    return CandidateRelationship(
+        id=f"edge:{number}",
+        src_id="a",
+        dst_id="b",
+        rel_type="calls",
+        scope="repo:x",
+        confidence=1.0,
+        extraction_method="EXTRACTED",
+        provenance=[Provenance(chunk_id=chunk_id, span="L1", extraction_method="EXTRACTED")],
+    )
+
+
+async def test_candidates_are_written_in_batches_not_one_commit_each(lexical_conn):
+    """One flush per record ran at about 115 records a second on the live disk."""
+    await init_knowledge_schema(lexical_conn)
+    knowledge = KnowledgeRepository(lexical_conn)
+    commits = 0
+    real_commit = lexical_conn.commit
+
+    async def counting_commit():
+        nonlocal commits
+        commits += 1
+        await real_commit()
+
+    lexical_conn.commit = counting_commit
+    await _write_candidates(
+        knowledge, [_edge("f.py", number=number) for number in range(25)], batch_size=10
+    )
+
+    assert commits == 3
+    assert len(await knowledge.list_relationships(scope="repo:x")) == 25
+
+
+async def test_a_repeated_record_is_written_once_and_the_last_one_wins(lexical_conn):
+    """Each upsert replaces citations, so the last candidate is what was stored."""
+    await init_knowledge_schema(lexical_conn)
+    knowledge = KnowledgeRepository(lexical_conn)
+
+    await _write_candidates(knowledge, [_edge("first.py"), _edge("second.py")])
+
+    (stored,) = await knowledge.list_relationships(scope="repo:x")
+    assert [citation.chunk_id for citation in stored.citations] == ["second.py"]
+
+
+async def test_candidates_are_consumed_as_they_are_written(lexical_conn):
+    """Holding every candidate at once was most of a 2 GiB ingest."""
+    await init_knowledge_schema(lexical_conn)
+    knowledge = KnowledgeRepository(lexical_conn)
+    produced = 0
+    produced_at_each_flush: list[int] = []
+
+    def stream():
+        nonlocal produced
+        for number in range(25):
+            produced += 1
+            yield _edge("f.py", number=number)
+
+    real_transaction = knowledge.transaction
+
+    def recording_transaction(**kwargs):
+        produced_at_each_flush.append(produced)
+        return real_transaction(**kwargs)
+
+    knowledge.transaction = recording_transaction
+    await _write_candidates(knowledge, stream(), batch_size=10)
+
+    assert produced_at_each_flush == [10, 20, 25]
+    assert len(await knowledge.list_relationships(scope="repo:x")) == 25
