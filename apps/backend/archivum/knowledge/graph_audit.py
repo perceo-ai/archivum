@@ -15,7 +15,7 @@ from archivum.knowledge.models import KnowledgeObject, KnowledgeRelationship
 from archivum.knowledge.personal_root import SELF_ID
 from archivum.knowledge.repository import KnowledgeRepository
 
-_AUDIT_OBJECT_LIMIT = 20_000
+_AUDIT_OBJECT_LIMIT = 100_000
 LOW_CONFIDENCE_THRESHOLD = 0.5
 DEFAULT_SURPRISE_LIMIT = 10
 
