@@ -83,6 +83,9 @@ class CodeRepo:
     pages: int
     error: str | None
     indexed_at: str | None
+    # Pages were deferred and have not landed yet. Narration lives only as an
+    # in-memory task, so this is what survives a restart.
+    narration_owed: bool = False
 
 
 def _row_to_repo(row: Any) -> CodeRepo:
@@ -99,6 +102,10 @@ def _row_to_repo(row: Any) -> CodeRepo:
         pages=row["pages"],
         error=row["error"],
         indexed_at=row["indexed_at"],
+        # Absent on a row read before the column existed.
+        narration_owed=bool(
+            row["narration_owed"] if "narration_owed" in row.keys() else 0
+        ),
     )
 
 
@@ -262,6 +269,17 @@ def _now() -> str:
 
 async def init_repo_schema(conn: aiosqlite.Connection) -> None:
     await conn.executescript(SCHEMA)
+    # Added later, so existing vaults get it here rather than in SCHEMA.
+    # Narration lives only as an in-memory task once a repository is `ready`,
+    # and the queue selects `pending` only — so a restart mid-narration lost
+    # the pages with nothing left to say they were owed.
+    cursor = await conn.execute("PRAGMA table_info(code_repos)")
+    columns = {row[1] for row in await cursor.fetchall()}
+    if "narration_owed" not in columns:
+        await conn.execute(
+            "ALTER TABLE code_repos ADD COLUMN narration_owed INTEGER NOT NULL DEFAULT 0"
+        )
+        await conn.commit()
 
 
 # ── Registry ──────────────────────────────────────────────────────────────────
@@ -506,6 +524,7 @@ async def run_pending_repo_indexing(
         if narrate:
             await narrate_repo_pages(repo, settings=settings)
         else:
+            await _mark_narration_owed(repo.scope, True)
             _spawn_narration(repo, settings)
     return len(indexed)
 
@@ -575,6 +594,50 @@ def _spawn_narration(repo: CodeRepo, settings: Settings) -> None:
     )
 
 
+async def _mark_narration_owed(scope: str, owed: bool) -> None:
+    async with sqlite.get_db() as conn:
+        await init_repo_schema(conn)
+        await conn.execute(
+            "UPDATE code_repos SET narration_owed=? WHERE scope=?",
+            (1 if owed else 0, scope),
+        )
+        await conn.commit()
+
+
+async def resume_owed_narration(*, settings: Settings | None = None) -> int:
+    """Restart narration for repositories whose pages were never written.
+
+    A restart cancels the in-memory task, and nothing else would ever look at
+    those repositories again: they are `ready`, and the queue takes `pending`.
+    Their code stays searchable throughout — this is only the prose.
+    """
+    settings = settings or get_settings()
+    async with sqlite.get_db() as conn:
+        await init_repo_schema(conn)
+        async with conn.execute(
+            "SELECT * FROM code_repos WHERE narration_owed=1 AND status='ready'"
+        ) as cursor:
+            owed = [_row_to_repo(row) for row in await cursor.fetchall()]
+    for repo in owed:
+        _spawn_narration(repo, settings)
+    if owed:
+        logger.info("Resumed page narration for %d repository(ies)", len(owed))
+    return len(owed)
+
+
+async def cancel_narration_for(scope: str) -> bool:
+    """Stop the narration running for one repository. True if there was one."""
+    task = _narrations.pop(scope, None)
+    if task is None or task.done():
+        return False
+    task.cancel()
+    try:
+        await task
+    except (asyncio.CancelledError, Exception):  # noqa: BLE001
+        pass
+    return True
+
+
 async def cancel_narrations() -> None:
     """Stop any page narration still running. Called when the worker stops."""
     tasks = list(_narrations.values())
@@ -617,10 +680,27 @@ async def narrate_repo_pages(
             )
             return 0
 
+    # Gone while we narrated? Then these pages describe a repository that no
+    # longer exists, and markdown is the source of truth — leaving them on disk
+    # means the vault watcher imports them straight back. A purge in this
+    # process cancels narration first, but one from the MCP process cannot, so
+    # the check has to live here too.
+    still_there = await get_repo(repo.scope, wiki_id=repo.wiki_id)
+    if still_there is None:
+        folder = repo_folder(repo.name)
+        await sqlite.delete_pages_under(folder, repo.wiki_id)
+        page_dir = settings.wiki_dir / folder
+        if page_dir.is_dir() and page_dir.resolve().is_relative_to(
+            settings.wiki_dir.resolve()
+        ):
+            shutil.rmtree(page_dir, ignore_errors=True)
+        logger.info("Dropped pages for %s: it was purged while narrating", repo.scope)
+        return 0
+
     async with sqlite.get_db() as conn:
         await init_repo_schema(conn)
         cursor = await conn.execute(
-            "UPDATE code_repos SET pages=?, updated_at=? "
+            "UPDATE code_repos SET pages=?, narration_owed=0, updated_at=? "
             "WHERE scope=? AND status='ready' AND indexed_at IS ?",
             (pages, _now(), repo.scope, stamp),
         )
@@ -666,6 +746,13 @@ async def purge_repo_scope(
     # The name still has to be a single safe path segment: it addresses a cache
     # directory and a page folder further down.
     validate_repo_name(name_part)
+
+    # Stop this repository's narration before deleting anything. A narration
+    # in flight is sitting on model replies and will go on to write the very
+    # markdown and page rows being removed here, so a purge during one left
+    # the pages back on disk afterwards and the vault watcher imported them
+    # again. Awaited, so the writer is gone before the delete starts.
+    await cancel_narration_for(scope)
 
     settings = settings or get_settings()
     removed: dict[str, int] = {}

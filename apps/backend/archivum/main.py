@@ -48,7 +48,11 @@ from archivum.observability import new_trace_id, set_trace_id
 from archivum.memory.retention import run_retention_worker
 from archivum.page_write_queue import run_page_write_worker
 from archivum.capture.transcript_watch import run_transcript_watcher
-from archivum.code_repos import requeue_stale_indexing, run_code_repo_worker
+from archivum.code_repos import (
+    requeue_stale_indexing,
+    resume_owed_narration,
+    run_code_repo_worker,
+)
 from archivum.summaries import run_summary_worker
 from archivum.distillation import run_distill_worker
 from archivum.indexing import reconcile_vault
@@ -209,6 +213,13 @@ async def lifespan(app: FastAPI):
             await requeue_stale_indexing()
         except Exception as exc:  # noqa: BLE001 - never block startup on this
             logger.warning("Could not requeue stale repository indexing: %s", exc)
+        # Narration that a restart interrupted. The repositories are `ready`
+        # and the queue only selects `pending`, so without this their pages
+        # were simply never written.
+        try:
+            await resume_owed_narration(settings=settings)
+        except Exception as exc:  # noqa: BLE001 - never block startup on prose
+            logger.warning("Could not resume page narration: %s", exc)
         code_repo_task = asyncio.create_task(run_code_repo_worker(settings))
 
     # Sessions arrive without being asked for. Everything downstream of capture

@@ -23,6 +23,7 @@ from archivum.code_repos import (
     cancel_narrations,
     get_repo,
     narrate_repo_pages,
+    resume_owed_narration,
     index_repo,
     register_repo,
     requeue_stale_indexing,
@@ -301,3 +302,73 @@ async def test_shutdown_during_a_handover_does_not_start_new_narration(vault):  
     from archivum.code_repos import _narrations
 
     assert _narrations == {}
+
+
+async def test_owed_narration_is_resumed_after_a_restart(vault):  # noqa: F811
+    """A restart cancels the task; nothing else would ever look again.
+
+    The repository is `ready` and the queue selects `pending` only, so the
+    pages were simply never written. The flag is what survives the restart.
+    """
+    repo = await _registered(vault)
+    first_started = asyncio.Event()
+
+    async def hangs(repo_arg, **_):
+        first_started.set()
+        await asyncio.Event().wait()
+
+    with patch("archivum.code_repos.write_repo_pages", new=hangs):
+        await run_pending_repo_indexing(settings=vault, narrate=False)
+        await asyncio.wait_for(first_started.wait(), timeout=5)
+        stored = await get_repo(repo.scope, wiki_id="default")
+        assert stored is not None and stored.narration_owed is True
+        # The restart.
+        await cancel_narrations()
+
+    # Still owed, because the pages never landed.
+    stored = await get_repo(repo.scope, wiki_id="default")
+    assert stored is not None and stored.narration_owed is True
+
+    resumed_started = asyncio.Event()
+
+    async def writes(repo_arg, **_):
+        resumed_started.set()
+        return 3
+
+    with patch("archivum.code_repos.write_repo_pages", new=writes):
+        assert await resume_owed_narration(settings=vault) == 1
+        await asyncio.wait_for(resumed_started.wait(), timeout=5)
+        await asyncio.sleep(0.1)
+
+    stored = await get_repo(repo.scope, wiki_id="default")
+    assert stored is not None
+    assert stored.pages == 3
+    assert stored.narration_owed is False, "a written page is no longer owed"
+
+
+async def test_a_purge_stops_the_narration_that_would_rewrite_its_pages(vault):  # noqa: F811
+    """A narration in flight goes on to write the markdown being deleted.
+
+    Markdown is the source of truth, so leaving those files behind means the
+    vault watcher imports the purged repository straight back.
+    """
+    repo = await _registered(vault)
+    started = asyncio.Event()
+
+    async def hangs(repo_arg, **_):
+        started.set()
+        await asyncio.Event().wait()
+
+    with patch("archivum.code_repos.write_repo_pages", new=hangs):
+        await run_pending_repo_indexing(settings=vault, narrate=False)
+        await asyncio.wait_for(started.wait(), timeout=5)
+
+        from archivum.code_repos import _narrations, purge_repo_scope
+
+        assert repo.scope in _narrations
+        await asyncio.wait_for(
+            purge_repo_scope(repo.scope, wiki_id="default"), timeout=10
+        )
+        assert repo.scope not in _narrations, "the writer must be gone first"
+
+    assert await get_repo(repo.scope, wiki_id="default") is None
