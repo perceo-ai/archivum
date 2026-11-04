@@ -276,13 +276,16 @@ class KnowledgeRepository:
         for start in range(0, len(ids), _TOUCHING_BATCH_SIZE):
             batch = ids[start : start + _TOUCHING_BATCH_SIZE]
             placeholders = ",".join("?" for _ in batch)
-            async with self._conn.execute(
-                "SELECT * FROM knowledge_relationships WHERE scope=? AND "
-                f"(src_id IN ({placeholders}) OR dst_id IN ({placeholders}))",
-                (scope, *batch, *batch),
-            ) as cursor:
-                for row in await cursor.fetchall():
-                    rows_by_id[row["id"]] = row
+            # One query per endpoint: with `OR` the planner takes the scope index
+            # and walks the whole scope, once per batch.
+            for column in ("src_id", "dst_id"):
+                async with self._conn.execute(
+                    "SELECT * FROM knowledge_relationships "
+                    f"WHERE scope=? AND {column} IN ({placeholders})",
+                    (scope, *batch),
+                ) as cursor:
+                    for row in await cursor.fetchall():
+                        rows_by_id[row["id"]] = row
         return await self._hydrate_relationships(
             [rows_by_id[edge_id] for edge_id in sorted(rows_by_id)]
         )
