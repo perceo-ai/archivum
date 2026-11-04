@@ -544,7 +544,20 @@ def _spawn_narration(repo: CodeRepo, settings: Settings) -> None:
     if existing is not None and not existing.done():
         existing.cancel()
 
-    task = asyncio.create_task(narrate_repo_pages(repo, settings=settings))
+    async def _after(previous: asyncio.Task[int] | None) -> int:
+        # Wait for the cancelled run to finish unwinding before taking the
+        # gate. Cancellation now kills its model processes, and that teardown
+        # has to complete before a replacement claims the same budget —
+        # otherwise both hold memory and model capacity at once, which is the
+        # thing the gate exists to prevent.
+        if previous is not None:
+            try:
+                await previous
+            except (asyncio.CancelledError, Exception):  # noqa: BLE001
+                pass
+        return await narrate_repo_pages(repo, settings=settings)
+
+    task = asyncio.create_task(_after(existing))
     _narrations[repo.scope] = task
     task.add_done_callback(
         lambda done: _narrations.pop(repo.scope, None)
