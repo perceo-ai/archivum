@@ -433,3 +433,28 @@ async def test_touching_edges_are_found_across_query_batches():
         ("elsewhere", "n1199"),
         ("n0000", "n1199"),
     ]
+
+
+@pytest.mark.asyncio
+async def test_a_repository_over_twenty_thousand_records_can_be_loaded():
+    """The old limit sat below real repositories, so their pages were never written."""
+    async with aiosqlite.connect(":memory:") as conn:
+        await init_knowledge_schema(conn)
+        ids = [f"symbol:{number}" for number in range(20_001)]
+        await conn.executemany(
+            "INSERT INTO knowledge_objects "
+            "(id, kind, label, scope, confidence, extraction_method, properties) "
+            "VALUES (?, 'symbol', ?, 'repo:big', 1.0, 'EXTRACTED', '{}')",
+            [(object_id, object_id) for object_id in ids],
+        )
+        await conn.executemany(
+            "INSERT INTO knowledge_citations "
+            "(knowledge_id, knowledge_type, position, source_id, chunk_id) "
+            "VALUES (?, 'object', 0, 'f.py', 'f.py')",
+            [(object_id,) for object_id in ids],
+        )
+        repo = KnowledgeRepository(conn)
+
+        nodes, _ = await graph_audit.load_graph(repo, scope="repo:big")
+
+    assert len(nodes) == 20_001
