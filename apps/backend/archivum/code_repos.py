@@ -276,10 +276,19 @@ async def init_repo_schema(conn: aiosqlite.Connection) -> None:
     cursor = await conn.execute("PRAGMA table_info(code_repos)")
     columns = {row[1] for row in await cursor.fetchall()}
     if "narration_owed" not in columns:
-        await conn.execute(
-            "ALTER TABLE code_repos ADD COLUMN narration_owed INTEGER NOT NULL DEFAULT 0"
-        )
-        await conn.commit()
+        try:
+            await conn.execute(
+                "ALTER TABLE code_repos ADD COLUMN narration_owed INTEGER NOT NULL "
+                "DEFAULT 0"
+            )
+            await conn.commit()
+        except aiosqlite.OperationalError as exc:
+            # Two first callers on separate connections can both read the old
+            # columns before either alters the table, and the loser would
+            # otherwise fail its request on a duplicate column. The column
+            # existing is the outcome both of them wanted.
+            if "duplicate column" not in str(exc).lower():
+                raise
 
 
 # ── Registry ──────────────────────────────────────────────────────────────────
@@ -594,6 +603,19 @@ def _spawn_narration(repo: CodeRepo, settings: Settings) -> None:
     )
 
 
+async def _scope_has_knowledge(scope: str) -> bool:
+    """Whether any canonical record still belongs to this scope."""
+    async with sqlite.get_db() as conn:
+        try:
+            async with conn.execute(
+                "SELECT 1 FROM knowledge_objects WHERE scope=? LIMIT 1", (scope,)
+            ) as cursor:
+                return await cursor.fetchone() is not None
+        except aiosqlite.OperationalError:
+            # A vault with no knowledge schema has nothing to keep.
+            return False
+
+
 async def _mark_narration_owed(scope: str, owed: bool) -> None:
     async with sqlite.get_db() as conn:
         await init_repo_schema(conn)
@@ -680,13 +702,24 @@ async def narrate_repo_pages(
             )
             return 0
 
-    # Gone while we narrated? Then these pages describe a repository that no
-    # longer exists, and markdown is the source of truth — leaving them on disk
-    # means the vault watcher imports them straight back. A purge in this
-    # process cancels narration first, but one from the MCP process cannot, so
-    # the check has to live here too.
+    # Gone while we narrated? Which kind of gone matters, and a missing
+    # register row alone does not say. `forget` drops the registration and
+    # deliberately keeps the pages and the code records; a purge takes all of
+    # it. Treating both as permission to delete would have erased pages a
+    # person had edited by hand.
+    #
+    # The knowledge objects are the difference: `forget` leaves them, a purge
+    # does not. A purge in this process cancels narration before deleting, but
+    # one from the MCP process cannot, so this still has to be checked here.
     still_there = await get_repo(repo.scope, wiki_id=repo.wiki_id)
     if still_there is None:
+        if await _scope_has_knowledge(repo.scope):
+            logger.info(
+                "Keeping pages for %s: its registration went away but its "
+                "records remain, so this was `forget` rather than a purge",
+                repo.scope,
+            )
+            return pages
         folder = repo_folder(repo.name)
         await sqlite.delete_pages_under(folder, repo.wiki_id)
         page_dir = settings.wiki_dir / folder
