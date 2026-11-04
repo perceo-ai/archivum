@@ -562,3 +562,31 @@ test("index polls when the server queued the work instead", async (t) => {
     "https://v.example/api/repos",
   ]);
 });
+
+test("awaitIndexed survives a dropped connection", async () => {
+  // A rejected fetch says nothing about the indexing. Letting it end the
+  // command printed a failure while the server carried on working.
+  let calls = 0;
+  const fetchImpl = async () => {
+    calls += 1;
+    if (calls < 3) throw new TypeError("fetch failed");
+    return { ok: true, status: 200, json: async () => [{ name: "atlas", status: "ready", nodes: 1 }] };
+  };
+  const { state } = await indexRepo.awaitIndexed({
+    baseUrl: "http://x", key: "k", name: "atlas",
+    fetchImpl, sleep: async () => {},
+  });
+  assert.equal(state, "ready");
+  assert.equal(calls, 3);
+});
+
+test("awaitIndexed reports a rejected key instead of calling it pending", async () => {
+  // The status route did not accept device keys, so every poll was a 401 and
+  // the command waited the full timeout before reporting work still running.
+  const fetchImpl = async () => ({ ok: false, status: 401, json: async () => ({}) });
+  const { state } = await indexRepo.awaitIndexed({
+    baseUrl: "http://x", key: "k", name: "atlas",
+    fetchImpl, sleep: async () => {},
+  });
+  assert.equal(state, "unauthorized");
+});
