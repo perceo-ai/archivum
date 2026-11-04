@@ -267,3 +267,37 @@ async def test_a_stale_page_count_is_discarded(vault):  # noqa: F811
     stored = await get_repo(repo.scope, wiki_id="default")
     assert stored is not None
     assert stored.pages == 0, "a count from a replaced index must not be written"
+
+
+async def test_shutdown_during_a_handover_does_not_start_new_narration(vault):  # noqa: F811
+    """Cancelling the replacement must not be read as the predecessor dying.
+
+    The handover catches the predecessor's cancellation; catching this task's
+    own as well meant shutdown began a fresh narration and then waited out the
+    whole run — the restart stall this work exists to remove.
+    """
+    repo = await _registered(vault)
+    runs = 0
+    first_started = asyncio.Event()
+
+    async def hangs(repo_arg, **_):
+        nonlocal runs
+        runs += 1
+        first_started.set()
+        await asyncio.Event().wait()
+
+    with patch("archivum.code_repos.write_repo_pages", new=hangs):
+        from archivum.code_repos import _spawn_narration
+
+        _spawn_narration(repo, vault)
+        await asyncio.wait_for(first_started.wait(), timeout=5)
+        assert runs == 1
+
+        # A reindex hands over, then shutdown lands mid-handover.
+        _spawn_narration(repo, vault)
+        await asyncio.wait_for(cancel_narrations(), timeout=5)
+
+    assert runs == 1, "shutdown must not start a narration it then waits for"
+    from archivum.code_repos import _narrations
+
+    assert _narrations == {}

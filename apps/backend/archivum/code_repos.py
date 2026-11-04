@@ -553,7 +553,16 @@ def _spawn_narration(repo: CodeRepo, settings: Settings) -> None:
         if previous is not None:
             try:
                 await previous
-            except (asyncio.CancelledError, Exception):  # noqa: BLE001
+            except asyncio.CancelledError:
+                # Theirs or ours? Catching both swallowed this task's own
+                # cancellation and then started fresh model work, so a
+                # shutdown arriving during the handover waited out a whole
+                # narration run. `cancelling()` is non-zero only when someone
+                # asked *this* task to stop.
+                current = asyncio.current_task()
+                if current is not None and current.cancelling() > 0:
+                    raise
+            except Exception:  # noqa: BLE001 - a failed predecessor is not ours
                 pass
         return await narrate_repo_pages(repo, settings=settings)
 
