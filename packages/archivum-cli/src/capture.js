@@ -85,12 +85,43 @@ function toolUses(content) {
     }));
 }
 
+/** Flatten a tool result's content to text.
+ *
+ * `String(...)` on a block array yields `[object Object]`, which is how the
+ * error text of every failed check was thrown away. Fix memory is built on
+ * that text: the symptom extractor reads tool output looking for the error,
+ * and `[object Object]` carries none.
+ */
+function resultText(content) {
+  if (typeof content === "string") return content;
+  if (Array.isArray(content)) {
+    return content
+      .map((block) => {
+        if (typeof block === "string") return block;
+        if (block && typeof block === "object") return String(block.text ?? "");
+        return "";
+      })
+      .filter(Boolean)
+      .join("\n");
+  }
+  if (content === null || content === undefined) return "";
+  return typeof content === "object" ? JSON.stringify(content) : String(content);
+}
+
 function toolResults(content) {
   if (!Array.isArray(content)) return {};
   const out = {};
   for (const block of content) {
     if (!block || typeof block !== "object" || block.type !== "tool_result") continue;
-    if (block.tool_use_id) out[block.tool_use_id] = String(block.content ?? "");
+    if (!block.tool_use_id) continue;
+    // `is_error` is carried through, because the server defaults a call to
+    // ok=True. Dropping it made every failed check look successful in the
+    // captured evidence, and "did this session end on a failing check" is
+    // what decides whether a fix gets recorded at all.
+    out[block.tool_use_id] = {
+      text: resultText(block.content),
+      ok: block.is_error !== true,
+    };
   }
   return out;
 }
@@ -132,7 +163,9 @@ export function parseTranscript(text) {
       const index = turnOfCall.get(callId);
       if (index === undefined) continue;
       for (const call of turns[index].tool_calls) {
-        if (call.call_id === callId) call.result = redactSecrets(result);
+        if (call.call_id !== callId) continue;
+        call.result = redactSecrets(result.text);
+        call.ok = result.ok;
       }
     }
 
@@ -149,6 +182,7 @@ export function parseTranscript(text) {
         arguments: redactArguments(call.arguments),
         call_id: call.call_id,
         result: null,
+        ok: true,
       })),
     });
     for (const call of calls) {
@@ -159,10 +193,33 @@ export function parseTranscript(text) {
   return { sessionId, startedAt, turns };
 }
 
-function redactArguments(args) {
+// Keys whose value is a secret regardless of how the value itself looks. The
+// assignment pattern in `SECRET_PATTERNS` needs the key and the value in one
+// string to fire, and a structured tool input never puts them together, so
+// `{"password": "hunter2"}` would have gone up verbatim.
+const SECRET_KEY_RE = /^(?:.*[_-])?(?:api[_-]?key|secret|password|passwd|token|credential|authorization|auth)$/i;
+
+/** Scrub a tool's inputs, however deeply they nest.
+ *
+ * This copied nested objects and arrays through untouched, so a secret one
+ * level down — `{"config": {"token": "..."}}` — left the machine unredacted.
+ * Tool inputs are arbitrary JSON and this is the last point before upload.
+ */
+export function redactArguments(args, depth = 0) {
+  // Arbitrary nesting is possible and cycles are not: these come from parsed
+  // JSON. The bound is for pathological depth, not correctness.
+  if (depth > 12) return "[REDACTED: too deeply nested to scrub]";
+  if (typeof args === "string") return redactSecrets(args);
+  if (Array.isArray(args)) return args.map((item) => redactArguments(item, depth + 1));
+  if (!args || typeof args !== "object") return args;
+
   const out = {};
   for (const [key, value] of Object.entries(args)) {
-    out[key] = typeof value === "string" ? redactSecrets(value) : value;
+    if (SECRET_KEY_RE.test(key) && value !== null && typeof value !== "object") {
+      out[key] = "REDACTED";
+      continue;
+    }
+    out[key] = redactArguments(value, depth + 1);
   }
   return out;
 }

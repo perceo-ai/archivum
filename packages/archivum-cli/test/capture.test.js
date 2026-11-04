@@ -5,6 +5,9 @@ import os from "node:os";
 import path from "node:path";
 
 import { captureSessionCommand, parseTranscript, redactSecrets } from "../src/capture.js";
+// Through the namespace too, so a helper that does not exist yet fails its own
+// tests rather than the whole file at import.
+import * as capture from "../src/capture.js";
 
 function tempHome({ linked = true, capture = undefined } = {}) {
   const home = fs.mkdtempSync(path.join(os.tmpdir(), "archivum-capture-"));
@@ -231,4 +234,75 @@ test("a failed upload is retried on the next Stop, not marked as done", async ()
   const retried = await captureSessionCommand(["--transcript", transcript], { home, env: {}, fetchImpl });
   assert.equal(retried.status, "uploaded");
   assert.equal(calls.length, 1);
+});
+
+// ── Redaction depth ───────────────────────────────────────────────────────────
+
+test("a secret nested inside a tool input is scrubbed", () => {
+  // The scrubber copied nested objects and arrays through untouched, so a
+  // secret one level down left the machine verbatim.
+  const out = capture.redactArguments({
+    config: { token: "sk-abcdefghijklmnopqrstuv" },
+    list: ["sk-ant-abcdefghijklmnopqrstuv"],
+  });
+  assert.ok(!JSON.stringify(out).includes("abcdefghijklmnopqrstuv"), JSON.stringify(out));
+});
+
+test("a secret-named key is scrubbed whatever its value looks like", () => {
+  // The assignment pattern needs key and value in one string to fire, and a
+  // structured tool input never puts them together.
+  const out = capture.redactArguments({
+    password: "hunter2",
+    DB_PASSWORD: "short",
+    nested: { authorization: "Basic abc" },
+    harmless: "keep me",
+  });
+  assert.equal(out.password, "REDACTED");
+  assert.equal(out.DB_PASSWORD, "REDACTED");
+  assert.equal(out.nested.authorization, "REDACTED");
+  assert.equal(out.harmless, "keep me");
+});
+
+test("redaction does not choke on odd shapes", () => {
+  assert.deepEqual(capture.redactArguments({ n: 1, b: true, z: null }), {
+    n: 1,
+    b: true,
+    z: null,
+  });
+  assert.deepEqual(capture.redactArguments({}), {});
+});
+
+test("a failed tool result keeps its text and its failure", () => {
+  // `String(...)` on a block array yields "[object Object]", which threw away
+  // the error text of every failed check; `is_error` was dropped entirely, so
+  // the server defaulted the call to ok.
+  const line = JSON.stringify({
+    type: "assistant",
+    message: {
+      role: "assistant",
+      content: [
+        { type: "text", text: "running the suite" },
+        { type: "tool_use", id: "t1", name: "Bash", input: { command: "pytest" } },
+      ],
+    },
+  });
+  const resultLine = JSON.stringify({
+    type: "user",
+    message: {
+      role: "user",
+      content: [
+        {
+          type: "tool_result",
+          tool_use_id: "t1",
+          is_error: true,
+          content: [{ type: "text", text: "E   sqlite3.OperationalError: database is locked" }],
+        },
+      ],
+    },
+  });
+  const { turns } = parseTranscript(`${line}\n${resultLine}\n`);
+  const call = turns.flatMap((t) => t.tool_calls ?? []).find((c) => c.call_id === "t1");
+  assert.ok(call, "the tool call should be present");
+  assert.match(call.result, /database is locked/);
+  assert.equal(call.ok, false);
 });
