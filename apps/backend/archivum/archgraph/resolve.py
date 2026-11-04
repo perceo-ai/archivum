@@ -10,6 +10,11 @@ from archivum.archgraph.models import CodeEdge, CodeNode, Extraction, Extraction
 # the same reason `calls` does: `class Retry(Base)` names Base, not its id.
 _RESOLVABLE_RELATIONS: frozenset[str] = frozenset({"calls", "references", "inherits"})
 
+# Past this many same-named symbols, a name match is not evidence of anything.
+# Each candidate is one stored edge, and at most one of them can be right, so
+# unbounded fan-out made guesses the bulk of a large repository's graph.
+MAX_AMBIGUOUS_CANDIDATES = 5
+
 
 def _bare_name(node_id: str) -> str:
     """Return the last underscore-separated segment of a node id."""
@@ -24,7 +29,8 @@ def resolve_cross_file(extractions: list[Extraction]) -> list[CodeEdge]:
     2. For every calls/references edge whose target is NOT in the combined node
        set, look up the target's bare name in the symbol table.
        - 1 match in a different file  -> emit INFERRED edge
-       - 2+ matches                   -> emit AMBIGUOUS edge to each candidate
+       - 2+ matches, within the cap   -> emit AMBIGUOUS edge to each candidate
+       - more than the cap            -> drop (the name is too common to mean anything)
        - 0 matches                    -> drop (truly external)
     3. Never re-emit an edge already present as EXTRACTED with same
        (source, target, relation).
@@ -115,7 +121,7 @@ def resolve_cross_file(extractions: list[Extraction]) -> list[CodeEdge]:
                         confidence=edge.confidence,
                     )
                 )
-            else:
+            elif len(cross_candidates) <= MAX_AMBIGUOUS_CANDIDATES:
                 # Ambiguous: emit one edge per candidate
                 for target_id in cross_candidates:
                     triple = (edge.source, target_id, edge.relation)

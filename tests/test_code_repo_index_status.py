@@ -14,12 +14,16 @@ out-of-memory kill was never looked at again.
 from __future__ import annotations
 
 import asyncio
+from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
 import archivum.db.sqlite as sqlite_mod
 import pytest
 from archivum.code_repos import (
+    MAX_INDEX_ATTEMPTS,
     _set_status,
+    purge_dangling_links,
+    purge_repo_scope,
     cancel_narrations,
     get_repo,
     init_repo_schema,
@@ -30,6 +34,9 @@ from archivum.code_repos import (
     requeue_stale_indexing,
     run_pending_repo_indexing,
 )
+
+from archivum.knowledge.models import Citation, KnowledgeObject, KnowledgeRelationship
+from archivum.knowledge.repository import KnowledgeRepository, init_knowledge_schema
 
 from test_code_pages import _needs_git, make_repo, vault  # noqa: F401
 
@@ -110,6 +117,65 @@ async def test_abandoned_indexing_rows_are_returned_to_the_queue(vault):  # noqa
     assert await requeue_stale_indexing(older_than_seconds=0) == 1
     stored = await get_repo(repo.scope, wiki_id="default")
     assert stored is not None and stored.status == "pending"
+
+
+async def _die_mid_flight(repo) -> None:
+    """Run an index that ends the way an out-of-memory kill does: no handler runs."""
+
+    async def die(repo_arg, **_):
+        raise KeyboardInterrupt  # not an `Exception`, so nothing records a failure
+
+    with patch("archivum.code_repos._index_repo", new=die):
+        with pytest.raises(KeyboardInterrupt):
+            await index_repo(repo)
+
+
+async def test_a_repo_that_keeps_killing_the_process_stops_being_retried(vault):  # noqa: F811
+    """An ingest that outlives the process was requeued forever, from zero.
+
+    Live, one upload ran until the backend was killed about every 61 minutes and
+    the sweep put it straight back, which kept a shared SSD busy for two days.
+    """
+    repo = await _registered(vault)
+
+    for _ in range(MAX_INDEX_ATTEMPTS - 1):
+        await _die_mid_flight(repo)
+        assert await requeue_stale_indexing(older_than_seconds=0) == 1
+
+    await _die_mid_flight(repo)
+    assert await requeue_stale_indexing(older_than_seconds=0) == 0
+
+    stored = await get_repo(repo.scope, wiki_id="default")
+    assert stored is not None
+    assert stored.status == "error"
+    assert f"{MAX_INDEX_ATTEMPTS} attempts" in (stored.error or "")
+    assert await run_pending_repo_indexing(narrate=False) == 0
+
+
+async def test_asking_again_gives_a_failed_repo_a_fresh_set_of_attempts(vault):  # noqa: F811
+    repo = await _registered(vault)
+    for _ in range(MAX_INDEX_ATTEMPTS):
+        await _die_mid_flight(repo)
+        await requeue_stale_indexing(older_than_seconds=0)
+
+    repo = await register_repo(path=Path(repo.path), wiki_id="default", name=repo.name)
+    assert repo.status == "pending"
+
+    await _die_mid_flight(repo)
+    assert await requeue_stale_indexing(older_than_seconds=0) == 1
+
+
+async def test_a_finished_index_clears_its_attempts(vault):  # noqa: F811
+    """Restarts spread over months must not add up to a limit on a healthy repo."""
+    repo = await _registered(vault)
+    await _die_mid_flight(repo)
+    await requeue_stale_indexing(older_than_seconds=0)
+
+    await index_repo(repo, write_pages=False)
+
+    for _ in range(MAX_INDEX_ATTEMPTS - 1):
+        await _die_mid_flight(repo)
+        assert await requeue_stale_indexing(older_than_seconds=0) == 1
 
 
 async def test_the_queue_records_a_failure_without_stopping(vault):  # noqa: F811
@@ -404,6 +470,91 @@ async def test_forget_does_not_let_narration_delete_the_pages(vault):  # noqa: F
         await narrate_repo_pages(repo, settings=vault)
 
     assert (page_dir / "hand-written.md").exists(), "forget must keep the pages"
+
+
+_CITATION = Citation(source_id="s", chunk_id="c", span_start=None, span_end=None, quote=None)
+
+
+async def _seed_link(src: str, dst: str, *, scope: str = "cross_repo") -> str:
+    edge_id = f"{src}__same_symbol_as__{dst}"
+    async with sqlite_mod.get_db() as conn:
+        await init_knowledge_schema(conn)
+        await KnowledgeRepository(conn).upsert_relationship(
+            KnowledgeRelationship(
+                id=edge_id,
+                src_id=src,
+                dst_id=dst,
+                rel_type="same_symbol_as",
+                scope=scope,
+                confidence=0.5,
+                extraction_method="AMBIGUOUS",
+                citations=[_CITATION],
+                properties={},
+            )
+        )
+    return edge_id
+
+
+async def _seed_object(object_id: str, scope: str) -> None:
+    async with sqlite_mod.get_db() as conn:
+        await init_knowledge_schema(conn)
+        await KnowledgeRepository(conn).upsert_object(
+            KnowledgeObject(
+                id=object_id,
+                kind="symbol",
+                label=object_id,
+                scope=scope,
+                confidence=1.0,
+                extraction_method="EXTRACTED",
+                citations=[_CITATION],
+                properties={},
+            )
+        )
+
+
+async def _surviving_edges() -> tuple[set[str], int]:
+    async with sqlite_mod.get_db() as conn:
+        async with conn.execute("SELECT id FROM knowledge_relationships") as cursor:
+            edges = {row[0] for row in await cursor.fetchall()}
+        async with conn.execute(
+            "SELECT COUNT(*) FROM knowledge_citations WHERE knowledge_type='relationship'"
+        ) as cursor:
+            citations = (await cursor.fetchone())[0]
+    return edges, citations
+
+
+async def test_purging_a_repo_takes_the_links_that_reached_it(vault):  # noqa: F811
+    """`cross_repo` edges have their own scope, so a scope-matched delete missed them."""
+    repo = await _registered(vault)
+    await _seed_object("gone", repo.scope)
+    await _seed_object("kept", "repo:default:other")
+    await _seed_object("kept-too", "repo:default:third")
+    await _seed_link("gone", "kept")
+    await _seed_link("kept", "gone")
+    unrelated = await _seed_link("kept", "kept-too")
+    # Recorded memory: no index rebuilds it, so a purge must not take it.
+    recorded = await _seed_link("fix", "gone", scope="bridge")
+
+    await purge_repo_scope(repo.scope, wiki_id="default")
+
+    assert await _surviving_edges() == ({unrelated, recorded}, 2)
+
+
+async def test_dangling_links_are_purged_and_nothing_else(vault):  # noqa: F811
+    await sqlite_mod.init_db(vault)
+    await _seed_object("a", "repo:default:a")
+    await _seed_object("b", "repo:default:b")
+    live = await _seed_link("a", "b")
+    await _seed_link("a", "missing")
+    await _seed_link("missing", "b")
+    # An incremental index removes symbols before rewriting them, and nothing
+    # rebuilds a recorded link, so these must outlive a sweep.
+    recorded = await _seed_link("fix", "missing", scope="bridge")
+    other = await _seed_link("missing", "also-missing", scope="repo:default:a")
+
+    assert await purge_dangling_links(batch_size=1) == 2
+
+    assert await _surviving_edges() == ({live, recorded, other}, 3)
 
 
 async def test_two_first_callers_can_both_initialise_the_schema(vault):  # noqa: F811

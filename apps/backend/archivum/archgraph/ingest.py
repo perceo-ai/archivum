@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import subprocess
+from collections.abc import Iterable, Iterator
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -37,6 +38,10 @@ from archivum.knowledge.repository import KnowledgeRepository
 # Deriving cross-repo and evidence links means reading the whole store, so the
 # scan is bounded the same way the graph audit and projection rebuild are.
 _L1_SCAN_LIMIT = 100_000
+
+# Records per commit. Large enough that the disk flush stops being the cost, small
+# enough that the write lock is released often for the background workers.
+_WRITE_BATCH_SIZE = 2_000
 
 
 @dataclass
@@ -225,6 +230,46 @@ def prune_dangling(candidates: list, deleted_files: set[str]) -> tuple[list, int
     return kept, pruned_count
 
 
+async def _write_candidates(
+    knowledge: KnowledgeRepository,
+    candidates: Iterable[object],
+    *,
+    batch_size: int = _WRITE_BATCH_SIZE,
+) -> None:
+    """Persist candidates in batches as they arrive.
+
+    A commit per record is a disk flush per record, which on a large repository
+    meant hours of writing, and collecting every candidate first was most of the
+    ingest's memory, so only one batch is held at a time.
+
+    Two call sites of one callee are two candidates and one record. Each upsert
+    replaces the citations, so the last one is what ends up stored, whether the
+    repeat lands in this batch, where it replaces the buffered candidate, or in
+    a later one, where it overwrites the row.
+    """
+    batch: dict[tuple[type, str], object] = {}
+
+    async def flush() -> None:
+        async with knowledge.transaction():
+            for candidate in batch.values():
+                if isinstance(candidate, (CandidateEntity, CandidateArtifact)):
+                    await knowledge.upsert_object(
+                        candidate_to_knowledge_object(candidate), commit=False
+                    )
+                elif isinstance(candidate, CandidateRelationship):
+                    await knowledge.upsert_relationship(
+                        candidate_to_knowledge_relationship(candidate), commit=False
+                    )
+        batch.clear()
+
+    for candidate in candidates:
+        batch[(type(candidate), candidate.id)] = candidate
+        if len(batch) >= batch_size:
+            await flush()
+    if batch:
+        await flush()
+
+
 async def ingest_repo(
     root: Path,
     *,
@@ -286,24 +331,19 @@ async def ingest_repo(
         all_extractions.append(Extraction(nodes=[], edges=edges_by_file[src_file], error=None))
         file_chunk_ids.append((Path(src_file), src_file))
 
-    # Step 4: map all extractions into candidates
-    all_candidates: list[object] = list(repo_cands)
-    for (file_or_root, chunk_id), ext in zip(file_chunk_ids, all_extractions):
-        mapped = map_extraction(ext, scope=scope, chunk_id=chunk_id)
-        all_candidates.extend(mapped)
-
-    # Step 4b: attribute the commit to the symbols whose lines it changed.
+    # Step 4: attribute the commit to the symbols whose lines it changed.
     # Attributing it to every symbol in a touched file would say a module moved;
     # this says which function did, which is what "what changed and why" needs.
-    all_candidates.extend(
-        _changed_in_edges(root, snap, all_extractions, scope=scope)
-    )
+    changed_in = _changed_in_edges(root, snap, all_extractions, scope=scope)
 
     # Step 5 (incremental only): prune candidates from deleted files and remove
     # stale canonical records from every touched file before current upserts.
-    if update and deleted:
-        deleted_strs = {str(p) for p in deleted}
-        all_candidates, _ = prune_dangling(all_candidates, deleted_strs)
+    deleted_strs = {str(p) for p in deleted} if update else set()
+    leading: list[object] = list(repo_cands)
+    trailing: list[object] = list(changed_in)
+    if deleted_strs:
+        leading, _ = prune_dangling(leading, deleted_strs)
+        trailing, _ = prune_dangling(trailing, deleted_strs)
 
     if update:
         touched_strs = {str(p) for p in files}
@@ -320,24 +360,39 @@ async def ingest_repo(
     # pointers to records that do not exist.
     known_ids = {
         candidate.id
-        for candidate in all_candidates
+        for candidate in leading
         if isinstance(candidate, (CandidateEntity, CandidateArtifact))
     }
-    resolved_candidates: list[object] = []
-    for candidate in all_candidates:
-        if isinstance(candidate, CandidateRelationship) and not (
-            candidate.src_id in known_ids and candidate.dst_id in known_ids
-        ):
-            continue
-        resolved_candidates.append(candidate)
-    all_candidates = resolved_candidates
+    mapped_chunks = [
+        (chunk_id, ext)
+        for (_, chunk_id), ext in zip(file_chunk_ids, all_extractions)
+        if chunk_id not in deleted_strs
+    ]
+    known_ids.update(node.id for _, ext in mapped_chunks for node in ext.nodes)
 
-    for candidate in all_candidates:
-        if isinstance(candidate, (CandidateEntity, CandidateArtifact)):
-            await knowledge.upsert_object(candidate_to_knowledge_object(candidate))
-        elif isinstance(candidate, CandidateRelationship):
-            await knowledge.upsert_relationship(candidate_to_knowledge_relationship(candidate))
-    accepted = all_candidates
+    # Hashes rather than ids: these only count distinct records for the report,
+    # and keeping every id string would hold much of what streaming lets go of.
+    node_hashes: set[int] = set()
+    edge_hashes: set[int] = set()
+
+    def stored_candidates() -> Iterator[object]:
+        def mapped() -> Iterator[object]:
+            yield from leading
+            for chunk_id, ext in mapped_chunks:
+                yield from map_extraction(ext, scope=scope, chunk_id=chunk_id)
+            yield from trailing
+
+        for candidate in mapped():
+            if isinstance(candidate, CandidateRelationship):
+                if candidate.src_id in known_ids and candidate.dst_id in known_ids:
+                    edge_hashes.add(hash(candidate.id))
+                    yield candidate
+            else:
+                if isinstance(candidate, (CandidateEntity, CandidateArtifact)):
+                    node_hashes.add(hash(candidate.id))
+                yield candidate
+
+    await _write_candidates(knowledge, stored_candidates())
 
     # Step 7: resolve derived relationships against everything the vault knows.
     # Reading the whole store rather than this run is what lets a symbol link to
@@ -351,9 +406,8 @@ async def ingest_repo(
     bridge_rels = await bridge_evidence(l1_view)
     extra_rels: list[object] = [*cross_repo_rels, *bridge_rels]
     if extra_rels:
-        for relationship in extra_rels:
-            await knowledge.upsert_relationship(candidate_to_knowledge_relationship(relationship))
-        accepted.extend(extra_rels)
+        await _write_candidates(knowledge, extra_rels)
+        edge_hashes.update(hash(relationship.id) for relationship in extra_rels)
 
     # Step 8: rebuild lexical index from canonical code objects in this scope.
     # Incremental runs only extract touched files, but lexical is a full
@@ -369,17 +423,10 @@ async def ingest_repo(
     # Count distinct records, not candidates. Two call sites for the same callee
     # produce two candidates and one relationship, so counting candidates made
     # the CLI report more edges than the store actually held.
-    nodes_accepted = len(
-        {c.id for c in accepted if isinstance(c, (CandidateEntity, CandidateArtifact))}
-    )
-    edges_accepted = len(
-        {c.id for c in accepted if isinstance(c, CandidateRelationship)}
-    )
-
     return IngestReport(
         files=len(files),
-        nodes=nodes_accepted,
-        edges=edges_accepted,
+        nodes=len(node_hashes),
+        edges=len(edge_hashes),
         rejected=0,
         cache_hits=cache_hits,
     )

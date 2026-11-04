@@ -6,7 +6,7 @@ from archivum.archgraph.models import (
     Extraction,
     ExtractionMethod,
 )
-from archivum.archgraph.resolve import resolve_cross_file
+from archivum.archgraph.resolve import MAX_AMBIGUOUS_CANDIDATES, resolve_cross_file
 
 
 def _node(id: str, label: str, source_file: str) -> CodeNode:
@@ -81,3 +81,26 @@ def test_no_duplicate_of_extracted():
     new_edges = resolve_cross_file([ext_a, ext_b])
     # b_helper is already a known node -> target is resolved, not an unresolved external
     assert new_edges == []
+
+
+def _callers_of_helper(definitions: int) -> list[Extraction]:
+    caller = Extraction(
+        nodes=[_node("a_run", "run", "a.py")],
+        edges=[_edge("a_run", "x_helper", "calls", ExtractionMethod.EXTRACTED, "a.py")],
+    )
+    defining = [
+        Extraction(nodes=[_node(f"m{index}_helper", "helper", f"m{index}.py")], edges=[])
+        for index in range(definitions)
+    ]
+    return [caller, *defining]
+
+
+def test_a_name_too_common_to_mean_anything_links_nowhere():
+    """A call matching dozens of symbols used to emit an edge to each of them."""
+    assert resolve_cross_file(_callers_of_helper(MAX_AMBIGUOUS_CANDIDATES + 1)) == []
+
+
+def test_a_name_within_the_cap_keeps_every_candidate():
+    edges = resolve_cross_file(_callers_of_helper(MAX_AMBIGUOUS_CANDIDATES))
+    assert len(edges) == MAX_AMBIGUOUS_CANDIDATES
+    assert {edge.method for edge in edges} == {ExtractionMethod.AMBIGUOUS}

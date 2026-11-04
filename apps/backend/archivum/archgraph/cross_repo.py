@@ -53,8 +53,12 @@ async def resolve_cross_repo(l1) -> list[CandidateRelationship]:
             method = "AMBIGUOUS"
 
         # emit one edge per distinct pair of object ids, deterministically ordered
-        ids = sorted({obj_id for _, obj_id, _ in entries})
-        for id_a, id_b in combinations(ids, 2):
+        # Only across repos: a name repeated inside one repo says nothing about
+        # shared identity, and `__init__` alone was 694k pairs that way.
+        scope_of = {obj_id: scope for scope, obj_id, _ in entries}
+        for id_a, id_b in combinations(sorted(scope_of), 2):
+            if scope_of[id_a] == scope_of[id_b]:
+                continue
             prov = Provenance(
                 chunk_id=f"cross_repo:{match_key}",
                 span="L0",
