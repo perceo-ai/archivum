@@ -198,3 +198,41 @@ async def test_purging_an_unknown_scope_is_harmless(vault):  # noqa: F811
 
     assert all(count == 0 for count in removed.values()), removed
     assert await _objects_in("repo:default:keep") == ["keep:a"]
+
+
+async def test_purge_refuses_a_scope_outside_this_wiki(vault):  # noqa: F811
+    """Every delete filters on `scope` alone, so the caller must not choose it.
+
+    `purge-repo personal` would have taken a vault's personal sources, and
+    another tenant's `repo:other:x` its code — leaving their register row
+    behind to claim the repository was still there.
+    """
+    from archivum.code_repos import RepoError
+
+    await _seed(vault, {"repo:default:keep": ["keep:a"]})
+
+    for hostile in (
+        "personal",
+        "wiki:default",
+        "repo:other:theirs",
+        "repo:default:",
+        "repo:default:a:b",
+        "",
+    ):
+        with pytest.raises(RepoError):
+            await purge_repo_scope(hostile, wiki_id="default")
+
+    # Nothing was touched by any of those attempts.
+    assert await _objects_in("repo:default:keep") == ["keep:a"]
+
+
+async def test_orphan_listing_stays_inside_this_wiki(vault):  # noqa: F811
+    """Listing every wiki's code scopes against one wiki's register reported
+    another tenant's live repository as an orphan — an invitation to purge
+    something in use."""
+    await _seed(
+        vault,
+        {"repo:default:ghost": ["ghost:a"], "repo:other:live": ["live:a"]},
+    )
+
+    assert await orphan_repo_scopes(wiki_id="default") == ["repo:default:ghost"]
