@@ -592,8 +592,11 @@ async def _add_incident_links(
     incident: list[KnowledgeRelationship] = []
     wanted: set[str] = set()
 
+    # Asked of the database, not filtered here. Link scopes span every repository,
+    # so reading one whole held millions of edges to keep a handful, and the hourly
+    # summary pass ran the backend out of memory doing it.
     for link_scope in LINK_SCOPES:
-        for edge in await repo.list_relationships(scope=link_scope):
+        for edge in await repo.relationships_touching(known, scope=link_scope):
             touches_src = edge.src_id in known
             touches_dst = edge.dst_id in known
             if not (touches_src or touches_dst):
