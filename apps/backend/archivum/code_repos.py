@@ -37,6 +37,7 @@ from archivum.archgraph.repo import snapshot_repo
 from archivum.code_pages import repo_folder, write_repo_pages
 from archivum.config import Settings, get_settings
 from archivum.db import sqlite
+from archivum.knowledge.graph_audit import LINK_SCOPES
 from archivum.knowledge.personal_root import ensure_personal_root
 from archivum.knowledge.repository import KnowledgeRepository, init_knowledge_schema
 from archivum.memory.catalog import register_codegraph_asset
@@ -63,6 +64,12 @@ CREATE TABLE IF NOT EXISTS code_repos (
 );
 CREATE INDEX IF NOT EXISTS idx_code_repos_wiki ON code_repos(wiki_id);
 """
+
+
+# How many runs a repository gets before the sweep stops requeueing it. Counted
+# at the claim, because a run that takes the process down leaves nothing else
+# behind: an out-of-memory kill is not an exception, so no handler records it.
+MAX_INDEX_ATTEMPTS = 3
 
 
 class RepoError(Exception):
@@ -275,10 +282,12 @@ async def init_repo_schema(conn: aiosqlite.Connection) -> None:
     # the pages with nothing left to say they were owed.
     cursor = await conn.execute("PRAGMA table_info(code_repos)")
     columns = {row[1] for row in await cursor.fetchall()}
-    if "narration_owed" not in columns:
+    for column in ("narration_owed", "index_attempts"):
+        if column in columns:
+            continue
         try:
             await conn.execute(
-                "ALTER TABLE code_repos ADD COLUMN narration_owed INTEGER NOT NULL "
+                f"ALTER TABLE code_repos ADD COLUMN {column} INTEGER NOT NULL "
                 "DEFAULT 0"
             )
             await conn.commit()
@@ -328,6 +337,7 @@ async def register_repo(*, path: Path, wiki_id: str, name: str | None = None) ->
                 path=excluded.path,
                 status='pending',
                 error=NULL,
+                index_attempts=0,
                 updated_at=excluded.updated_at
             WHERE code_repos.wiki_id = excluded.wiki_id
             """,
@@ -386,6 +396,17 @@ async def _set_status(scope: str, status: str, **fields: Any) -> None:
 # ── Indexing ──────────────────────────────────────────────────────────────────
 
 
+async def _claim_for_indexing(scope: str) -> None:
+    async with sqlite.get_db() as conn:
+        await init_repo_schema(conn)
+        await conn.execute(
+            "UPDATE code_repos SET status='indexing', updated_at=?, "
+            "index_attempts=index_attempts+1 WHERE scope=?",
+            (_now(), scope),
+        )
+        await conn.commit()
+
+
 async def index_repo(
     repo: CodeRepo, *, settings: Settings | None = None, write_pages: bool = True
 ) -> CodeRepo:
@@ -397,7 +418,7 @@ async def index_repo(
     and the upload route only catches `RepoError` — left a row that said
     `pending` or `indexing` forever, and the worker only ever selects `pending`.
     """
-    await _set_status(repo.scope, "indexing")
+    await _claim_for_indexing(repo.scope)
     try:
         return await _index_repo(repo, settings=settings, write_pages=write_pages)
     except Exception as exc:
@@ -487,6 +508,7 @@ async def _index_repo(
         edges=report.edges,
         error=None,
         indexed_at=_now(),
+        index_attempts=0,
     )
 
     if write_pages:
@@ -803,6 +825,28 @@ async def purge_repo_scope(
 
         # Citations first: they are keyed by the record they cite, so once the
         # objects are gone there is nothing left to find them by.
+        #
+        # Link edges sit in their own scope, so the scope-matched deletes below
+        # never reach them and every purge left them pointing at nothing. Live,
+        # that was 3.3M edges and most of the citations table.
+        placeholders = ",".join("?" for _ in LINK_SCOPES)
+        touching = (
+            f"SELECT id FROM knowledge_relationships WHERE scope IN ({placeholders}) "
+            "AND (src_id IN (SELECT id FROM knowledge_objects WHERE scope=?) "
+            "OR dst_id IN (SELECT id FROM knowledge_objects WHERE scope=?))"
+        )
+        link_params = (*LINK_SCOPES, scope, scope)
+        await run(
+            "knowledge_citations",
+            "DELETE FROM knowledge_citations WHERE knowledge_type='relationship' "
+            f"AND knowledge_id IN ({touching})",
+            link_params,
+        )
+        await run(
+            "knowledge_relationships",
+            f"DELETE FROM knowledge_relationships WHERE id IN ({touching})",
+            link_params,
+        )
         for knowledge_type, source in (
             ("object", "knowledge_objects"),
             ("relationship", "knowledge_relationships"),
@@ -869,6 +913,40 @@ async def purge_repo_scope(
     return removed
 
 
+async def purge_dangling_links(*, batch_size: int = 5_000) -> int:
+    """Delete link edges whose endpoint no longer exists. Returns how many went.
+
+    Clears what purges left behind before `purge_repo_scope` took link edges
+    with it. Limited to link scopes, which are rederived on every index, and
+    batched so the write lock is released between commits.
+    """
+    placeholders = ",".join("?" for _ in LINK_SCOPES)
+    select = (
+        f"SELECT id FROM knowledge_relationships r WHERE r.scope IN ({placeholders}) "
+        "AND (NOT EXISTS (SELECT 1 FROM knowledge_objects o WHERE o.id = r.src_id) "
+        "OR NOT EXISTS (SELECT 1 FROM knowledge_objects o WHERE o.id = r.dst_id)) "
+        "LIMIT ?"
+    )
+    removed = 0
+    async with sqlite.get_db() as conn:
+        while True:
+            async with conn.execute(select, (*LINK_SCOPES, batch_size)) as cursor:
+                ids = [(row[0],) for row in await cursor.fetchall()]
+            if not ids:
+                break
+            await conn.executemany(
+                "DELETE FROM knowledge_citations "
+                "WHERE knowledge_type='relationship' AND knowledge_id=?",
+                ids,
+            )
+            await conn.executemany("DELETE FROM knowledge_relationships WHERE id=?", ids)
+            await conn.commit()
+            removed += len(ids)
+    if removed:
+        logger.warning("Purged %d dangling link edges", removed)
+    return removed
+
+
 async def orphan_repo_scopes(*, wiki_id: str = "default") -> list[str]:
     """Code scopes holding knowledge that no registered repository owns.
 
@@ -900,10 +978,27 @@ async def requeue_stale_indexing(*, older_than_seconds: float = 3600.0) -> int:
     A process that dies mid-ingest — an out-of-memory kill, a redeploy — leaves
     the row claimed. Nothing selects `indexing`, so without this the repository
     is never indexed again and the UI shows a spinner forever.
+
+    A row that has already had `MAX_INDEX_ATTEMPTS` runs goes to `error` instead.
+    If the ingest itself is what kills the process, requeueing it is an endless
+    loop that restarts from zero each time. Registering the repository again
+    clears the count.
     """
     cutoff = datetime.now(UTC) - timedelta(seconds=older_than_seconds)
     async with sqlite.get_db() as conn:
         await init_repo_schema(conn)
+        cursor = await conn.execute(
+            "UPDATE code_repos SET status='error', error=?, updated_at=? "
+            "WHERE status='indexing' AND updated_at < ? AND index_attempts >= ?",
+            (
+                f"Gave up after {MAX_INDEX_ATTEMPTS} attempts: each run ended "
+                "without finishing, usually because the process was killed.",
+                _now(),
+                cutoff.isoformat(),
+                MAX_INDEX_ATTEMPTS,
+            ),
+        )
+        abandoned = cursor.rowcount or 0
         cursor = await conn.execute(
             "UPDATE code_repos SET status='pending', updated_at=? "
             "WHERE status='indexing' AND updated_at < ?",
@@ -911,6 +1006,8 @@ async def requeue_stale_indexing(*, older_than_seconds: float = 3600.0) -> int:
         )
         await conn.commit()
         moved = cursor.rowcount or 0
+    if abandoned:
+        logger.warning("Gave up on %d repository index runs at the retry limit", abandoned)
     if moved:
         logger.warning("Requeued %d repository index runs abandoned mid-flight", moved)
     return moved

@@ -21,6 +21,7 @@ from archivum.code_repos import (
     index_repo,
     list_repos,
     orphan_repo_scopes,
+    purge_dangling_links,
     purge_repo_scope,
     register_repo,
     scope_for,
@@ -1203,6 +1204,17 @@ async def dispatch_command(command: str, wiki_id: str = "default") -> dict[str, 
                 "command": raw,
                 "tool": "purge_repo",
                 "result": {"scope": scope, "removed": removed},
+            }
+
+        if cmd in {"purge-dangling-links", "purge_dangling_links"}:
+            # Only removes edges that point at nothing, so unlike `purge-repo`
+            # it has no memory to destroy, but it is a large write: run on purpose.
+            removed = await purge_dangling_links()
+            return {
+                "ok": True,
+                "command": raw,
+                "tool": "purge_dangling_links",
+                "result": {"removed": removed},
             }
 
         if cmd in {"graph-export-demo", "graph_export_demo", "export_graph_demo"}:
