@@ -141,7 +141,21 @@ async def lifespan(app: FastAPI):
 
     # Init derived stores
     await sqlite.init_db(settings)
-    await qdrant.init_collection(settings)
+    try:
+        await qdrant.init_collection(settings)
+    except Exception as exc:  # noqa: BLE001 - see below
+        # Embeddings are one retrieval channel, not the service. This used to
+        # abort startup, and on 2026-11-04 it took the deployment down for
+        # twenty minutes: one interrupted model download left a snapshot
+        # directory with no model file in it, `onnxruntime` raised
+        # `NO_SUCHFILE`, and the backend then refused to start on every
+        # restart of that container — taking the wiki, code search and fix
+        # recall with it, none of which need a vector.
+        logger.warning(
+            "Vector search is unavailable this run; everything else still "
+            "works and it is retried per query: %s",
+            exc,
+        )
     await graph.init_graph(settings)
 
     # Ensure owner exists
