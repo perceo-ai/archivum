@@ -55,3 +55,17 @@ async def test_ambiguous_on_common_name():
     assert len(results) >= 1
     for r in results:
         assert r.extraction_method == "AMBIGUOUS"
+
+
+async def test_a_name_shared_across_repos_does_not_pair_a_repo_with_itself():
+    """Every same-named pair used to link, so `__init__` alone made 694k edges."""
+    l1 = FakeL1([
+        {"id": "a-init-1", "kind": "module", "scope": "repo:a", "label": "__init__"},
+        {"id": "a-init-2", "kind": "module", "scope": "repo:a", "label": "__init__"},
+        {"id": "b-init-1", "kind": "module", "scope": "repo:b", "label": "__init__"},
+    ])
+    results = await resolve_cross_repo(l1)
+    assert {(r.src_id, r.dst_id) for r in results} == {
+        ("a-init-1", "b-init-1"),
+        ("a-init-2", "b-init-1"),
+    }
